@@ -1,0 +1,332 @@
+import { z } from "zod"
+import { CODE_SETS } from "../spec/code-sets"
+import type { CsvSpec } from "../spec/types"
+import type { ValueType } from "../spec/types"
+import type { PlanExcerpt } from "./prompt"
+import { askTargets, collectSourceRows, copiedFrom, rowIsBlank, sameHeader } from "./sources"
+import { TRANSFORM_IDS, getTransform, preferredTransform, transformFits, type TransformId } from "./transforms"
+
+/**
+ * ブラウザで読んだシート。セルは表示値（日付は YYYY-MM-DD）、結合セルは左上の値で埋めてある。
+ * hidden[i] はその行が非表示（オートフィルタで隠れた行など）か。
+ */
+/** notes はセルのメモ（row・column は rows の位置）。返ってきた Excel の取り込みが、顧客がメモに書いた答えを見つけるのに使う */
+export type SheetGrid = {
+  name: string
+  rows: string[][]
+  hidden: boolean[]
+  notes?: { row: number; column: number; text: string }[]
+  /** 結合セルの範囲（0 始まり。rows では左上の値で範囲を埋めてある）。印付きの Excel が、印を付けたセルと同じ結合のセルを見分けるのに使う */
+  merges?: { s: { r: number; c: number }; e: { r: number; c: number } }[]
+}
+
+/** 計画で選んだシートから取り出した1行（見出し行・合計行などは含まない） */
+export type SourceRow = { sheet: string; row: number; cells: string[]; hidden: boolean }
+
+export type FlagColumn = { column: number; code: string }
+
+export type FieldPlan =
+  | { kind: "column"; column: number; transform: TransformId; instruction?: string }
+  | { kind: "columns"; columns: number[]; transform: TransformId; instruction?: string }
+  /** 列ごとに記号（○など）があればそのコード。1行に記号が複数あれば行を複数に分ける（例: 電気工事列・管工事列 → 業種） */
+  | { kind: "flagColumns"; columns: FlagColumn[] }
+  | { kind: "constant"; value: string; reason: string }
+  | { kind: "missing" }
+
+/**
+ * 出力しない行。excludeColumns の列に値がある行を除く（例:「工事実績から除外」列）。excludeValues は列の値がそのどれかの行を除く
+ * （例: 区分の列が「未成」。計画の聞き返しへの職員の答え）。excludeValues は前の版の保存済みの計画には無い
+ */
+export type RowFilter = { excludeHidden: boolean; excludeColumns: number[]; excludeValues?: ValueFilter[] }
+
+/** 列の値が values のどれかか（前後の空白と全角・半角の違いは見ない） */
+export type ValueFilter = { column: number; values: string[] }
+
+/**
+ * 計画の AI の聞き返し（職員が答えを選ぶ）。対象は、column の列の値が values のどれか（values が空なら値がある）の行。
+ * unfinished: 未成の工事（完成だけ載せるか、未成も載せるか）。doubtful: 載せるか迷う行（メモ・重複の印など。載せないか、載せるか）
+ */
+export const PLAN_ASK_KINDS = ["unfinished", "doubtful"] as const
+export type PlanAskKind = (typeof PLAN_ASK_KINDS)[number]
+export type PlanAsk = { kind: PlanAskKind; text: string; column: number; values: string[] }
+
+const normalizeCell = (v: string) => v.normalize("NFKC").trim()
+
+/** 値の集まりが同じか（順と、前後の空白・全角半角の違いは見ない） */
+const sameValues = (a: readonly string[], b: readonly string[]) => {
+  const x = new Set(a.map(normalizeCell))
+  const y = new Set(b.map(normalizeCell))
+  return x.size === y.size && [...x].every((v) => y.has(v))
+}
+
+/** 行の除外（values が空なら「値があれば出さない列」、あれば「この値なら出さない列」）がもう計画にあるか */
+export function hasExclusion(rf: RowFilter, x: ValueFilter) {
+  if (!x.values.length) return rf.excludeColumns.includes(x.column)
+  return (rf.excludeValues ?? []).some((f) => f.column === x.column && sameValues(f.values, x.values))
+}
+
+/** 行の除外を足す・外す（もうあるものは足さず、無いものは外さない）。計画の聞き返しの答えとチャットの set_plan で同じ */
+export function withExclusions(rf: RowFilter, add: readonly ValueFilter[], remove: readonly ValueFilter[]): RowFilter {
+  let excludeColumns = rf.excludeColumns.filter((c) => !remove.some((x) => !x.values.length && x.column === c))
+  let excludeValues = (rf.excludeValues ?? []).filter((f) => !remove.some((x) => x.values.length && x.column === f.column && sameValues(x.values, f.values)))
+  for (const x of add) {
+    const now = { ...rf, excludeColumns, excludeValues }
+    if (hasExclusion(now, x)) continue
+    if (x.values.length) excludeValues = [...excludeValues, { column: x.column, values: [...x.values] }]
+    else excludeColumns = [...excludeColumns, x.column].sort((a, b) => a - b)
+  }
+  const { excludeValues: _, ...rest } = rf
+  return { ...rest, excludeColumns, ...(excludeValues.length ? { excludeValues } : {}) }
+}
+
+/** 行（元の Excel のセル）が聞き返し・値の除外の対象か */
+export function matchesValues(f: { column: number; values: readonly string[] }, cells: readonly string[]) {
+  const v = normalizeCell(cells[f.column] ?? "")
+  return f.values.length ? f.values.some((x) => normalizeCell(x) === v) : v !== ""
+}
+
+/** 行・列の番号はすべて 0 始まり（画面では Excel の行番号・列記号で表示する） */
+export type MappingPlan<F extends string> = {
+  /** 使うシート。先頭が計画の元のシートで、行番号はそのシートのもの。2枚目以降は見出し行が同じシート */
+  sheets: string[]
+  headerRow: number
+  dataRows: { start: number; end: number }
+  /** 合計行・小計行・空行など */
+  skipRows: number[]
+  rowFilter: RowFilter
+  amountUnit: "yen" | "thousandYen"
+  /**
+   * 請負代金の列の金額が税込か税抜か（見出し・注記に書いてあって計画の AI が分かったときだけ。分からなければ無い）。
+   * 案件の税の設定が未設定なら、これを入れる。前の版の保存済みの計画には無い
+   */
+  amountTax?: "included" | "excluded"
+  fields: Record<F, FieldPlan>
+  unusedColumns: { column: number; header: string; reason: string }[]
+  /** 知らせ（職員が読むだけで、答えは要らない） */
+  notes: string[]
+  /** 聞き返し（職員が答えを選ぶ）。前の版の保存済みの計画には無い（文の notes だけ） */
+  asks?: PlanAsk[]
+}
+
+export function columnCount(grid: SheetGrid) {
+  return grid.rows.reduce((n, r) => Math.max(n, r.length), 0)
+}
+
+/** 0 → A, 26 → AA */
+export function columnLetter(index: number): string {
+  let s = ""
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s
+  return s
+}
+
+export function planColumns(p: FieldPlan): number[] {
+  if (p.kind === "column") return [p.column]
+  if (p.kind === "columns") return p.columns
+  if (p.kind === "flagColumns") return p.columns.map((c) => c.column)
+  return []
+}
+
+export function isDataRow<F extends string>(plan: MappingPlan<F>, row: number) {
+  return row >= plan.dataRows.start && row <= plan.dataRows.end && !plan.skipRows.includes(row)
+}
+
+// ---- AI が返す計画（構造化出力のスキーマ）----
+
+const transformId = z.enum(TRANSFORM_IDS)
+const fieldPlanWire = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("column"), column: z.number().int(), transform: transformId, instruction: z.string().nullable() }),
+  z.object({ kind: z.literal("columns"), columns: z.array(z.number().int()), transform: transformId, instruction: z.string().nullable() }),
+  z.object({ kind: z.literal("flagColumns"), columns: z.array(z.object({ column: z.number().int(), code: z.string() })) }),
+  z.object({ kind: z.literal("constant"), value: z.string(), reason: z.string() }),
+  z.object({ kind: z.literal("missing") }),
+])
+
+export function mappingPlanWireSchema<F extends string>(spec: CsvSpec<F>) {
+  const fields: Record<string, typeof fieldPlanWire> = Object.fromEntries(spec.fields.map((f) => [f.id, fieldPlanWire]))
+  // シートを先に決めさせる（見出し行・列番号はそのシートのもの）。シートは抜粋で振った番号で返させる（名前の書き間違いで計画が壊れないように）。
+  // 番号は enum にしない（スキーマを毎回同じにしてキャッシュを効かせる。番号は acceptAiPlan で確かめる）
+  return z.object({
+    sheets: z.array(z.number().int()),
+    sheetReason: z.string(),
+    headerRow: z.number().int(),
+    dataStart: z.number().int(),
+    skipRows: z.array(z.number().int()),
+    excludeColumns: z.array(z.number().int()),
+    amountUnit: z.enum(["yen", "thousandYen"]),
+    amountTax: z.enum(["included", "excluded", "unknown"]),
+    fields: z.object(fields),
+    unusedColumns: z.array(z.object({ column: z.number().int(), header: z.string(), reason: z.string() })),
+    notes: z.array(z.string()),
+    // 聞き返しの種類は決まったものだけ（種類ごとに答えの選択肢と反映のしかたが決まっている）。それ以外は notes（知らせ）に書かせる
+    asks: z.array(z.object({ kind: z.enum(PLAN_ASK_KINDS), text: z.string(), column: z.number().int(), values: z.array(z.string()) })),
+  })
+}
+
+/**
+ * AI の計画を検証して取り込む。
+ * - シートは抜粋で振った番号で受け取る。計画の元のシート（sheets の先頭）が送ったシートに無い・空・職員の指定と違うときは、列の番号の意味が分からないので計画全体を使わない（ok: false）。
+ * - 2枚目以降のシートは、無い・空・重複・見出しが計画の元と違うものを外す。
+ * - 行・列の範囲外、項目の型に合わない変換は、選んだシートについて見出しから推定した計画（fallbackFor）の値に戻す。
+ * 直したことは notes に残す。
+ */
+/** 聞き返しの数と、1つの聞き返しの値の数の上限 */
+const MAX_ASKS = 5
+const MAX_ASK_VALUES = 20
+
+export function acceptAiPlan<F extends string>(
+  spec: CsvSpec<F>,
+  workbook: readonly SheetGrid[],
+  excerpt: Pick<PlanExcerpt, "sheets" | "requiredSheet">,
+  json: unknown,
+  fallbackFor: (grid: SheetGrid) => MappingPlan<F>,
+): { ok: true; plan: MappingPlan<F> } | { ok: false; message: string } {
+  const parsed = mappingPlanWireSchema(spec).safeParse(json)
+  if (!parsed.success) return { ok: false, message: "AI の計画の形式が正しくありません" }
+  const wire = parsed.data
+  // AI が見たシート（抜粋に入れたシート）だけを使える
+  const sent = (i: number) => (excerpt.sheets.some((s) => s.index === i) ? workbook[i] : undefined)
+  const [primaryIndex, ...extraIndexes] = wire.sheets
+  if (primaryIndex === undefined) return { ok: false, message: "AI の計画に使うシートがありません" }
+  const grid = sent(primaryIndex)
+  if (!grid) return { ok: false, message: `AI が選んだシート（番号 ${primaryIndex}）は送ったシートにありません` }
+  if (grid.rows.every(rowIsBlank)) return { ok: false, message: `AI が選んだシート「${grid.name}」は空です` }
+  const required = excerpt.requiredSheet === undefined ? undefined : workbook[excerpt.requiredSheet]
+  if (required && grid !== required) return { ok: false, message: `AI が指定のシート「${required.name}」でなく「${grid.name}」を選びました` }
+  const fallback = fallbackFor(grid)
+  const nRows = grid.rows.length
+  const nCols = columnCount(grid)
+  const problems: string[] = []
+
+  // データの終わりは AI に決めさせない（AI は抜粋しか見ないので手前で切ることがある）。シートの最後の空でない行までとし、
+  // 表の後ろの注記などデータでない行は AI が見える範囲で skipRows に挙げる
+  const end = fallback.dataRows.end
+  const rowsOk = wire.headerRow >= 0 && wire.headerRow < nRows && wire.dataStart > wire.headerRow && wire.dataStart <= end
+  if (!rowsOk) problems.push("AI の見出し行・データの開始行がシートと合わないため、ルールの推定を使いました")
+  const headerRow = rowsOk ? wire.headerRow : fallback.headerRow
+  const dataRows = rowsOk ? { start: wire.dataStart, end } : fallback.dataRows
+
+  const sheets = [grid.name]
+  for (const i of extraIndexes) {
+    const s = sent(i)
+    const name = s?.name ?? `番号 ${i}`
+    if (s && sheets.includes(name)) continue
+    const reason = s ? extraSheetReason(workbook, grid, sheets, s, headerRow) : "送ったシートに無い"
+    if (reason) problems.push(`AI が足したシート「${name}」は${reason}ため外しました`)
+    else sheets.push(name)
+  }
+
+  const wireFields: Record<string, z.infer<typeof fieldPlanWire>> = wire.fields
+  const fields = {} as Record<F, FieldPlan>
+  for (const f of spec.fields) {
+    const p = wireFields[f.id]!
+    const reason = fieldPlanProblem(p, f.valueType, nCols)
+    if (reason) {
+      problems.push(`${f.label}: ${reason}ため、ルールの推定を使いました`)
+      fields[f.id] = fallback.fields[f.id]
+      continue
+    }
+    if (p.kind === "column" || p.kind === "columns") {
+      const { instruction, ...rest } = p
+      fields[f.id] = instruction ? { ...rest, instruction } : rest
+    } else {
+      fields[f.id] = p
+    }
+  }
+
+  const sheetNote = workbook.length > 1 ? [`使うシート「${sheets.join("」「")}」: ${wire.sheetReason.trim() || "（AI の理由なし）"}`] : []
+  const plan: MappingPlan<F> = {
+    sheets,
+    headerRow,
+    dataRows,
+    // 合計・小計の行はルールでも見つける（AI は抜粋しか見ないので、途中の小計を見落とす）
+    skipRows: rowsOk
+      ? [...new Set([...wire.skipRows, ...fallback.skipRows])].filter((r) => r >= dataRows.start && r <= dataRows.end).sort((a, b) => a - b)
+      : fallback.skipRows,
+    rowFilter: { ...fallback.rowFilter, excludeColumns: [...new Set(wire.excludeColumns)].filter((c) => c >= 0 && c < nCols) },
+    amountUnit: wire.amountUnit,
+    ...(wire.amountTax !== "unknown" ? { amountTax: wire.amountTax } : {}),
+    fields,
+    unusedColumns: wire.unusedColumns.filter((c) => c.column >= 0 && c.column < nCols),
+    notes: [...sheetNote, ...wire.notes, ...problems],
+    asks: [],
+  }
+
+  // 聞き返しは、列がシートの中で、対象の行（画面と同じ数え方: 使う全シートの行のうち、ほかの決まりで出さない行を除く）が1つでもあり、
+  // 答えがまだ決まっていない（もう同じ除外がある）ときだけ聞く。そうでなければ文だけを知らせにする
+  const sources = collectSourceRows(workbook, plan).rows
+  const asks: PlanAsk[] = []
+  const askNotes: string[] = []
+  for (const a of wire.asks) {
+    const text = a.text.trim()
+    const values = [...new Set(a.values.map(normalizeCell).filter(Boolean))].slice(0, MAX_ASK_VALUES)
+    const ask = { kind: a.kind, text, column: a.column, values }
+    const usable = text && a.column >= 0 && a.column < nCols && asks.length < MAX_ASKS && !hasExclusion(plan.rowFilter, ask) && askTargets(ask, sources, plan.rowFilter).length > 0
+    if (usable) asks.push(ask)
+    else if (text) askNotes.push(text)
+  }
+  return { ok: true, plan: { ...plan, notes: [...sheetNote, ...wire.notes, ...askNotes, ...problems], asks } }
+}
+
+/**
+ * 計画の元のシート（primary）に、2枚目以降として足すシート s を使えない理由（使えれば undefined）。空・見出しが計画の元と違う・
+ * もう使うシート（kept）の写し（写しを足すと同じ工事が二重に出る）。AI の計画の取り込みとチャットの計画の変更で同じ決まり
+ */
+export function extraSheetReason(workbook: readonly SheetGrid[], primary: SheetGrid, kept: readonly string[], s: SheetGrid, headerRow: number): string | undefined {
+  if (s.rows.every(rowIsBlank)) return "空の"
+  if (!sameHeader(s, primary, headerRow)) return `見出しが「${primary.name}」と違う`
+  const copy = copiedFrom(
+    s,
+    kept.flatMap((n) => workbook.find((x) => x.name === n) ?? []),
+    headerRow,
+  )
+  return copy ? `データの行の${Math.floor(copy.ratio * 100)}%が「${copy.sheet}」にもある写しの` : undefined
+}
+
+/** 項目の計画1つが項目の型とシートの幅に合わない理由（合えば undefined）。AI の計画の取り込みとチャットの計画の変更で同じ決まり */
+export function fieldPlanProblem(
+  p: z.infer<typeof fieldPlanWire> | FieldPlan,
+  vt: ValueType,
+  nCols: number,
+): string | undefined {
+  // 個人名を含みうる項目（注文者・工事名）に定数を書くと、匿名化を通らずに CSV に出る（個人名の項目は匿名化する変換だけ）
+  if (p.kind === "constant") return vt.type === "text" && vt.person && p.value.trim() ? "個人名を含みうる項目に定数は使えない" : undefined
+  if (p.kind === "missing") return undefined
+  if (p.kind === "flagColumns") {
+    if (vt.type !== "code") return "記号の列はコードの項目にしか使えない"
+    if (p.columns.length === 0 || p.columns.some((c) => c.column < 0 || c.column >= nCols)) return "列番号がシートの範囲外の"
+    const bad = p.columns.find((c) => !CODE_SETS[vt.set].some((x) => x.code === c.code))
+    return bad ? `コード「${bad.code}」が表に無い` : undefined
+  }
+  const cols = p.kind === "column" ? [p.column] : p.columns
+  if (cols.length === 0 || cols.some((c) => c < 0 || c >= nCols)) return "列番号がシートの範囲外の"
+  const t = getTransform(p.transform)
+  if (!transformFits(t, vt)) return `変換「${t.label}」はこの項目に使えない`
+  if (p.kind === "columns" && !t.multiColumn) return `変換「${t.label}」は複数列を受け取れない`
+  if (t.id === "ai.freeform" && !p.instruction) return "AI 変換の指示文が無い"
+  return undefined
+}
+
+/**
+ * 保存済みの計画を、今の変換の決まり（transformFits）で確かめる。使えなくなった変換（工事名の全角にする・注文者の匿名化しない変換など）は
+ * その項目で最初に選ぶ変換（preferredTransform）に替え、使えない定数（注文者・工事名の定数）は外して、直した項目の名前を changed に返す。AI の計画の取り込み（acceptAiPlan）と同じ決まり
+ */
+export function reviewPlanTransforms<F extends string>(spec: CsvSpec<F>, plan: MappingPlan<F>): { plan: MappingPlan<F>; changed: string[] } {
+  const changed: string[] = []
+  const fields = { ...plan.fields }
+  for (const f of spec.fields) {
+    const p: FieldPlan = fields[f.id]
+    // 定数は新しい計画と同じ決まり（fieldPlanProblem）で確かめ、使えなければ外す（元データに無い扱いにして、顧客に聞く）
+    if (p.kind === "constant") {
+      if (fieldPlanProblem(p, f.valueType, Number.MAX_SAFE_INTEGER)) {
+        fields[f.id] = { kind: "missing" }
+        changed.push(f.label)
+      }
+      continue
+    }
+    if ((p.kind !== "column" && p.kind !== "columns") || transformFits(getTransform(p.transform), f.valueType)) continue
+    const transform = preferredTransform(f.valueType, p.kind === "columns")
+    fields[f.id] = p.kind === "column" ? { kind: "column", column: p.column, transform } : { kind: "columns", columns: p.columns, transform }
+    changed.push(f.label)
+  }
+  return { plan: changed.length ? { ...plan, fields } : plan, changed }
+}

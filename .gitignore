@@ -15,3 +15,10 @@ todos.json
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# 顧客の実データ（コミットしない）
+sample/
+
+# Playwright
+test-results/
+playwright-report/

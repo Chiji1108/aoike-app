@@ -3,6 +3,11 @@ export const OFFICE_NAME = "行政書士青池事務所"
 export const APP_NAME = "青池事務所"
 /** 勤怠のページの名前 */
 export const KINTAI_NAME = "青池事務所 勤怠"
+/** 工事経歴書 CSV のページの名前 */
+export const CSV_NAME = "青池事務所 工事経歴CSV"
+
+/** 使う Claude のモデル（工事経歴書 CSV の変換・チャット・工事場所の調査） */
+export const MODEL = "claude-opus-5-5"
 
 /** 公開URL。ここ以外のホスト名（下の LEGACY_HOSTS）で来たら、こちらへ転送する */
 export const APP_ORIGIN = "https://app.aoike.jp"
@@ -13,6 +18,7 @@ export const APP_ORIGIN = "https://app.aoike.jp"
  */
 export const LEGACY_HOSTS: Record<string, string> = {
   "kintai.aoike.jp": "/kintai",
+  "csv.aoike.jp": "/csv",
 }
 
 /**

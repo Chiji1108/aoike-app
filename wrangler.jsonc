@@ -6,8 +6,8 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "aoike-attendance",
 	"compatibility_date": "2026-10-06",
-	"compatibility_flags": ["nodejs_compat"],
-	"main": "@tanstack/react-start/server-entry",
+	"compatibility_flags": ["nodejs_compat", "enable_request_signal"],
+	"main": "src/worker.ts",
 	"observability": {
 		"enabled": true
 	},
@@ -23,7 +23,7 @@
 	 * app.aoike.jp を chiji.tech の Custom Hostname として登録し、ラディックスで
 	 * CNAME を saas.chiji.tech に向けると、このルートで本 Worker に直接届く。
 	 * カスタムホスト名への通信は chiji.tech ゾーンに入るので zone_name は chiji.tech。
-	 * kintai.aoike.jp は、まとめる前の URL を app.aoike.jp/kintai へ転送するためだけに受けている（src/lib/legacy-host.ts）。
+	 * kintai.aoike.jp・csv.aoike.jp は、まとめる前の URL を app.aoike.jp/kintai・/csv へ転送するためだけに受けている（src/lib/legacy-host.ts）。
 	 */
 	"routes": [
 		{
@@ -32,6 +32,10 @@
 		},
 		{
 			"pattern": "kintai.aoike.jp/*",
+			"zone_name": "chiji.tech"
+		},
+		{
+			"pattern": "csv.aoike.jp/*",
 			"zone_name": "chiji.tech"
 		}
 	],
@@ -57,10 +61,32 @@
 			"database_name": "aoike-attendance",
 			"database_id": "16420424-eeec-41f9-9262-14818073cc6e",
 			"migrations_dir": "drizzle/kintai"
+		},
+		{
+			"binding": "CSV_DB",
+			"database_name": "aoike-kensetsu-csv",
+			"database_id": "4df05265-8f6d-4056-9443-0fa96a28ed5b",
+			"migrations_dir": "drizzle/csv"
+		}
+	],
+	/** 工事経歴書 CSV の案件に付けたファイル（Excel・PDF・写真）と書き出したファイル */
+	"r2_buckets": [
+		{
+			"binding": "CSV_FILES",
+			"bucket_name": "aoike-kensetsu-csv-files"
+		}
+	],
+	/** 工事経歴書 CSV の工事場所の一括調査（src/server/location-workflow.ts。src/worker.ts から出している） */
+	"workflows": [
+		{
+			"name": "aoike-app-location-search",
+			"binding": "LOCATION_SEARCH",
+			"class_name": "LocationSearchWorkflow"
 		}
 	]
 	/**
 	 * Secrets（`bunx wrangler secret put <NAME>` で設定）
 	 *  - BETTER_AUTH_SECRET: 32文字以上のランダム文字列
+	 *  - ANTHROPIC_API_KEY:  Claude API のキー（工事経歴書 CSV。未設定でもルール変換だけで動く）
 	 */
 }
