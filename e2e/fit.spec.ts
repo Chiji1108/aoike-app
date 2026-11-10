@@ -220,3 +220,27 @@ test("FIT: 書類を置くと書類チェックが「届いた」になり、置
   await page.getByTestId("fit-procedure-edit").click()
   await expect(page.getByTestId("proc-notice-saved")).toHaveAttribute("data-checked", "")
 })
+
+test("FIT: パネルとパワコンから出力を求めて案件に入れると、整合性チェックの出力が合う。見比べの印は保存される", async ({ page }) => {
+  const stamp = Date.now()
+  await receive(page, { commonId: `CP${stamp}`, name: `見本 五郎${stamp}` })
+  const checks = page.getByTestId("fit-checks")
+  await expect(checks.locator('[data-id="facilityName"]')).toHaveAttribute("data-state", "ok")
+  await expect(checks.locator('[data-id="outputCalc"]')).toHaveAttribute("data-state", "na")
+
+  const eq = page.getByTestId("fit-equipment")
+  await eq.getByTestId("equip-watts").nth(0).fill("265")
+  await eq.getByTestId("equip-count").nth(0).fill("12")
+  await eq.getByTestId("equip-watts").nth(1).fill("3000")
+  await expect(eq.getByTestId("equip-total")).toContainText("パネル 3,180W・パワコン 3,000W → 出力 3.0kW")
+  await eq.getByTestId("equip-use-output").click()
+  await expect(page.getByText("出力を 3.0kW にしました")).toBeVisible()
+  await expect(checks.locator('[data-id="outputCalc"]')).toHaveAttribute("data-state", "ok")
+  await expect(page.getByText("3 kW")).toBeVisible()
+
+  await checks.getByTestId("check-names").click()
+  await expect(checks).toContainText("見比べ 1/5")
+  await page.reload()
+  await expect(page.getByTestId("fit-checks").getByTestId("check-names")).toHaveAttribute("data-checked", "")
+  await expect(page.getByTestId("fit-equipment").getByTestId("equip-watts").nth(0)).toHaveValue("265")
+})
