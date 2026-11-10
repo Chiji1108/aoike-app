@@ -50,10 +50,8 @@ export const MAX_DOC_BYTES = 100 * 1024 * 1024
  */
 export const retentionUntil = (bookYear: number, years: number) => `${bookYear + years}-12-31`
 
-/** 保存期間が過ぎて消してよい書類か（手続が終わっていて、保存の期限を過ぎた） */
-export function isPurgeable(p: { bookYear: number; finished: boolean }, years: number, today: string) {
-  return p.finished && today > retentionUntil(p.bookYear, years)
-}
+/** 保存の期限を過ぎた事件簿の年のうち、いちばん新しい年（この年以前の、終わった手続の書類を消せる） */
+export const lastPurgeableBookYear = (years: number, today: string) => Number(today.slice(0, 4)) - years - 1
 
 export const fileUrl = (fileId: string) => `/api/fit/files/${fileId}`
 

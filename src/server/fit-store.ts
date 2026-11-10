@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, inArray, isNull, lt, max, or, isNotNull, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, lte, max, or, sql } from "drizzle-orm"
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
 import { fitCases, fitDefects, fitFileDownloads, fitFiles, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitFile, type FitProcedure } from "@/db/fit-schema"
-import { isPurgeable, r2KeyOf, type DocType } from "@/lib/fit/documents"
+import { lastPurgeableBookYear, r2KeyOf, type DocType } from "@/lib/fit/documents"
 import type * as schema from "@/db/fit-schema"
 import { acceptedOnOf, bookYearOf } from "@/lib/fit/procedure"
 import { feeFor, withDefaults, type FitSettings } from "@/lib/fit/settings"
@@ -309,11 +309,10 @@ export async function purgeableFiles(db: Db, years: number, today: string) {
     .from(fitFiles)
     .innerJoin(fitProcedures, eq(fitProcedures.id, fitFiles.procedureId))
     .innerJoin(fitCases, eq(fitCases.id, fitProcedures.caseId))
-    .where(and(isNull(fitFiles.purgedAt), finished))
+    // 帳簿を閉じた年末から years 年たった年の書類だけを読む
+    .where(and(isNull(fitFiles.purgedAt), finished, lte(fitProcedures.bookYear, lastPurgeableBookYear(years, today))))
     .orderBy(asc(fitProcedures.bookYear), asc(fitProcedures.seq), asc(fitFiles.docType), asc(fitFiles.version))
-  return rows
-    .filter((r) => isPurgeable({ bookYear: r.bookYear, finished: true }, years, today))
-    .map(({ file: { r2Key: _, ...f }, ...r }) => ({ ...r, file: { ...f, createdAt: f.createdAt.getTime(), purgedAt: null } }))
+  return rows.map(({ file: { r2Key: _, ...f }, ...r }) => ({ ...r, file: { ...f, createdAt: f.createdAt.getTime(), purgedAt: null } }))
 }
 
 /** 保存期間が過ぎた書類を R2 から消し、記録に消した日時を入れる（期間が過ぎていないものは消さない） */

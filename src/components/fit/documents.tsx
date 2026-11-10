@@ -33,6 +33,8 @@ export function Documents({ procedureId, kind, sharedOwnership, files, onChanged
   const input = useRef<HTMLInputElement>(null)
   const [docType, setDocType] = useState<DocType>("other")
   const [uploading, setUploading] = useState(false)
+  // 押したダウンロードを、読み直さずに回数と最後の日へ足す（記録はサーバーがダウンロードのときに残す）
+  const [clicked, setClicked] = useState<Record<string, { n: number; at: number }>>({})
   const required = requiredDocs(kind, sharedOwnership)
   const has = new Set(files.map((f) => f.docType))
   const byType = DOC_TYPES.map((t) => [t, files.filter((f) => f.docType === t)] as const).filter(([, fs]) => fs.length > 0)
@@ -112,13 +114,11 @@ export function Documents({ procedureId, kind, sharedOwnership, files, onChanged
                 <span className="text-xs num">
                   {sizeText(f.size)}・{dateOf(f.createdAt)}
                 </span>
-                <span className="text-xs num" data-testid="doc-downloads">
-                  {f.downloads > 0 ? `${f.downloads}回ダウンロード（最後 ${dateOf(f.lastDownloadAt!)}）` : "未ダウンロード"}
-                </span>
+                <DownloadCount downloads={f.downloads + (clicked[f.id]?.n ?? 0)} last={clicked[f.id]?.at ?? f.lastDownloadAt} />
                 {f.purgedAt ? (
                   <span className="text-xs">保存期間が過ぎて消した</span>
                 ) : (
-                  <Button render={<a href={fileUrl(f.id)} download />} nativeButton={false} variant="ghost" size="icon-sm" aria-label={`${f.name} をダウンロード`} onClick={() => setTimeout(onChanged, 1500)}>
+                  <Button render={<a href={fileUrl(f.id)} download />} nativeButton={false} variant="ghost" size="icon-sm" aria-label={`${f.name} をダウンロード`} onClick={() => setClicked((c) => ({ ...c, [f.id]: { n: (c[f.id]?.n ?? 0) + 1, at: Date.now() } }))}>
                     <Download />
                   </Button>
                 )}
@@ -128,5 +128,13 @@ export function Documents({ procedureId, kind, sharedOwnership, files, onChanged
         </ul>
       )}
     </div>
+  )
+}
+
+function DownloadCount({ downloads, last }: { downloads: number; last: number | null }) {
+  return (
+    <span className="text-xs num" data-testid="doc-downloads">
+      {downloads > 0 && last != null ? `${downloads}回ダウンロード（最後 ${dateOf(last)}）` : "未ダウンロード"}
+    </span>
   )
 }
