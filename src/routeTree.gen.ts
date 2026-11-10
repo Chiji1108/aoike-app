@@ -18,6 +18,8 @@ import { Route as AuthedCsvIndexRouteImport } from './routes/_authed/csv/index'
 import { Route as AuthedCsvFeedbackRouteImport } from './routes/_authed/csv/feedback'
 import { Route as AuthedCsvRulesRouteImport } from './routes/_authed/csv/rules'
 import { Route as AuthedFitIndexRouteImport } from './routes/_authed/fit/index'
+import { Route as AuthedFitBillingRouteImport } from './routes/_authed/fit/billing'
+import { Route as AuthedFitBookRouteImport } from './routes/_authed/fit/book'
 import { Route as AuthedFitNewRouteImport } from './routes/_authed/fit/new'
 import { Route as AuthedFitProceduresRouteImport } from './routes/_authed/fit/procedures'
 import { Route as AuthedFitRetentionRouteImport } from './routes/_authed/fit/retention'
@@ -78,6 +80,16 @@ const AuthedCsvRulesRoute = AuthedCsvRulesRouteImport.update({
 const AuthedFitIndexRoute = AuthedFitIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
+const AuthedFitBillingRoute = AuthedFitBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
+const AuthedFitBookRoute = AuthedFitBookRouteImport.update({
+  id: '/book',
+  path: '/book',
   getParentRoute: () => AuthedFitRoute,
 } as any)
 const AuthedFitNewRoute = AuthedFitNewRouteImport.update({
@@ -175,6 +187,8 @@ export interface FileRoutesByFullPath {
   '/fit': typeof AuthedFitRouteWithChildren
   '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
+  '/fit/billing': typeof AuthedFitBillingRoute
+  '/fit/book': typeof AuthedFitBookRoute
   '/fit/new': typeof AuthedFitNewRoute
   '/fit/procedures': typeof AuthedFitProceduresRoute
   '/fit/retention': typeof AuthedFitRetentionRoute
@@ -200,6 +214,8 @@ export interface FileRoutesByTo {
   '/': typeof AuthedIndexRoute
   '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
+  '/fit/billing': typeof AuthedFitBillingRoute
+  '/fit/book': typeof AuthedFitBookRoute
   '/fit/new': typeof AuthedFitNewRoute
   '/fit/procedures': typeof AuthedFitProceduresRoute
   '/fit/retention': typeof AuthedFitRetentionRoute
@@ -229,6 +245,8 @@ export interface FileRoutesById {
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/_authed/csv/rules': typeof AuthedCsvRulesRoute
+  '/_authed/fit/billing': typeof AuthedFitBillingRoute
+  '/_authed/fit/book': typeof AuthedFitBookRoute
   '/_authed/fit/new': typeof AuthedFitNewRoute
   '/_authed/fit/procedures': typeof AuthedFitProceduresRoute
   '/_authed/fit/retention': typeof AuthedFitRetentionRoute
@@ -258,6 +276,8 @@ export interface FileRouteTypes {
     | '/fit'
     | '/csv/feedback'
     | '/csv/rules'
+    | '/fit/billing'
+    | '/fit/book'
     | '/fit/new'
     | '/fit/procedures'
     | '/fit/retention'
@@ -283,6 +303,8 @@ export interface FileRouteTypes {
     | '/'
     | '/csv/feedback'
     | '/csv/rules'
+    | '/fit/billing'
+    | '/fit/book'
     | '/fit/new'
     | '/fit/procedures'
     | '/fit/retention'
@@ -311,6 +333,8 @@ export interface FileRouteTypes {
     | '/_authed/'
     | '/_authed/csv/feedback'
     | '/_authed/csv/rules'
+    | '/_authed/fit/billing'
+    | '/_authed/fit/book'
     | '/_authed/fit/new'
     | '/_authed/fit/procedures'
     | '/_authed/fit/retention'
@@ -406,6 +430,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/fit/'
       preLoaderRoute: typeof AuthedFitIndexRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
+    '/_authed/fit/billing': {
+      id: '/_authed/fit/billing'
+      path: '/billing'
+      fullPath: '/fit/billing'
+      preLoaderRoute: typeof AuthedFitBillingRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
+    '/_authed/fit/book': {
+      id: '/_authed/fit/book'
+      path: '/book'
+      fullPath: '/fit/book'
+      preLoaderRoute: typeof AuthedFitBookRouteImport
       parentRoute: typeof AuthedFitRoute
     }
     '/_authed/fit/new': {
@@ -551,6 +589,8 @@ const AuthedCsvRouteWithChildren = AuthedCsvRoute._addFileChildren(
 )
 
 interface AuthedFitRouteChildren {
+  AuthedFitBillingRoute: typeof AuthedFitBillingRoute
+  AuthedFitBookRoute: typeof AuthedFitBookRoute
   AuthedFitNewRoute: typeof AuthedFitNewRoute
   AuthedFitProceduresRoute: typeof AuthedFitProceduresRoute
   AuthedFitRetentionRoute: typeof AuthedFitRetentionRoute
@@ -561,6 +601,8 @@ interface AuthedFitRouteChildren {
 }
 
 const AuthedFitRouteChildren: AuthedFitRouteChildren = {
+  AuthedFitBillingRoute: AuthedFitBillingRoute,
+  AuthedFitBookRoute: AuthedFitBookRoute,
   AuthedFitNewRoute: AuthedFitNewRoute,
   AuthedFitProceduresRoute: AuthedFitProceduresRoute,
   AuthedFitRetentionRoute: AuthedFitRetentionRoute,

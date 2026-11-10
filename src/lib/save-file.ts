@@ -1,3 +1,6 @@
+/** Excel（.xlsx）の種類 */
+export const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 /** ブラウザでバイト列をファイルとしてダウンロードさせる */
 export function saveFile(bytes: Uint8Array, name: string, type: string) {
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type }))

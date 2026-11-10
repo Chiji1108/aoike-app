@@ -244,3 +244,39 @@ test("FIT: パネルとパワコンから出力を求めて案件に入れると
   await expect(page.getByTestId("fit-checks").getByTestId("check-names")).toHaveAttribute("data-checked", "")
   await expect(page.getByTestId("fit-equipment").getByTestId("equip-watts").nth(0)).toHaveValue("265")
 })
+
+test("FIT: 完了通知した手続は、その月の請求の明細に出て、侍の請求書番号をまとめて入れられる。事件簿の年の一覧に出る", async ({ page }) => {
+  const stamp = Date.now()
+  const name = `見本 六郎${stamp}`
+  const today = shifted({})
+  await receive(page, { commonId: `CP${stamp}`, name, receivedOn: today })
+  await editProcedure(page, async (p) => {
+    await p.getByTestId("proc-kind").selectOption("post_change")
+    await p.getByTestId("proc-poa").fill(today)
+    await p.getByTestId("proc-applied").fill(today)
+    await p.getByTestId("proc-approved").fill(today)
+    await p.getByTestId("proc-completed").fill(today)
+  })
+  await expect(page.getByTestId("fit-status")).toHaveText("完了通知済")
+  const number = (await page.getByTestId("fit-procedure-number").textContent())!
+
+  await open(page, "/fit/billing")
+  const row = page.getByTestId("billing-row").filter({ hasText: number })
+  await expect(row).toContainText(name)
+  await expect(row).toContainText("5,500円")
+  await expect(row).toContainText("まだ")
+  await page.getByTestId("billing-invoice-number").fill(`INV-${stamp}`)
+  await page.getByTestId("billing-invoice-save").click()
+  await expect(row).toContainText(`INV-${stamp}`)
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("billing-export").click()])
+  expect(download.suggestedFilename()).toBe(`FIT請求明細_${today.slice(0, 7)}.xlsx`)
+  // 請求書を入れたので状況は請求済
+  await page.getByRole("link", { name: number }).click()
+  await expect(page.getByTestId("fit-status")).toHaveText("請求済")
+
+  await open(page, "/fit/book")
+  const bookRow = page.getByTestId("book-row").filter({ hasText: number })
+  await expect(bookRow).toContainText("再エネ事業計画（太陽光10kW未満）事後変更届")
+  await expect(bookRow).toContainText(name)
+  await expect(bookRow).toContainText("請求済")
+})

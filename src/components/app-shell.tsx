@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useRouter } from "@tanstack/react-router"
-import { Archive, CalendarDays, FileUp, House, KeyRound, Lightbulb, List, LogOut, Menu, ScrollText, Settings, Users, type LucideIcon } from "lucide-react"
+import { Archive, BookOpen, CalendarDays, FileUp, House, KeyRound, Lightbulb, List, LogOut, Menu, ReceiptText, ScrollText, Settings, Users, type LucideIcon } from "lucide-react"
 import { BrandMark } from "@/components/brand"
 import { ChangePasswordDialog } from "@/components/change-password-dialog"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { authClient } from "@/lib/auth-client"
 import { OFFICE_NAME } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
-type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback" | "/fit" | "/fit/procedures" | "/fit/weekly" | "/fit/settings" | "/fit/retention"
+type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback" | "/fit" | "/fit/procedures" | "/fit/weekly" | "/fit/settings" | "/fit/retention" | "/fit/billing" | "/fit/book"
 type NavItem = { to: ToolPath; label: string; icon: LucideIcon }
 /** 右上のメニューに足す項目（パスワード変更・ログアウトの上に出る） */
 type MenuItem = NavItem & { testId?: string }
@@ -45,6 +45,8 @@ export const FIT: Tool = {
     { to: "/fit", label: "トップ", icon: House },
     { to: "/fit/procedures", label: "手続", icon: List },
     { to: "/fit/weekly", label: "週次の案件表", icon: FileUp },
+    { to: "/fit/billing", label: "請求", icon: ReceiptText },
+    { to: "/fit/book", label: "事件簿", icon: BookOpen },
   ],
   menu: [
     { to: "/fit/settings", label: "設定", icon: Settings, testId: "menu-fit-settings" },

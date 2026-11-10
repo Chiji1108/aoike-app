@@ -110,3 +110,14 @@
     zoom: 1 !important;
   }
 }
+
+/* FIT の事件簿の印刷：A4 横・余白あり（勤務報告書の余白なしの @page とは別の名前のページ） */
+@page fit-book {
+  size: A4 landscape;
+  margin: 12mm;
+}
+@media print {
+  .print-fit-book {
+    page: fit-book;
+  }
+}
