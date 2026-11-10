@@ -87,6 +87,10 @@
 			"bucket_name": "aoike-fit-files"
 		}
 	],
+	/** 毎日 3:00（日本時間。cron は UTC）：FIT の書類のゴミ箱から30日たったものを消す（src/worker.ts の scheduled） */
+	"triggers": {
+		"crons": ["0 18 * * *"]
+	},
 	/** 工事経歴書 CSV の工事場所の一括調査（src/server/location-workflow.ts。src/worker.ts から出している） */
 	"workflows": [
 		{

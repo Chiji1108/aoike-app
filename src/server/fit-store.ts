@@ -3,7 +3,7 @@ import type { BatchItem, BatchResponse } from "drizzle-orm/batch"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
 import { fitCases, fitDefects, fitEquipment, fitFileDownloads, fitFiles, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitFile, type FitProcedure } from "@/db/fit-schema"
 import { outputKwOf, type Equipment } from "@/lib/fit/checks"
-import { lastPurgeableBookYear, r2KeyOf, type DocType } from "@/lib/fit/documents"
+import { TRASH_DAYS, lastPurgeableBookYear, r2KeyOf, type DocType } from "@/lib/fit/documents"
 import type * as schema from "@/db/fit-schema"
 import { acceptedOnOf, bookYearOf } from "@/lib/fit/procedure"
 import { feeFor, withDefaults, type FitSettings } from "@/lib/fit/settings"
@@ -276,7 +276,13 @@ export type Bucket = {
   delete(keys: string[]): Promise<void>
 }
 
-export type FileView = Omit<FitFile, "r2Key" | "createdAt" | "purgedAt"> & { createdAt: number; purgedAt: number | null; downloads: number; lastDownloadAt: number | null }
+export type FileView = Omit<FitFile, "r2Key" | "createdAt" | "purgedAt" | "deletedAt"> & {
+  createdAt: number
+  deletedAt: number | null
+  purgedAt: number | null
+  downloads: number
+  lastDownloadAt: number | null
+}
 
 /**
  * 手続に書類を置く（同じ種類なら版を1つ上げる）。R2 に置いてから記録し、記録できなければ R2 からも消す。
@@ -320,6 +326,7 @@ export async function listFiles(db: Db, procedureIds: string[]): Promise<FileVie
   return rows.map(({ f: { r2Key: _, ...f }, downloads, last }) => ({
     ...f,
     createdAt: f.createdAt.getTime(),
+    deletedAt: f.deletedAt?.getTime() ?? null,
     purgedAt: f.purgedAt?.getTime() ?? null,
     downloads,
     // max() は列の型を引き継がず、sqlite のミリ秒の数のまま返る
@@ -347,9 +354,10 @@ export async function purgeableFiles(db: Db, years: number, today: string) {
     .innerJoin(fitProcedures, eq(fitProcedures.id, fitFiles.procedureId))
     .innerJoin(fitCases, eq(fitCases.id, fitProcedures.caseId))
     // 帳簿を閉じた年末から years 年たった年の書類だけを読む
-    .where(and(isNull(fitFiles.purgedAt), finished, lte(fitProcedures.bookYear, lastPurgeableBookYear(years, today))))
+    // ゴミ箱の書類は30日で消えるので、ここには出さない
+    .where(and(isNull(fitFiles.purgedAt), isNull(fitFiles.deletedAt), finished, lte(fitProcedures.bookYear, lastPurgeableBookYear(years, today))))
     .orderBy(asc(fitProcedures.bookYear), asc(fitProcedures.seq), asc(fitFiles.docType), asc(fitFiles.version))
-  return rows.map(({ file: { r2Key: _, ...f }, ...r }) => ({ ...r, file: { ...f, createdAt: f.createdAt.getTime(), purgedAt: null } }))
+  return rows.map(({ file: { r2Key: _, deletedAt: __, ...f }, ...r }) => ({ ...r, file: { ...f, createdAt: f.createdAt.getTime(), purgedAt: null } }))
 }
 
 /** 保存期間が過ぎた書類を R2 から消し、記録に消した日時を入れる（期間が過ぎていないものは消さない） */
@@ -365,4 +373,62 @@ export async function purgeFiles(db: Db, bucket: Bucket, ids: string[], years: n
     await db.update(fitFiles).set({ purgedAt: new Date() }).where(inArray(fitFiles.id, chunk))
   }
   return targets.length
+}
+
+// ---- ゴミ箱 ----
+
+/** 手続にまだ使える（ゴミ箱でも消してもいない）認定通知書があるか */
+async function hasLiveNotice(db: Db, procedureId: string) {
+  const [row] = await db
+    .select({ id: fitFiles.id })
+    .from(fitFiles)
+    .where(and(eq(fitFiles.procedureId, procedureId), eq(fitFiles.docType, "approval_notice"), isNull(fitFiles.deletedAt), isNull(fitFiles.purgedAt)))
+    .limit(1)
+  return !!row
+}
+
+/**
+ * 書類をゴミ箱に入れる（30日のうちは戻せる）。認定通知書がほかに残らなければ「認定通知書を保存した」を外す
+ * （置き間違いを消したのに保存済みのままだと、完了通知に進めてしまう）
+ */
+export async function trashFile(db: Db, id: string, userId: string) {
+  const row = await getFileRow(db, id)
+  if (!row || row.purgedAt) throw new Error("書類が見つかりません")
+  if (row.deletedAt) return
+  await db.update(fitFiles).set({ deletedAt: new Date(), deletedBy: userId }).where(eq(fitFiles.id, id))
+  if (row.docType === "approval_notice" && !(await hasLiveNotice(db, row.procedureId))) {
+    await db.update(fitProcedures).set({ noticeSaved: false }).where(eq(fitProcedures.id, row.procedureId))
+  }
+}
+
+/** ゴミ箱から戻す（R2 から消える前だけ）。認定通知書なら「保存した」に戻す */
+export async function restoreFile(db: Db, id: string) {
+  const row = await getFileRow(db, id)
+  if (!row || row.purgedAt) throw new Error("ゴミ箱から消えたので戻せません")
+  if (!row.deletedAt) return
+  await db.update(fitFiles).set({ deletedAt: null, deletedBy: null }).where(eq(fitFiles.id, id))
+  if (row.docType === "approval_notice") await db.update(fitProcedures).set({ noticeSaved: true }).where(eq(fitProcedures.id, row.procedureId))
+}
+
+/** ゴミ箱に入れてから30日たった書類を R2 から消し、消した日時を入れる（毎日の定時の処理）。消した数を返す */
+export async function emptyTrash(db: Db, bucket: Bucket, now = Date.now()) {
+  const rows = await db
+    .select({ id: fitFiles.id, r2Key: fitFiles.r2Key })
+    .from(fitFiles)
+    .where(and(isNull(fitFiles.purgedAt), lt(fitFiles.deletedAt, new Date(now - TRASH_DAYS * 86_400_000))))
+  // D1 は1つの文に渡せる値が100個まで
+  for (let i = 0; i < rows.length; i += 90) {
+    const chunk = rows.slice(i, i + 90)
+    await bucket.delete(chunk.map((r) => r.r2Key))
+    await db
+      .update(fitFiles)
+      .set({ purgedAt: new Date(now) })
+      .where(
+        inArray(
+          fitFiles.id,
+          chunk.map((r) => r.id),
+        ),
+      )
+  }
+  return rows.length
 }

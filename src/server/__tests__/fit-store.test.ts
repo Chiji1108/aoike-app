@@ -3,6 +3,9 @@ import type { CaseInput } from "../fit-store"
 import {
   DuplicateCommonIdError,
   addFile,
+  emptyTrash,
+  restoreFile,
+  trashFile,
   getFileRow,
   listFiles,
   purgeFiles,
@@ -268,4 +271,52 @@ test("設備はまとめて入れ替える（並びを保つ）", async () => {
   expect(await getEquipment(db, caseId)).toEqual([])
   await expect(saveEquipment(db, caseId, [], true)).rejects.toThrow("出力を求められます")
   await expect(saveEquipment(db, "nope", items)).rejects.toThrow("案件が見つかりません")
+})
+
+describe("書類のゴミ箱", () => {
+  test("ゴミ箱に入れると一覧で印が付き、戻せる。30日たったら R2 から消え、戻せない", async () => {
+    const { db } = migratedFitDb()
+    const bucket = memoryBucket()
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    const f = await addFile(db, bucket, procedureId, doc())
+    await trashFile(db, f!.id, "u1")
+    const [trashed] = await listFiles(db, [procedureId])
+    expect(trashed!.deletedAt).toBeGreaterThan(0)
+    expect((await getFileRow(db, f!.id))!.deletedBy).toBe("u1")
+    await restoreFile(db, f!.id)
+    expect((await listFiles(db, [procedureId]))[0]!.deletedAt).toBeNull()
+
+    await trashFile(db, f!.id, "u1")
+    const deletedAt = (await getFileRow(db, f!.id))!.deletedAt!.getTime()
+    expect(await emptyTrash(db, bucket, deletedAt + 29 * 86_400_000)).toBe(0)
+    expect(bucket.objects.size).toBe(1)
+    expect(await emptyTrash(db, bucket, deletedAt + 31 * 86_400_000)).toBe(1)
+    expect(bucket.objects.size).toBe(0)
+    expect((await getFileRow(db, f!.id))!.purgedAt).toBeInstanceOf(Date)
+    await expect(restoreFile(db, f!.id)).rejects.toThrow("戻せません")
+  })
+
+  test("認定通知書をゴミ箱に入れると、ほかに残っていなければ「保存した」を外し、戻すと付け直す", async () => {
+    const { db } = migratedFitDb()
+    const bucket = memoryBucket()
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    const n1 = await addFile(db, bucket, procedureId, doc({ docType: "approval_notice", name: "a.pdf" }))
+    const n2 = await addFile(db, bucket, procedureId, doc({ docType: "approval_notice", name: "b.pdf" }))
+    await trashFile(db, n2!.id, "u1")
+    expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(true)
+    await trashFile(db, n1!.id, "u1")
+    expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(false)
+    await restoreFile(db, n1!.id)
+    expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(true)
+  })
+
+  test("ゴミ箱の書類は保存期間の一覧に出さない", async () => {
+    const { db } = migratedFitDb()
+    const bucket = memoryBucket()
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    await updateProcedure(db, procedureId, { closeReason: "cancelled" })
+    const f = await addFile(db, bucket, procedureId, doc())
+    await trashFile(db, f!.id, "u1")
+    expect(await purgeableFiles(db, 2, "2029-01-01")).toEqual([])
+  })
 })

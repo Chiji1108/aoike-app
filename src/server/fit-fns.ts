@@ -209,6 +209,18 @@ export const getWeeklyReportFn = createServerFn({ method: "GET" })
     return { meta: report.meta, rows: compareWeekly(current, report.previous) }
   })
 
+// ---- 書類のゴミ箱 ----
+
+export const trashFileFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id }))
+  .handler(({ data, context }) => store.trashFile(getFitDb(), data.id, context.session.user.id))
+
+export const restoreFileFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id }))
+  .handler(({ data }) => store.restoreFile(getFitDb(), data.id))
+
 // ---- 書類の保存期間 ----
 
 /** 保存期間が過ぎて消してよい書類（消す前に確かめる一覧） */

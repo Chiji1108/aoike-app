@@ -219,6 +219,17 @@ test("FIT: 書類を置くと書類チェックが「届いた」になり、置
   await expect(page.getByTestId("fit-procedure")).toContainText("保存済み")
   await page.getByTestId("fit-procedure-edit").click()
   await expect(page.getByTestId("proc-notice-saved")).toHaveAttribute("data-checked", "")
+  await page.keyboard.press("Escape")
+
+  // 置き間違えた認定通知書をゴミ箱に入れると、保存した印が外れる。戻すと付く
+  const notice = docs.getByTestId("doc-file").filter({ hasText: "認定通知書.pdf" })
+  await notice.getByTestId("doc-trash").click()
+  await expect(docs.getByTestId("doc-trashed-file")).toContainText("認定通知書.pdf")
+  await expect(docs.getByTestId("doc-file").filter({ hasText: "認定通知書.pdf" })).toHaveCount(0)
+  await expect(page.getByTestId("fit-procedure")).toContainText("未保存")
+  await docs.getByTestId("doc-restore").click()
+  await expect(docs.getByTestId("doc-file").filter({ hasText: "認定通知書.pdf" })).toHaveCount(1)
+  await expect(page.getByTestId("fit-procedure")).toContainText("保存済み")
 })
 
 test("FIT: パネルとパワコンから出力を求めて案件に入れると、整合性チェックの出力が合う。見比べの印は保存される", async ({ page }) => {

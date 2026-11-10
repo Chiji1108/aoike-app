@@ -46,7 +46,8 @@ export const downloadFitFile = (request: Request, fileId: string) =>
   signedIn(request, async (session) => {
     const db = getFitDb()
     const row = await store.getFileRow(db, fileId)
-    if (row?.purgedAt) return text("保存期間が過ぎたので消した書類です", 410)
+    if (row?.purgedAt) return text("消した書類です", 410)
+    if (row?.deletedAt) return text("ゴミ箱の書類です。戻してからダウンロードしてください", 410)
     const object = row && (await env.FIT_FILES.get(row.r2Key))
     if (!row || !object) return text("書類が見つかりません", 404)
     await store.recordDownload(db, row.id, session.user.id)
