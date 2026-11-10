@@ -164,8 +164,8 @@ export const fitWeeklyReports = sqliteTable("fit_weekly_reports", {
 })
 
 /**
- * 手続の書類（本体は R2 の FIT_FILES）。同じ種類を置き直すと版を1つ上げて足す（上書き・削除はしない）。
- * 保存期間が過ぎて消したものは、R2 から消して purgedAt を入れ、記録は残す
+ * 手続の書類（本体は R2 の FIT_FILES）。同じ種類を置き直すと版を1つ上げて足す（上書きはしない）。
+ * 消すとゴミ箱に入れ（deletedAt）、30日のうちは戻せる。30日たったもの・保存期間が過ぎて消したものは、R2 から消して purgedAt を入れ、記録は残す
  */
 export const fitFiles = sqliteTable(
   "fit_files",
@@ -182,6 +182,9 @@ export const fitFiles = sqliteTable(
     r2Key: text("r2_key").notNull(),
     /** 置いた人（認証用 D1 のユーザー id。別の D1 なので外部キーにしない） */
     uploadedBy: text("uploaded_by").notNull(),
+    /** ゴミ箱に入れた日時と人 */
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    deletedBy: text("deleted_by"),
     purgedAt: integer("purged_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
   },

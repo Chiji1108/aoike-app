@@ -156,7 +156,7 @@ function ProcedureCard({
       </dl>
       {p.note && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{p.note}</p>}
       <Documents procedureId={p.id} kind={p.kind} sharedOwnership={fitCase.sharedOwnership} files={files} onChanged={onChanged} />
-      {APPROVAL_KINDS.has(p.kind) && <Checks key={JSON.stringify(p.checks)} procedure={p} source={{ ...p, case: fitCase, equipment, docTypes: new Set(files.map((f) => f.docType)) }} onChanged={onChanged} />}
+      {APPROVAL_KINDS.has(p.kind) && <Checks key={JSON.stringify(p.checks)} procedure={p} source={{ ...p, case: fitCase, equipment, docTypes: new Set(files.filter((f) => !f.deletedAt && !f.purgedAt).map((f) => f.docType)) }} onChanged={onChanged} />}
       <Defects procedureId={p.id} defects={defects} applied={!!p.appliedOn} onChanged={onChanged} />
       {open && <ProcedureDialog procedure={p} feeTables={feeTables} open={open} onOpenChange={setOpen} onSaved={onChanged} />}
     </article>

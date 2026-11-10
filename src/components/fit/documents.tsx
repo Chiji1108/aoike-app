@@ -1,14 +1,15 @@
 import { useRef, useState } from "react"
-import { CheckCircle2, Circle, Download, Loader2, Upload } from "lucide-react"
+import { CheckCircle2, Circle, Download, Loader2, RotateCcw, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
 import { errorMessage } from "@/lib/errors"
-import { DOC_TYPES, DOC_TYPE_LABELS, MAX_DOC_BYTES, fileUrl, requiredDocs, type DocType } from "@/lib/fit/documents"
+import { DOC_TYPES, DOC_TYPE_LABELS, MAX_DOC_BYTES, TRASH_DAYS, fileUrl, requiredDocs, trashExpiresAt, type DocType } from "@/lib/fit/documents"
 import { formatDate } from "@/lib/fit/procedure"
 import type { ProcedureKind } from "@/lib/fit/types"
 import { todayIso } from "@/lib/period"
 import { cn } from "@/lib/utils"
+import { restoreFileFn, trashFileFn } from "@/server/fit-fns"
 import type { FileView } from "@/server/fit-store"
 
 /** 手続に書類を置く（/api/fit/procedures/<id>/files。種類と名前はヘッダーで送る） */
@@ -36,8 +37,31 @@ export function Documents({ procedureId, kind, sharedOwnership, files, onChanged
   // 押したダウンロードを、読み直さずに回数と最後の日へ足す（記録はサーバーがダウンロードのときに残す）
   const [clicked, setClicked] = useState<Record<string, { n: number; at: number }>>({})
   const required = requiredDocs(kind, sharedOwnership)
-  const has = new Set(files.map((f) => f.docType))
-  const byType = DOC_TYPES.map((t) => [t, files.filter((f) => f.docType === t)] as const).filter(([, fs]) => fs.length > 0)
+  // ゴミ箱に入れたものは「届いた」にも一覧にも数えない（ゴミ箱の欄に出す）
+  const live = files.filter((f) => !f.deletedAt && !f.purgedAt)
+  const trashed = files.filter((f) => f.deletedAt && !f.purgedAt)
+  const has = new Set(live.map((f) => f.docType))
+  const byType = DOC_TYPES.map((t) => [t, files.filter((f) => f.docType === t && !f.deletedAt)] as const).filter(([, fs]) => fs.length > 0)
+
+  async function trash(f: FileView) {
+    try {
+      await trashFileFn({ data: { id: f.id } })
+      toast.success(`${f.name} をゴミ箱に入れました（${TRASH_DAYS}日のうちは戻せます）`, { action: { label: "戻す", onClick: () => void restore(f) } })
+      onChanged()
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
+
+  async function restore(f: FileView) {
+    try {
+      await restoreFileFn({ data: { id: f.id } })
+      toast.success(`${f.name} を戻しました`)
+      onChanged()
+    } catch (e) {
+      toast.error(errorMessage(e))
+    }
+  }
 
   function pick(t: DocType) {
     setDocType(t)
@@ -118,14 +142,38 @@ export function Documents({ procedureId, kind, sharedOwnership, files, onChanged
                 {f.purgedAt ? (
                   <span className="text-xs">保存期間が過ぎて消した</span>
                 ) : (
-                  <Button render={<a href={fileUrl(f.id)} download />} nativeButton={false} variant="ghost" size="icon-sm" aria-label={`${f.name} をダウンロード`} onClick={() => setClicked((c) => ({ ...c, [f.id]: { n: (c[f.id]?.n ?? 0) + 1, at: Date.now() } }))}>
-                    <Download />
-                  </Button>
+                  <>
+                    <Button render={<a href={fileUrl(f.id)} download />} nativeButton={false} variant="ghost" size="icon-sm" aria-label={`${f.name} をダウンロード`} onClick={() => setClicked((c) => ({ ...c, [f.id]: { n: (c[f.id]?.n ?? 0) + 1, at: Date.now() } }))}>
+                      <Download />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" aria-label={`${f.name} をゴミ箱に入れる`} onClick={() => void trash(f)} data-testid="doc-trash">
+                      <Trash2 />
+                    </Button>
+                  </>
                 )}
               </li>
             )),
           )}
         </ul>
+      )}
+
+      {trashed.length > 0 && (
+        <div className="grid gap-1 rounded-lg border border-dashed p-2" data-testid="doc-trashed">
+          <p className="text-xs font-medium text-muted-foreground">ゴミ箱（{TRASH_DAYS}日たつと消えます）</p>
+          <ul className="grid gap-1 text-sm">
+            {trashed.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-center gap-x-3 text-muted-foreground" data-testid="doc-trashed-file">
+                <span className="w-36 text-xs">{DOC_TYPE_LABELS[f.docType]}</span>
+                <span className="min-w-0 flex-1 truncate line-through">{f.name}</span>
+                <span className="text-xs num">{dateOf(trashExpiresAt(f.deletedAt!))} に消える</span>
+                <Button variant="outline" size="sm" onClick={() => void restore(f)} data-testid="doc-restore">
+                  <RotateCcw />
+                  戻す
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )

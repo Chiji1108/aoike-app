@@ -53,6 +53,13 @@ export const retentionUntil = (bookYear: number, years: number) => `${bookYear +
 /** 保存の期限を過ぎた事件簿の年のうち、いちばん新しい年（この年以前の、終わった手続の書類を消せる） */
 export const lastPurgeableBookYear = (years: number, today: string) => Number(today.slice(0, 4)) - years - 1
 
+/** ゴミ箱に入れた書類は、この日数のうちは戻せる。過ぎたら毎日の定時の処理で R2 から消す */
+export const TRASH_DAYS = 30
+const DAY_MS = 86_400_000
+
+/** ゴミ箱から消える日時（ミリ秒） */
+export const trashExpiresAt = (deletedAt: number) => deletedAt + TRASH_DAYS * DAY_MS
+
 export const fileUrl = (fileId: string) => `/api/fit/files/${fileId}`
 
 /** R2 の置き場所（手続ごと） */
