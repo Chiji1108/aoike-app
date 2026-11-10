@@ -127,6 +127,13 @@ test("FIT: 認定通知書を保存するまで完了通知日を入れられな
   await expect(page.getByText(`共通ID ${commonId} の案件はもうあります`)).toBeVisible()
 })
 
+async function saveSealWarnDays(page: Page, days: string) {
+  await open(page, "/fit/settings")
+  await page.getByTestId("setting-sealWarnDays").fill(days)
+  await page.getByTestId("settings-save").click()
+  await expect(page.getByText("設定を保存しました")).toBeVisible()
+}
+
 /** 日本時間の今日から days 日・months か月ずらした日（YYYY-MM-DD） */
 function shifted({ days = 0, months = 0 }: { days?: number; months?: number }) {
   const d = new Date(Date.now() + 9 * 60 * 60 * 1000)
@@ -156,17 +163,14 @@ test("FIT: トップに期限が近いもの（印鑑証明）と住所確定待
   await expect(page).toHaveURL(/\/fit\/procedures\?status=received/)
   await expect(page.getByTestId("fit-status-filter")).toHaveValue("received")
 
-  // 注意の日数を3日にすると出なくなる（戻しておく）
-  await open(page, "/fit/settings")
-  await page.getByTestId("setting-sealWarnDays").fill("3")
-  await page.getByTestId("settings-save").click()
-  await expect(page.getByText("設定を保存しました")).toBeVisible()
-  await open(page, "/fit")
-  await expect(page.getByTestId("fit-alerts").getByRole("link").filter({ hasText: number })).toHaveCount(0)
-  await open(page, "/fit/settings")
-  await page.getByTestId("setting-sealWarnDays").fill("14")
-  await page.getByTestId("settings-save").click()
-  await expect(page.getByText("設定を保存しました")).toBeVisible()
+  // 注意の日数を3日にすると出なくなる（途中で落ちても、ローカルの設定は元の14日に戻す）
+  try {
+    await saveSealWarnDays(page, "3")
+    await open(page, "/fit")
+    await expect(page.getByTestId("fit-alerts").getByRole("link").filter({ hasText: number })).toHaveCount(0)
+  } finally {
+    await saveSealWarnDays(page, "14")
+  }
 
   // 地番で申請した新規認定が認定されると、住所確定待ちに出る
   const lotName = `見本 三郎${stamp}`

@@ -23,7 +23,7 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FIT_NAME } from "@/lib/constants"
 import { alertsOf, sortAlerts, type Alert } from "@/lib/fit/alerts"
-import { PROCEDURE_STATUSES, PROCEDURE_STATUS_LABELS, acceptedOnOf, bookNumber, formatDate, statusOf, type ProcedureStatus } from "@/lib/fit/procedure"
+import { PROCEDURE_STATUSES, PROCEDURE_STATUS_LABELS, acceptedOnOf, bookNumber, countByStatus, formatDate, statusOf, type ProcedureStatus } from "@/lib/fit/procedure"
 import { PROCEDURE_KINDS, PROCEDURE_KIND_LABELS, type ProcedureKind } from "@/lib/fit/types"
 import { todayIso } from "@/lib/period"
 import { cn } from "@/lib/utils"
@@ -176,11 +176,7 @@ function ProceduresPage() {
   const [columnVisibility, setColumnVisibility] = useColumnVisibility()
 
   const builders = useMemo(() => [...new Set(rows.map((r) => r.case.builder).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ja")), [rows])
-  const counts = useMemo(() => {
-    const m = new Map<ProcedureStatus, number>()
-    for (const r of rows) m.set(r.status, (m.get(r.status) ?? 0) + 1)
-    return m
-  }, [rows])
+  const counts = useMemo(() => countByStatus(rows.map((r) => r.status)), [rows])
 
   const needle = query.trim().toLowerCase()
   const data = useMemo(

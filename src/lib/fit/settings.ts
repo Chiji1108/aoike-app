@@ -42,25 +42,25 @@ export const DEFAULT_SETTINGS: FitSettings = {
 }
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日付の形が違います")
-const days = z.number().int().min(1, "1日以上にしてください").max(365, "365日以内にしてください")
+const days = z.number().int("日数は整数で入れてください").min(1, "1日以上にしてください").max(365, "365日以内にしてください")
 
 export const settingsSchema = z.object({
   feeTables: z
     .array(
       z.object({
         acceptedUntil: isoDate,
-        fees: z.object(Object.fromEntries(PROCEDURE_KINDS.map((k) => [k, z.number().int().min(0).max(10_000_000).nullable()])) as Record<ProcedureKind, z.ZodNullable<z.ZodNumber>>),
+        fees: z.object(Object.fromEntries(PROCEDURE_KINDS.map((k) => [k, z.number().int("報酬は整数の円で入れてください").min(0, "報酬は0円以上にしてください").max(10_000_000, "報酬が大きすぎます").nullable()])) as Record<ProcedureKind, z.ZodNullable<z.ZodNumber>>),
       }),
     )
     .min(1, "報酬表を1つ以上入れてください")
     .max(20),
-  fiscalDeadlines: z.array(z.object({ fiscalYear: z.number().int().min(2020).max(2100), deadline: isoDate })).max(50),
+  fiscalDeadlines: z.array(z.object({ fiscalYear: z.number().int("年度は西暦の数字で入れてください").min(2020, "年度は西暦（2020年以降）で入れてください").max(2100, "年度が大きすぎます"), deadline: isoDate })).max(50),
   sealWarnDays: days,
   correctionWarnDays: days,
   deadlineWarnDays: days,
   stalledAcceptedDays: days,
   stalledAppliedDays: days,
-  retentionYears: z.number().int().min(1).max(20),
+  retentionYears: z.number().int("保存期間は整数の年で入れてください").min(1, "保存期間は1年以上にしてください").max(20, "保存期間は20年以内にしてください"),
 })
 
 /** 保存してある値に、無い項目の初期値を足す（あとで設定の項目を増やしても、前の行のまま読める）。報酬表・締切は日付の順にそろえる */

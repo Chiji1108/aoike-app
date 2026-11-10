@@ -81,3 +81,10 @@ export const formatYen = (n: number | null | undefined) => (n == null ? "" : yen
 export function statusOf(p: Omit<StatusInput, "openCorrection">, openDefects: readonly { kind: string }[]): ProcedureStatus {
   return procedureStatus({ ...p, openCorrection: openDefects.some((d) => d.kind === "after") })
 }
+
+/** 状況ごとの件数 */
+export function countByStatus(statuses: Iterable<ProcedureStatus>): Map<ProcedureStatus, number> {
+  const m = new Map<ProcedureStatus, number>()
+  for (const s of statuses) m.set(s, (m.get(s) ?? 0) + 1)
+  return m
+}

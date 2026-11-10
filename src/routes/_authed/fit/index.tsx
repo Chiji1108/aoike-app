@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/fit/status-badge"
 import { Button } from "@/components/ui/button"
 import { FIT_NAME } from "@/lib/constants"
 import { ALERT_KIND_LABELS, addressPending, alertsOf, sortAlerts } from "@/lib/fit/alerts"
-import { PROCEDURE_STATUSES, bookNumber, statusOf, type ProcedureStatus } from "@/lib/fit/procedure"
+import { PROCEDURE_STATUSES, bookNumber, countByStatus, statusOf } from "@/lib/fit/procedure"
 import { todayIso } from "@/lib/period"
 import { listProceduresFn } from "@/server/fit-fns"
 
@@ -23,14 +23,7 @@ function FitTopPage() {
   const today = todayIso()
   const alerts = useMemo(() => sortAlerts(rows.flatMap((r) => alertsOf(r, settings, today))), [rows, settings, today])
   const pending = useMemo(() => addressPending(rows), [rows])
-  const counts = useMemo(() => {
-    const m = new Map<ProcedureStatus, number>()
-    for (const r of rows) {
-      const s = statusOf(r, r.openDefects)
-      m.set(s, (m.get(s) ?? 0) + 1)
-    }
-    return m
-  }, [rows])
+  const counts = useMemo(() => countByStatus(rows.map((r) => statusOf(r, r.openDefects))), [rows])
 
   return (
     <AppShell tool={FIT}>
