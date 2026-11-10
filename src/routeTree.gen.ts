@@ -20,6 +20,7 @@ import { Route as AuthedCsvRulesRouteImport } from './routes/_authed/csv/rules'
 import { Route as AuthedFitIndexRouteImport } from './routes/_authed/fit/index'
 import { Route as AuthedFitNewRouteImport } from './routes/_authed/fit/new'
 import { Route as AuthedFitProceduresRouteImport } from './routes/_authed/fit/procedures'
+import { Route as AuthedFitRetentionRouteImport } from './routes/_authed/fit/retention'
 import { Route as AuthedFitSettingsRouteImport } from './routes/_authed/fit/settings'
 import { Route as AuthedFitWeeklyRouteImport } from './routes/_authed/fit/weekly'
 import { Route as AuthedKintaiIndexRouteImport } from './routes/_authed/kintai/index'
@@ -30,8 +31,10 @@ import { Route as AuthedCsvCasesCaseIdRouteImport } from './routes/_authed/csv/c
 import { Route as AuthedCsvCustomersCustomerIdRouteImport } from './routes/_authed/csv/customers/$customerId'
 import { Route as AuthedFitCasesCaseIdRouteImport } from './routes/_authed/fit/cases/$caseId'
 import { Route as ApiCsvFilesFileIdRouteImport } from './routes/api/csv/files/$fileId'
+import { Route as ApiFitFilesFileIdRouteImport } from './routes/api/fit/files/$fileId'
 import { Route as ApiCsvCasesCaseIdChatRouteImport } from './routes/api/csv/cases/$caseId/chat'
 import { Route as ApiCsvCasesCaseIdFilesRouteImport } from './routes/api/csv/cases/$caseId/files'
+import { Route as ApiFitProceduresProcedureIdFilesRouteImport } from './routes/api/fit/procedures/$procedureId/files'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -87,6 +90,11 @@ const AuthedFitProceduresRoute = AuthedFitProceduresRouteImport.update({
   path: '/procedures',
   getParentRoute: () => AuthedFitRoute,
 } as any)
+const AuthedFitRetentionRoute = AuthedFitRetentionRouteImport.update({
+  id: '/retention',
+  path: '/retention',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
 const AuthedFitSettingsRoute = AuthedFitSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -138,6 +146,11 @@ const ApiCsvFilesFileIdRoute = ApiCsvFilesFileIdRouteImport.update({
   path: '/api/csv/files/$fileId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFitFilesFileIdRoute = ApiFitFilesFileIdRouteImport.update({
+  id: '/api/fit/files/$fileId',
+  path: '/api/fit/files/$fileId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCsvCasesCaseIdChatRoute = ApiCsvCasesCaseIdChatRouteImport.update({
   id: '/api/csv/cases/$caseId/chat',
   path: '/api/csv/cases/$caseId/chat',
@@ -148,6 +161,12 @@ const ApiCsvCasesCaseIdFilesRoute = ApiCsvCasesCaseIdFilesRouteImport.update({
   path: '/api/csv/cases/$caseId/files',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiFitProceduresProcedureIdFilesRoute =
+  ApiFitProceduresProcedureIdFilesRouteImport.update({
+    id: '/api/fit/procedures/$procedureId/files',
+    path: '/api/fit/procedures/$procedureId/files',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -158,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/csv/rules': typeof AuthedCsvRulesRoute
   '/fit/new': typeof AuthedFitNewRoute
   '/fit/procedures': typeof AuthedFitProceduresRoute
+  '/fit/retention': typeof AuthedFitRetentionRoute
   '/fit/settings': typeof AuthedFitSettingsRoute
   '/fit/weekly': typeof AuthedFitWeeklyRoute
   '/kintai/employees': typeof AuthedKintaiEmployeesRoute
@@ -170,8 +190,10 @@ export interface FileRoutesByFullPath {
   '/csv/customers/$customerId': typeof AuthedCsvCustomersCustomerIdRoute
   '/fit/cases/$caseId': typeof AuthedFitCasesCaseIdRoute
   '/api/csv/files/$fileId': typeof ApiCsvFilesFileIdRoute
+  '/api/fit/files/$fileId': typeof ApiFitFilesFileIdRoute
   '/api/csv/cases/$caseId/chat': typeof ApiCsvCasesCaseIdChatRoute
   '/api/csv/cases/$caseId/files': typeof ApiCsvCasesCaseIdFilesRoute
+  '/api/fit/procedures/$procedureId/files': typeof ApiFitProceduresProcedureIdFilesRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -180,6 +202,7 @@ export interface FileRoutesByTo {
   '/csv/rules': typeof AuthedCsvRulesRoute
   '/fit/new': typeof AuthedFitNewRoute
   '/fit/procedures': typeof AuthedFitProceduresRoute
+  '/fit/retention': typeof AuthedFitRetentionRoute
   '/fit/settings': typeof AuthedFitSettingsRoute
   '/fit/weekly': typeof AuthedFitWeeklyRoute
   '/kintai/employees': typeof AuthedKintaiEmployeesRoute
@@ -192,8 +215,10 @@ export interface FileRoutesByTo {
   '/csv/customers/$customerId': typeof AuthedCsvCustomersCustomerIdRoute
   '/fit/cases/$caseId': typeof AuthedFitCasesCaseIdRoute
   '/api/csv/files/$fileId': typeof ApiCsvFilesFileIdRoute
+  '/api/fit/files/$fileId': typeof ApiFitFilesFileIdRoute
   '/api/csv/cases/$caseId/chat': typeof ApiCsvCasesCaseIdChatRoute
   '/api/csv/cases/$caseId/files': typeof ApiCsvCasesCaseIdFilesRoute
+  '/api/fit/procedures/$procedureId/files': typeof ApiFitProceduresProcedureIdFilesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -206,6 +231,7 @@ export interface FileRoutesById {
   '/_authed/csv/rules': typeof AuthedCsvRulesRoute
   '/_authed/fit/new': typeof AuthedFitNewRoute
   '/_authed/fit/procedures': typeof AuthedFitProceduresRoute
+  '/_authed/fit/retention': typeof AuthedFitRetentionRoute
   '/_authed/fit/settings': typeof AuthedFitSettingsRoute
   '/_authed/fit/weekly': typeof AuthedFitWeeklyRoute
   '/_authed/kintai/employees': typeof AuthedKintaiEmployeesRoute
@@ -218,8 +244,10 @@ export interface FileRoutesById {
   '/_authed/csv/customers/$customerId': typeof AuthedCsvCustomersCustomerIdRoute
   '/_authed/fit/cases/$caseId': typeof AuthedFitCasesCaseIdRoute
   '/api/csv/files/$fileId': typeof ApiCsvFilesFileIdRoute
+  '/api/fit/files/$fileId': typeof ApiFitFilesFileIdRoute
   '/api/csv/cases/$caseId/chat': typeof ApiCsvCasesCaseIdChatRoute
   '/api/csv/cases/$caseId/files': typeof ApiCsvCasesCaseIdFilesRoute
+  '/api/fit/procedures/$procedureId/files': typeof ApiFitProceduresProcedureIdFilesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -232,6 +260,7 @@ export interface FileRouteTypes {
     | '/csv/rules'
     | '/fit/new'
     | '/fit/procedures'
+    | '/fit/retention'
     | '/fit/settings'
     | '/fit/weekly'
     | '/kintai/employees'
@@ -244,8 +273,10 @@ export interface FileRouteTypes {
     | '/csv/customers/$customerId'
     | '/fit/cases/$caseId'
     | '/api/csv/files/$fileId'
+    | '/api/fit/files/$fileId'
     | '/api/csv/cases/$caseId/chat'
     | '/api/csv/cases/$caseId/files'
+    | '/api/fit/procedures/$procedureId/files'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -254,6 +285,7 @@ export interface FileRouteTypes {
     | '/csv/rules'
     | '/fit/new'
     | '/fit/procedures'
+    | '/fit/retention'
     | '/fit/settings'
     | '/fit/weekly'
     | '/kintai/employees'
@@ -266,8 +298,10 @@ export interface FileRouteTypes {
     | '/csv/customers/$customerId'
     | '/fit/cases/$caseId'
     | '/api/csv/files/$fileId'
+    | '/api/fit/files/$fileId'
     | '/api/csv/cases/$caseId/chat'
     | '/api/csv/cases/$caseId/files'
+    | '/api/fit/procedures/$procedureId/files'
   id:
     | '__root__'
     | '/_authed'
@@ -279,6 +313,7 @@ export interface FileRouteTypes {
     | '/_authed/csv/rules'
     | '/_authed/fit/new'
     | '/_authed/fit/procedures'
+    | '/_authed/fit/retention'
     | '/_authed/fit/settings'
     | '/_authed/fit/weekly'
     | '/_authed/kintai/employees'
@@ -291,8 +326,10 @@ export interface FileRouteTypes {
     | '/_authed/csv/customers/$customerId'
     | '/_authed/fit/cases/$caseId'
     | '/api/csv/files/$fileId'
+    | '/api/fit/files/$fileId'
     | '/api/csv/cases/$caseId/chat'
     | '/api/csv/cases/$caseId/files'
+    | '/api/fit/procedures/$procedureId/files'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -300,8 +337,10 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCsvFilesFileIdRoute: typeof ApiCsvFilesFileIdRoute
+  ApiFitFilesFileIdRoute: typeof ApiFitFilesFileIdRoute
   ApiCsvCasesCaseIdChatRoute: typeof ApiCsvCasesCaseIdChatRoute
   ApiCsvCasesCaseIdFilesRoute: typeof ApiCsvCasesCaseIdFilesRoute
+  ApiFitProceduresProcedureIdFilesRoute: typeof ApiFitProceduresProcedureIdFilesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -383,6 +422,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedFitProceduresRouteImport
       parentRoute: typeof AuthedFitRoute
     }
+    '/_authed/fit/retention': {
+      id: '/_authed/fit/retention'
+      path: '/retention'
+      fullPath: '/fit/retention'
+      preLoaderRoute: typeof AuthedFitRetentionRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
     '/_authed/fit/settings': {
       id: '/_authed/fit/settings'
       path: '/settings'
@@ -453,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCsvFilesFileIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/fit/files/$fileId': {
+      id: '/api/fit/files/$fileId'
+      path: '/api/fit/files/$fileId'
+      fullPath: '/api/fit/files/$fileId'
+      preLoaderRoute: typeof ApiFitFilesFileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/csv/cases/$caseId/chat': {
       id: '/api/csv/cases/$caseId/chat'
       path: '/api/csv/cases/$caseId/chat'
@@ -465,6 +518,13 @@ declare module '@tanstack/react-router' {
       path: '/api/csv/cases/$caseId/files'
       fullPath: '/api/csv/cases/$caseId/files'
       preLoaderRoute: typeof ApiCsvCasesCaseIdFilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/fit/procedures/$procedureId/files': {
+      id: '/api/fit/procedures/$procedureId/files'
+      path: '/api/fit/procedures/$procedureId/files'
+      fullPath: '/api/fit/procedures/$procedureId/files'
+      preLoaderRoute: typeof ApiFitProceduresProcedureIdFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -493,6 +553,7 @@ const AuthedCsvRouteWithChildren = AuthedCsvRoute._addFileChildren(
 interface AuthedFitRouteChildren {
   AuthedFitNewRoute: typeof AuthedFitNewRoute
   AuthedFitProceduresRoute: typeof AuthedFitProceduresRoute
+  AuthedFitRetentionRoute: typeof AuthedFitRetentionRoute
   AuthedFitSettingsRoute: typeof AuthedFitSettingsRoute
   AuthedFitWeeklyRoute: typeof AuthedFitWeeklyRoute
   AuthedFitIndexRoute: typeof AuthedFitIndexRoute
@@ -502,6 +563,7 @@ interface AuthedFitRouteChildren {
 const AuthedFitRouteChildren: AuthedFitRouteChildren = {
   AuthedFitNewRoute: AuthedFitNewRoute,
   AuthedFitProceduresRoute: AuthedFitProceduresRoute,
+  AuthedFitRetentionRoute: AuthedFitRetentionRoute,
   AuthedFitSettingsRoute: AuthedFitSettingsRoute,
   AuthedFitWeeklyRoute: AuthedFitWeeklyRoute,
   AuthedFitIndexRoute: AuthedFitIndexRoute,
@@ -538,8 +600,10 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCsvFilesFileIdRoute: ApiCsvFilesFileIdRoute,
+  ApiFitFilesFileIdRoute: ApiFitFilesFileIdRoute,
   ApiCsvCasesCaseIdChatRoute: ApiCsvCasesCaseIdChatRoute,
   ApiCsvCasesCaseIdFilesRoute: ApiCsvCasesCaseIdFilesRoute,
+  ApiFitProceduresProcedureIdFilesRoute: ApiFitProceduresProcedureIdFilesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

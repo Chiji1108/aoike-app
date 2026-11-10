@@ -56,7 +56,8 @@ bun test                         # 単体テスト
 | `KINTAI_DB` | D1 `aoike-attendance` | 勤怠（従業員・勤怠） | `drizzle/kintai/` |
 | `CSV_DB` | D1 `aoike-kensetsu-csv` | 工事経歴書 CSV（顧客・案件・ルール・要望など） | `drizzle/csv/` |
 | `CSV_FILES` | R2 `aoike-kensetsu-csv-files` | 工事経歴書 CSV の案件のファイル・会話（公開アクセスなし） | — |
-| `FIT_DB` | D1 `aoike-fit` | FIT 申請（案件・手続・不備・週次の案件表の記録） | `drizzle/fit/` |
+| `FIT_DB` | D1 `aoike-fit` | FIT 申請（案件・手続・不備・書類の記録・週次の案件表の記録・設定） | `drizzle/fit/` |
+| `FIT_FILES` | R2 `aoike-fit-files` | FIT 申請の手続の書類（公開アクセスなし） | — |
 | `LOCATION_SEARCH` | Workflow `aoike-app-location-search` | 工事経歴書 CSV の工事場所の一括調査（`src/worker.ts` から出す） | — |
 
 ## 本番環境（Cloudflare）へのデプロイ
@@ -68,6 +69,7 @@ bunx wrangler d1 create aoike-attendance
 bunx wrangler d1 create aoike-kensetsu-csv
 bunx wrangler d1 create aoike-fit
 bunx wrangler r2 bucket create aoike-kensetsu-csv-files
+bunx wrangler r2 bucket create aoike-fit-files
 
 # 2. テーブル作成
 bun run db:migrate:remote
@@ -163,6 +165,7 @@ src/
     _authed/fit.tsx, fit/  FIT 申請
     api/auth/$.ts          Better Auth ハンドラー
     api/csv/               工事経歴書 CSV のファイル・チャット
+    api/fit/               FIT 申請の書類
   components/
     app-shell.tsx          ヘッダー（ツールごとのメニュー）
     ui/                    shadcn/ui（`bunx shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）

@@ -191,3 +191,32 @@ test("FIT: トップに期限が近いもの（印鑑証明）と住所確定待
   await open(page, "/fit")
   await expect(page.getByTestId("fit-address-pending")).toContainText(lotName)
 })
+
+test("FIT: 書類を置くと書類チェックが「届いた」になり、置き直すと版が上がる。ダウンロードは記録され、認定通知書を置くと保存済みになる", async ({ page }) => {
+  const stamp = Date.now()
+  await receive(page, { commonId: `CP${stamp}`, name: `見本 四郎${stamp}` })
+  const docs = page.getByTestId("fit-documents")
+  const poa = docs.getByTestId("doc-check").filter({ hasText: "委任状" })
+  await expect(poa).toHaveAttribute("data-done", "0")
+
+  const put = async (docType: string, name: string) => {
+    await docs.getByTestId("doc-type").selectOption(docType)
+    await docs.getByTestId("doc-input").setInputFiles({ name, mimeType: "application/pdf", buffer: Buffer.from(`%PDF-1.4 ${name}`) })
+    await expect(page.getByText("置きました").last()).toBeVisible()
+  }
+  await put("poa", "委任状.pdf")
+  await expect(poa).toHaveAttribute("data-done", "1")
+  await put("poa", "委任状_押印あり.pdf")
+  await expect(docs.getByTestId("doc-file").filter({ hasText: "委任状_押印あり.pdf" })).toContainText("第2版")
+  await expect(docs.getByTestId("doc-file")).toHaveCount(2)
+
+  const latest = docs.getByTestId("doc-file").filter({ hasText: "委任状_押印あり.pdf" })
+  const [download] = await Promise.all([page.waitForEvent("download"), latest.getByRole("button", { name: /をダウンロード/ }).click()])
+  expect(download.suggestedFilename()).toBe("委任状_押印あり.pdf")
+  await expect(latest.getByTestId("doc-downloads")).toContainText("1回ダウンロード")
+
+  await put("approval_notice", "認定通知書.pdf")
+  await expect(page.getByTestId("fit-procedure")).toContainText("保存済み")
+  await page.getByTestId("fit-procedure-edit").click()
+  await expect(page.getByTestId("proc-notice-saved")).toHaveAttribute("data-checked", "")
+})

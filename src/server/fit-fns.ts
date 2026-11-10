@@ -1,9 +1,11 @@
 import { createServerFn } from "@tanstack/react-start"
 import { z } from "zod"
+import { env } from "cloudflare:workers"
 import { getFitDb } from "@/db"
 import { CLOSE_REASONS, DEFECT_KINDS, DEFECT_PARTIES, PROCEDURE_KINDS, SITE_ADDRESS_KINDS, SPECIAL_PAYERS } from "@/lib/fit/types"
 import { settingsSchema } from "@/lib/fit/settings"
 import { compareWeekly, weeklyValues } from "@/lib/fit/weekly"
+import { todayIso } from "@/lib/period"
 import { authMiddleware } from "./middleware"
 import * as store from "./fit-store"
 
@@ -176,4 +178,25 @@ export const getWeeklyReportFn = createServerFn({ method: "GET" })
     if (!report) return null
     const current = Object.entries(report.rows).map(([id, values]) => ({ id, values }))
     return { meta: report.meta, rows: compareWeekly(current, report.previous) }
+  })
+
+// ---- 書類の保存期間 ----
+
+/** 保存期間が過ぎて消してよい書類（消す前に確かめる一覧） */
+export const purgeableFilesFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async () => {
+    const db = getFitDb()
+    const { retentionYears } = await store.getSettings(db)
+    return { retentionYears, rows: await store.purgeableFiles(db, retentionYears, todayIso()) }
+  })
+
+/** 選んだ書類を消す（期間が過ぎていないものは消さない）。消した数を返す */
+export const purgeFilesFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ ids: z.array(id).min(1).max(5000) }))
+  .handler(async ({ data }) => {
+    const db = getFitDb()
+    const { retentionYears } = await store.getSettings(db)
+    return store.purgeFiles(db, env.FIT_FILES, data.ids, retentionYears, todayIso())
   })
