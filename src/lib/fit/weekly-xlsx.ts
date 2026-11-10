@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs"
 import { OFFICE_NAME } from "../constants"
+import { parseDate } from "../period"
 import { WEEKLY_COLUMNS, WEEKLY_DATE_COLUMNS, isUpdated, type WeeklyRow } from "./weekly"
 
 /**
@@ -11,12 +12,6 @@ const ADDED = "FFDDEBF7"
 const CHANGED = "FFFFF2CC"
 
 const fill = (argb: string): ExcelJS.Fill => ({ type: "pattern", pattern: "solid", fgColor: { argb } })
-
-/** YYYY-MM-DD → Excel の日付（日本時間の日付のまま。時刻は持たない） */
-const toDate = (iso: string) => {
-  const [y, m, d] = iso.split("-").map(Number)
-  return new Date(Date.UTC(y!, m! - 1, d!))
-}
 
 function addSheet(wb: ExcelJS.Workbook, name: string, rows: WeeklyRow[]) {
   const ws = wb.addWorksheet(name, { views: [{ state: "frozen", xSplit: 0, ySplit: 1 }] })
@@ -32,7 +27,7 @@ function addSheet(wb: ExcelJS.Workbook, name: string, rows: WeeklyRow[]) {
     c.border = { bottom: { style: "thin" } }
   })
   for (const r of rows) {
-    const row = ws.addRow(r.values.map((v, i) => (v !== null && WEEKLY_DATE_COLUMNS.has(i) ? toDate(v) : v)))
+    const row = ws.addRow(r.values.map((v, i) => (v !== null && WEEKLY_DATE_COLUMNS.has(i) ? parseDate(v) : v)))
     r.values.forEach((_, i) => {
       const cell = row.getCell(i + 1)
       if (WEEKLY_DATE_COLUMNS.has(i)) cell.numFmt = "yyyy/m/d"

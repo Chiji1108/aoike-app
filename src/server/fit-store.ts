@@ -1,9 +1,10 @@
 import { asc, desc, eq, isNull, lt, sql } from "drizzle-orm"
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
-import { fitCases, fitDefects, fitProcedures, fitWeeklyReports, type FitCase, type FitDefect, type FitProcedure } from "@/db/fit-schema"
+import { fitCases, fitDefects, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitProcedure } from "@/db/fit-schema"
 import type * as schema from "@/db/fit-schema"
-import { acceptedOnOf, bookYearOf, feeFor } from "@/lib/fit/procedure"
+import { acceptedOnOf, bookYearOf } from "@/lib/fit/procedure"
+import { feeFor, withDefaults, type FitSettings } from "@/lib/fit/settings"
 import { APPROVAL_KINDS, type ProcedureKind } from "@/lib/fit/types"
 import { groupBy } from "@/lib/group-by"
 import type { WeeklySource, WeeklyValues } from "@/lib/fit/weekly"
@@ -101,7 +102,7 @@ export async function updateProcedure(db: Db, id: string, patch: ProcedurePatch)
   // 認定通知書は1回しかダウンロードできないので、保存したと印を付けるまで完了通知に進めない
   if (next.completedOn && !next.noticeSaved && APPROVAL_KINDS.has(next.kind)) throw new Error("認定通知書を保存してから、完了通知日を入れてください")
   const accepted = acceptedOnOf(next)
-  const fee = next.fee == null && accepted ? feeFor(next.kind, accepted) : next.fee
+  const fee = next.fee == null && accepted ? feeFor(next.kind, accepted, (await getSettings(db)).feeTables) : next.fee
   await db
     .update(fitProcedures)
     .set({ ...patch, fee })
@@ -128,10 +129,24 @@ export async function deleteDefect(db: Db, id: string) {
   await db.delete(fitDefects).where(eq(fitDefects.id, id))
 }
 
+// ---- 設定 ----
+
+const SETTINGS_ID = "default"
+
+/** 設定（保存してない項目は初期値） */
+export async function getSettings(db: Db): Promise<FitSettings> {
+  const [row] = await db.select({ value: fitSettings.value }).from(fitSettings).where(eq(fitSettings.id, SETTINGS_ID))
+  return withDefaults(row?.value)
+}
+
+export async function saveSettings(db: Db, value: FitSettings) {
+  await db.insert(fitSettings).values({ id: SETTINGS_ID, value }).onConflictDoUpdate({ target: fitSettings.id, set: { value, updatedAt: new Date() } })
+}
+
 // ---- 一覧・案件の画面 ----
 
 export type ProcedureListRow = FitProcedure & {
-  case: Pick<FitCase, "id" | "commonId" | "name" | "kana" | "builder">
+  case: Pick<FitCase, "id" | "commonId" | "name" | "kana" | "builder" | "siteAddressKind">
   /** まだ済んでいない不備・補正 */
   openDefects: Pick<FitDefect, "kind" | "content" | "dueOn">[]
 }
@@ -140,7 +155,7 @@ export type ProcedureListRow = FitProcedure & {
 export async function listProcedures(db: Db): Promise<ProcedureListRow[]> {
   const [rows, defects] = await Promise.all([
     db
-      .select({ p: fitProcedures, c: { id: fitCases.id, commonId: fitCases.commonId, name: fitCases.name, kana: fitCases.kana, builder: fitCases.builder } })
+      .select({ p: fitProcedures, c: { id: fitCases.id, commonId: fitCases.commonId, name: fitCases.name, kana: fitCases.kana, builder: fitCases.builder, siteAddressKind: fitCases.siteAddressKind } })
       .from(fitProcedures)
       .innerJoin(fitCases, eq(fitCases.id, fitProcedures.caseId))
       .orderBy(asc(fitProcedures.bookYear), asc(fitProcedures.seq)),

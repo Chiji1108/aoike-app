@@ -1,4 +1,5 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import type { FitSettings } from "../lib/fit/settings"
 import { CLOSE_REASONS, DEFECT_KINDS, DEFECT_PARTIES, PROCEDURE_KINDS, SITE_ADDRESS_KINDS, SPECIAL_PAYERS } from "../lib/fit/types"
 import { createdAt, updatedAt } from "./auth-schema"
 
@@ -137,6 +138,13 @@ export const fitWeeklyReports = sqliteTable("fit_weekly_reports", {
   /** 手続 id → 案件表の列の値（JSON） */
   rows: text("rows", { mode: "json" }).$type<Record<string, (string | null)[]>>().notNull(),
   createdAt: createdAt(),
+})
+
+/** FIT の設定（1行だけ。id は "default"）。無い項目は src/lib/fit/settings.ts の初期値 */
+export const fitSettings = sqliteTable("fit_settings", {
+  id: text("id").primaryKey(),
+  value: text("value", { mode: "json" }).$type<Partial<FitSettings>>().notNull(),
+  updatedAt: updatedAt(),
 })
 
 export type FitCase = typeof fitCases.$inferSelect

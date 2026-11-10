@@ -60,7 +60,7 @@ test("FIT: 申込を受け付けると番号が付き、委任状で受任・報
   await expect(page.getByTestId("defect-row")).toContainText("委任状の押印漏れ")
 
   // 一覧：共通ID で探すと、この手続の行に不備が出る
-  await open(page, "/fit")
+  await open(page, "/fit/procedures")
   await page.getByTestId("fit-search").fill(commonId)
   const row = page.getByTestId("fit-row")
   await expect(row).toHaveCount(1)
@@ -80,7 +80,7 @@ test("FIT: 申込を受け付けると番号が付き、委任状で受任・報
   await expect(page.getByTestId("weekly-row").filter({ hasText: commonId })).toHaveCount(0)
 
   // 申請して不備を解決すると、申請日・申請ID・不備内容のセルが変わった印になる
-  await open(page, "/fit")
+  await open(page, "/fit/procedures")
   await page.getByTestId("fit-search").fill(commonId)
   await page.getByTestId("fit-number").click()
   await page.getByTestId("defect-resolve").click()
@@ -125,4 +125,65 @@ test("FIT: 認定通知書を保存するまで完了通知日を入れられな
   await page.getByTestId("fit-name").fill(`別の人${stamp}`)
   await page.getByTestId("fit-create").click()
   await expect(page.getByText(`共通ID ${commonId} の案件はもうあります`)).toBeVisible()
+})
+
+/** 日本時間の今日から days 日・months か月ずらした日（YYYY-MM-DD） */
+function shifted({ days = 0, months = 0 }: { days?: number; months?: number }) {
+  const d = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  d.setUTCMonth(d.getUTCMonth() + months)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+test("FIT: トップに期限が近いもの（印鑑証明）と住所確定待ちが出る。注意の日数は設定で変えられる", async ({ page }) => {
+  const stamp = Date.now()
+  const name = `見本 次郎${stamp}`
+  await receive(page, { commonId: `CP${stamp}`, name, receivedOn: shifted({}) })
+  // 印鑑証明は発行から3か月：期限まであと5日になるよう、3か月と5日前の発行にする
+  await editProcedure(page, async (p) => {
+    await p.getByTestId("proc-kind").selectOption("post_change")
+    await p.getByTestId("proc-seal").fill(shifted({ months: -3, days: 5 }))
+  })
+  const number = (await page.getByTestId("fit-procedure-number").textContent())!
+
+  await open(page, "/fit")
+  const alert = page.getByTestId("fit-alerts").getByRole("link").filter({ hasText: number })
+  await expect(alert.getByTestId("fit-alert")).toHaveAttribute("data-kind", "seal")
+  await expect(alert.getByTestId("fit-alert")).toHaveAttribute("data-level", "warn")
+  await expect(alert).toContainText("あと5日")
+  // 件数から一覧を開くと、その状況で絞り込まれる
+  await page.getByTestId("fit-count-received").click()
+  await expect(page).toHaveURL(/\/fit\/procedures\?status=received/)
+  await expect(page.getByTestId("fit-status-filter")).toHaveValue("received")
+
+  // 注意の日数を3日にすると出なくなる（戻しておく）
+  await open(page, "/fit/settings")
+  await page.getByTestId("setting-sealWarnDays").fill("3")
+  await page.getByTestId("settings-save").click()
+  await expect(page.getByText("設定を保存しました")).toBeVisible()
+  await open(page, "/fit")
+  await expect(page.getByTestId("fit-alerts").getByRole("link").filter({ hasText: number })).toHaveCount(0)
+  await open(page, "/fit/settings")
+  await page.getByTestId("setting-sealWarnDays").fill("14")
+  await page.getByTestId("settings-save").click()
+  await expect(page.getByText("設定を保存しました")).toBeVisible()
+
+  // 地番で申請した新規認定が認定されると、住所確定待ちに出る
+  const lotName = `見本 三郎${stamp}`
+  await open(page, "/fit")
+  await page.getByTestId("fit-new").click()
+  await page.getByTestId("fit-common-id").fill(`CP${stamp}9`)
+  await page.getByTestId("fit-name").fill(lotName)
+  await page.getByTestId("fit-site-kind").selectOption("lot")
+  await page.getByTestId("fit-create").click()
+  await expect(page.getByTestId("fit-case-name")).toHaveText(lotName)
+  await editProcedure(page, async (p) => {
+    await p.getByTestId("proc-poa").fill(shifted({}))
+    await p.getByTestId("proc-applied").fill(shifted({}))
+    await p.getByTestId("proc-approved").fill(shifted({}))
+    await p.getByTestId("proc-notice-saved").click()
+  })
+  await expect(page.getByTestId("fit-status")).toHaveText("認定済")
+  await open(page, "/fit")
+  await expect(page.getByTestId("fit-address-pending")).toContainText(lotName)
 })

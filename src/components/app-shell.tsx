@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useRouter } from "@tanstack/react-router"
-import { CalendarDays, FileUp, KeyRound, Lightbulb, LogOut, Menu, ScrollText, Sun, Users, type LucideIcon } from "lucide-react"
+import { CalendarDays, FileUp, House, KeyRound, Lightbulb, List, LogOut, Menu, ScrollText, Settings, Users, type LucideIcon } from "lucide-react"
 import { BrandMark } from "@/components/brand"
 import { ChangePasswordDialog } from "@/components/change-password-dialog"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { authClient } from "@/lib/auth-client"
 import { OFFICE_NAME } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
-type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback" | "/fit" | "/fit/weekly"
+type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback" | "/fit" | "/fit/procedures" | "/fit/weekly" | "/fit/settings"
 type NavItem = { to: ToolPath; label: string; icon: LucideIcon }
 /** 右上のメニューに足す項目（パスワード変更・ログアウトの上に出る） */
 type MenuItem = NavItem & { testId?: string }
@@ -42,9 +42,11 @@ export const CSV: Tool = {
 /** FIT 申請のページの切り替え。手続の表が広いので本文の幅を広くとる */
 export const FIT: Tool = {
   nav: [
-    { to: "/fit", label: "手続", icon: Sun },
+    { to: "/fit", label: "トップ", icon: House },
+    { to: "/fit/procedures", label: "手続", icon: List },
     { to: "/fit/weekly", label: "週次の案件表", icon: FileUp },
   ],
+  menu: [{ to: "/fit/settings", label: "設定", icon: Settings, testId: "menu-fit-settings" }],
   wide: true,
 }
 
@@ -86,6 +88,7 @@ export function AppShell({
               <Link
                 key={to}
                 to={to}
+                title={label}
                 activeOptions={{ exact: true, includeSearch: false }}
                 className={cn(
                   "flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
@@ -93,7 +96,8 @@ export function AppShell({
                 )}
               >
                 <Icon className="size-4" />
-                {label}
+                {/* 狭い画面ではアイコンだけ（ツールのページが多いと折り返すため） */}
+                <span className="sr-only whitespace-nowrap sm:not-sr-only">{label}</span>
               </Link>
             ))}
           </nav>

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { todayIso } from "../../period"
-import { acceptedOnOf, bookNumber, feeFor, looksLikeCommonId, procedureStatus, type StatusInput } from "../procedure"
+import { acceptedOnOf, bookNumber, looksLikeCommonId, procedureStatus, type StatusInput } from "../procedure"
+import { DEFAULT_SETTINGS, feeFor as feeIn, fiscalYearOf, withDefaults } from "../settings"
+
+const feeFor = (kind: Parameters<typeof feeIn>[0], acceptedOn: string) => feeIn(kind, acceptedOn, DEFAULT_SETTINGS.feeTables)
 import { compareWeekly, isUpdated, weeklyValues, type WeeklySource } from "../weekly"
 
 const base: StatusInput = {
@@ -42,6 +45,27 @@ describe("報酬表", () => {
   })
   test("報酬表の期間の外は額を決めない（手で入れる）", () => {
     expect(feeFor("new", "2027-04-01")).toBeNull()
+  })
+})
+
+describe("設定", () => {
+  test("年度は4月始まり", () => {
+    expect(fiscalYearOf("2027-01-05")).toBe(2026)
+    expect(fiscalYearOf("2027-04-01")).toBe(2027)
+    expect(fiscalYearOf("2026-03-31")).toBe(2025)
+  })
+  test("保存してない項目は初期値。報酬表は期間の順にそろえ、新しい表が足せる", () => {
+    const s = withDefaults({
+      sealWarnDays: 20,
+      feeTables: [
+        { acceptedUntil: "2028-03-31", fees: { ...DEFAULT_SETTINGS.feeTables[0]!.fees, new: 13_200 } },
+        DEFAULT_SETTINGS.feeTables[0]!,
+      ],
+    })
+    expect(s.sealWarnDays).toBe(20)
+    expect(s.stalledAppliedDays).toBe(DEFAULT_SETTINGS.stalledAppliedDays)
+    expect(feeIn("new", "2027-03-31", s.feeTables)).toBe(11_000)
+    expect(feeIn("new", "2027-04-01", s.feeTables)).toBe(13_200)
   })
 })
 

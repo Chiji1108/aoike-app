@@ -14,6 +14,7 @@ import type { FitCase, FitDefect, FitProcedure } from "@/db/fit-schema"
 import { FIT_NAME } from "@/lib/constants"
 import { errorMessage } from "@/lib/errors"
 import { acceptedOnOf, bookNumber, formatDate, formatYen, statusOf } from "@/lib/fit/procedure"
+import type { FeeTable } from "@/lib/fit/settings"
 import { todayIso } from "@/lib/period"
 import { CLOSE_REASON_LABELS, PROCEDURE_KIND_LABELS, SITE_ADDRESS_KIND_LABELS, type ProcedureKind } from "@/lib/fit/types"
 import { addProcedureFn, getCasePageFn, updateCaseFn } from "@/server/fit-fns"
@@ -29,7 +30,7 @@ export const Route = createFileRoute("/_authed/fit/cases/$caseId")({
 })
 
 function CasePage() {
-  const { fitCase, procedures, defects } = Route.useLoaderData()
+  const { fitCase, procedures, defects, feeTables } = Route.useLoaderData()
   const router = useRouter()
   const reload = () => void router.invalidate()
   const [editing, setEditing] = useState(false)
@@ -37,7 +38,7 @@ function CasePage() {
 
   return (
     <AppShell tool={FIT}>
-      <Link to="/fit" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link to="/fit/procedures" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />
         手続の一覧
       </Link>
@@ -68,7 +69,7 @@ function CasePage() {
             </Button>
           </div>
           {procedures.map((p) => (
-            <ProcedureCard key={p.id} procedure={p} defects={defects.filter((d) => d.procedureId === p.id)} onChanged={reload} />
+            <ProcedureCard key={p.id} procedure={p} defects={defects.filter((d) => d.procedureId === p.id)} feeTables={feeTables} onChanged={reload} />
           ))}
         </section>
         <CaseSummary fitCase={fitCase} />
@@ -80,7 +81,7 @@ function CasePage() {
   )
 }
 
-function ProcedureCard({ procedure: p, defects, onChanged }: { procedure: FitProcedure; defects: FitDefect[]; onChanged: () => void }) {
+function ProcedureCard({ procedure: p, defects, feeTables, onChanged }: { procedure: FitProcedure; defects: FitDefect[]; feeTables: readonly FeeTable[]; onChanged: () => void }) {
   const [open, setOpen] = useState(false)
   const status = statusOf(p, defects.filter((d) => !d.resolvedOn))
   const items: [string, string][] = [
@@ -121,7 +122,7 @@ function ProcedureCard({ procedure: p, defects, onChanged }: { procedure: FitPro
       </dl>
       {p.note && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{p.note}</p>}
       <Defects procedureId={p.id} defects={defects} applied={!!p.appliedOn} onChanged={onChanged} />
-      {open && <ProcedureDialog procedure={p} open={open} onOpenChange={setOpen} onSaved={onChanged} />}
+      {open && <ProcedureDialog procedure={p} feeTables={feeTables} open={open} onOpenChange={setOpen} onSaved={onChanged} />}
     </article>
   )
 }
