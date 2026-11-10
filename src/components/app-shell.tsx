@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useRouter } from "@tanstack/react-router"
-import { CalendarDays, KeyRound, Lightbulb, LogOut, Menu, ScrollText, Users, type LucideIcon } from "lucide-react"
+import { CalendarDays, FileUp, KeyRound, Lightbulb, LogOut, Menu, ScrollText, Sun, Users, type LucideIcon } from "lucide-react"
 import { BrandMark } from "@/components/brand"
 import { ChangePasswordDialog } from "@/components/change-password-dialog"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { authClient } from "@/lib/auth-client"
 import { OFFICE_NAME } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
-type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback"
+type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback" | "/fit" | "/fit/weekly"
 type NavItem = { to: ToolPath; label: string; icon: LucideIcon }
 /** 右上のメニューに足す項目（パスワード変更・ログアウトの上に出る） */
 type MenuItem = NavItem & { testId?: string }
@@ -36,6 +36,15 @@ export const CSV: Tool = {
     { to: "/csv/rules", label: "全体ルール", icon: ScrollText },
   ],
   menu: [{ to: "/csv/feedback", label: "要望", icon: Lightbulb, testId: "menu-feedback" }],
+  wide: true,
+}
+
+/** FIT 申請のページの切り替え。手続の表が広いので本文の幅を広くとる */
+export const FIT: Tool = {
+  nav: [
+    { to: "/fit", label: "手続", icon: Sun },
+    { to: "/fit/weekly", label: "週次の案件表", icon: FileUp },
+  ],
   wide: true,
 }
 

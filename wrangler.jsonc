@@ -67,6 +67,12 @@
 			"database_name": "aoike-kensetsu-csv",
 			"database_id": "4df05265-8f6d-4056-9443-0fa96a28ed5b",
 			"migrations_dir": "drizzle/csv"
+		},
+		{
+			"binding": "FIT_DB",
+			"database_name": "aoike-fit",
+			"database_id": "145568ed-9cf2-4e67-9ba5-efdada234804",
+			"migrations_dir": "drizzle/fit"
 		}
 	],
 	/** 工事経歴書 CSV の案件に付けたファイル（Excel・PDF・写真）と書き出したファイル */

@@ -10,6 +10,7 @@
 | --- | --- | --- | --- |
 | 勤怠 | `/kintai` | [docs/kintai.md](docs/kintai.md) | https://kintai.aoike.jp |
 | 工事経歴書 CSV | `/csv` | [docs/csv.md](docs/csv.md) | https://csv.aoike.jp |
+| FIT 申請 | `/fit` | [docs/fit.md](docs/fit.md) | — |
 
 ポータルには、事務所のホームページ（公開前の確認用の URL）へのリンクもあります。
 
@@ -31,7 +32,7 @@ TanStack Start / React / TypeScript / Tailwind CSS v4 / shadcn/ui（Base UI 版�
 ```bash
 bun install
 cp .dev.vars.example .dev.vars   # BETTER_AUTH_SECRET を32文字以上のランダム値に。工事経歴書 CSV で AI を使うなら ANTHROPIC_API_KEY も
-bun run db:migrate               # ローカル D1（認証用・勤怠・工事経歴書 CSV）にテーブル作成
+bun run db:migrate               # ローカル D1（認証用・勤怠・工事経歴書 CSV・FIT 申請）にテーブル作成
 bun run set-password             # 事務所共通パスワードを設定（ローカル）
 bun run dev                      # http://localhost:3210
 bun test                         # 単体テスト
@@ -55,6 +56,7 @@ bun test                         # 単体テスト
 | `KINTAI_DB` | D1 `aoike-attendance` | 勤怠（従業員・勤怠） | `drizzle/kintai/` |
 | `CSV_DB` | D1 `aoike-kensetsu-csv` | 工事経歴書 CSV（顧客・案件・ルール・要望など） | `drizzle/csv/` |
 | `CSV_FILES` | R2 `aoike-kensetsu-csv-files` | 工事経歴書 CSV の案件のファイル・会話（公開アクセスなし） | — |
+| `FIT_DB` | D1 `aoike-fit` | FIT 申請（案件・手続・不備・週次の案件表の記録） | `drizzle/fit/` |
 | `LOCATION_SEARCH` | Workflow `aoike-app-location-search` | 工事経歴書 CSV の工事場所の一括調査（`src/worker.ts` から出す） | — |
 
 ## 本番環境（Cloudflare）へのデプロイ
@@ -64,6 +66,7 @@ bun test                         # 単体テスト
 bunx wrangler d1 create aoike-auth
 bunx wrangler d1 create aoike-attendance
 bunx wrangler d1 create aoike-kensetsu-csv
+bunx wrangler d1 create aoike-fit
 bunx wrangler r2 bucket create aoike-kensetsu-csv-files
 
 # 2. テーブル作成
@@ -138,7 +141,7 @@ Workers & Pages → Worker → 設定 → ビルド
 ### スキーマ変更時
 
 ```bash
-bun run db:generate        # drizzle/<auth|kintai|csv>/ にマイグレーションSQLを生成
+bun run db:generate        # drizzle/<auth|kintai|csv|fit>/ にマイグレーションSQLを生成
 bun run db:migrate         # ローカルに適用
 bun run db:migrate:remote  # 本番に適用
 ```
@@ -157,16 +160,17 @@ src/
     _authed/index.tsx      ポータル
     _authed/kintai/        勤怠
     _authed/csv.tsx, csv/  工事経歴書 CSV
+    _authed/fit.tsx, fit/  FIT 申請
     api/auth/$.ts          Better Auth ハンドラー
     api/csv/               工事経歴書 CSV のファイル・チャット
   components/
     app-shell.tsx          ヘッダー（ツールごとのメニュー）
     ui/                    shadcn/ui（`bunx shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
-  db/                      Drizzle スキーマ（auth-schema・kintai-schema・cases-schema）
+  db/                      Drizzle スキーマ（auth-schema・kintai-schema・cases-schema・fit-schema）
   lib/auth.ts, constants.ts, legacy-host.ts  認証の設定・定数・古いホスト名の転送先
   server/middleware.ts     ログインと役割の確かめ
 scripts/set-password.ts    共通パスワードの設定
 scripts/icons/             アイコンを作る
-drizzle/                   マイグレーション（auth・kintai・csv）
+drizzle/                   マイグレーション（auth・kintai・csv・fit）
 docs/                      ツールごとの説明
 ```

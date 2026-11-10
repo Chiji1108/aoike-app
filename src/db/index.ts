@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers"
 import { drizzle } from "drizzle-orm/d1"
 import * as authSchema from "./auth-schema"
 import * as casesSchema from "./cases-schema"
+import * as fitSchema from "./fit-schema"
 import * as kintaiSchema from "./kintai-schema"
 
 /** 全ツール共通の認証用 D1（Better Auth のユーザー・セッション） */
@@ -20,3 +21,10 @@ export function getCsvDb() {
 }
 
 export type CsvDb = ReturnType<typeof getCsvDb>
+
+/** FIT 申請の D1（案件・手続・不備・週次の案件表の記録） */
+export function getFitDb() {
+  return drizzle(env.FIT_DB, { schema: fitSchema })
+}
+
+export type FitDb = ReturnType<typeof getFitDb>

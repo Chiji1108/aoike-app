@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router"
-import { CalendarDays, ChevronRight, ExternalLink, FileSpreadsheet, Globe, type LucideIcon } from "lucide-react"
+import { CalendarDays, ChevronRight, ExternalLink, FileSpreadsheet, Globe, Sun, type LucideIcon } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { APP_NAME } from "@/lib/constants"
 
@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_authed/")({
 })
 
 type Tool = { name: string; description: string; icon: LucideIcon } & (
-  | { to: "/kintai" | "/csv"; href?: never }
+  | { to: "/kintai" | "/csv" | "/fit"; href?: never }
   // app.aoike.jp の外（ホームページなど）は、その URL を開く
   | { to?: never; href: string }
 )
@@ -26,6 +26,12 @@ const TOOLS: Tool[] = [
     description: "工事経歴書の Excel から、建設業.NET に読み込む CSV を作る",
     icon: FileSpreadsheet,
     to: "/csv",
+  },
+  {
+    name: "FIT 申請",
+    description: "SHARP から受託する太陽光の FIT 申請の事件簿と、週次の案件表",
+    icon: Sun,
+    to: "/fit",
   },
   {
     name: "ホームページ",

@@ -13,15 +13,20 @@ import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthedCsvRouteImport } from './routes/_authed/csv'
+import { Route as AuthedFitRouteImport } from './routes/_authed/fit'
 import { Route as AuthedCsvIndexRouteImport } from './routes/_authed/csv/index'
 import { Route as AuthedCsvFeedbackRouteImport } from './routes/_authed/csv/feedback'
 import { Route as AuthedCsvRulesRouteImport } from './routes/_authed/csv/rules'
+import { Route as AuthedFitIndexRouteImport } from './routes/_authed/fit/index'
+import { Route as AuthedFitNewRouteImport } from './routes/_authed/fit/new'
+import { Route as AuthedFitWeeklyRouteImport } from './routes/_authed/fit/weekly'
 import { Route as AuthedKintaiIndexRouteImport } from './routes/_authed/kintai/index'
 import { Route as AuthedKintaiEmployeesRouteImport } from './routes/_authed/kintai/employees'
 import { Route as AuthedKintaiReportRouteImport } from './routes/_authed/kintai/report'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AuthedCsvCasesCaseIdRouteImport } from './routes/_authed/csv/cases/$caseId'
 import { Route as AuthedCsvCustomersCustomerIdRouteImport } from './routes/_authed/csv/customers/$customerId'
+import { Route as AuthedFitCasesCaseIdRouteImport } from './routes/_authed/fit/cases/$caseId'
 import { Route as ApiCsvFilesFileIdRouteImport } from './routes/api/csv/files/$fileId'
 import { Route as ApiCsvCasesCaseIdChatRouteImport } from './routes/api/csv/cases/$caseId/chat'
 import { Route as ApiCsvCasesCaseIdFilesRouteImport } from './routes/api/csv/cases/$caseId/files'
@@ -45,6 +50,11 @@ const AuthedCsvRoute = AuthedCsvRouteImport.update({
   path: '/csv',
   getParentRoute: () => AuthedRoute,
 } as any)
+const AuthedFitRoute = AuthedFitRouteImport.update({
+  id: '/fit',
+  path: '/fit',
+  getParentRoute: () => AuthedRoute,
+} as any)
 const AuthedCsvIndexRoute = AuthedCsvIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -59,6 +69,21 @@ const AuthedCsvRulesRoute = AuthedCsvRulesRouteImport.update({
   id: '/rules',
   path: '/rules',
   getParentRoute: () => AuthedCsvRoute,
+} as any)
+const AuthedFitIndexRoute = AuthedFitIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
+const AuthedFitNewRoute = AuthedFitNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
+const AuthedFitWeeklyRoute = AuthedFitWeeklyRouteImport.update({
+  id: '/weekly',
+  path: '/weekly',
+  getParentRoute: () => AuthedFitRoute,
 } as any)
 const AuthedKintaiIndexRoute = AuthedKintaiIndexRouteImport.update({
   id: '/kintai/',
@@ -91,6 +116,11 @@ const AuthedCsvCustomersCustomerIdRoute =
     path: '/customers/$customerId',
     getParentRoute: () => AuthedCsvRoute,
   } as any)
+const AuthedFitCasesCaseIdRoute = AuthedFitCasesCaseIdRouteImport.update({
+  id: '/cases/$caseId',
+  path: '/cases/$caseId',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
 const ApiCsvFilesFileIdRoute = ApiCsvFilesFileIdRouteImport.update({
   id: '/api/csv/files/$fileId',
   path: '/api/csv/files/$fileId',
@@ -111,15 +141,20 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
   '/login': typeof LoginRoute
   '/csv': typeof AuthedCsvRouteWithChildren
+  '/fit': typeof AuthedFitRouteWithChildren
   '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
+  '/fit/new': typeof AuthedFitNewRoute
+  '/fit/weekly': typeof AuthedFitWeeklyRoute
   '/kintai/employees': typeof AuthedKintaiEmployeesRoute
   '/kintai/report': typeof AuthedKintaiReportRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/csv/': typeof AuthedCsvIndexRoute
+  '/fit/': typeof AuthedFitIndexRoute
   '/kintai/': typeof AuthedKintaiIndexRoute
   '/csv/cases/$caseId': typeof AuthedCsvCasesCaseIdRoute
   '/csv/customers/$customerId': typeof AuthedCsvCustomersCustomerIdRoute
+  '/fit/cases/$caseId': typeof AuthedFitCasesCaseIdRoute
   '/api/csv/files/$fileId': typeof ApiCsvFilesFileIdRoute
   '/api/csv/cases/$caseId/chat': typeof ApiCsvCasesCaseIdChatRoute
   '/api/csv/cases/$caseId/files': typeof ApiCsvCasesCaseIdFilesRoute
@@ -129,13 +164,17 @@ export interface FileRoutesByTo {
   '/': typeof AuthedIndexRoute
   '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
+  '/fit/new': typeof AuthedFitNewRoute
+  '/fit/weekly': typeof AuthedFitWeeklyRoute
   '/kintai/employees': typeof AuthedKintaiEmployeesRoute
   '/kintai/report': typeof AuthedKintaiReportRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/csv': typeof AuthedCsvIndexRoute
+  '/fit': typeof AuthedFitIndexRoute
   '/kintai': typeof AuthedKintaiIndexRoute
   '/csv/cases/$caseId': typeof AuthedCsvCasesCaseIdRoute
   '/csv/customers/$customerId': typeof AuthedCsvCustomersCustomerIdRoute
+  '/fit/cases/$caseId': typeof AuthedFitCasesCaseIdRoute
   '/api/csv/files/$fileId': typeof ApiCsvFilesFileIdRoute
   '/api/csv/cases/$caseId/chat': typeof ApiCsvCasesCaseIdChatRoute
   '/api/csv/cases/$caseId/files': typeof ApiCsvCasesCaseIdFilesRoute
@@ -145,16 +184,21 @@ export interface FileRoutesById {
   '/_authed': typeof AuthedRouteWithChildren
   '/login': typeof LoginRoute
   '/_authed/csv': typeof AuthedCsvRouteWithChildren
+  '/_authed/fit': typeof AuthedFitRouteWithChildren
   '/_authed/': typeof AuthedIndexRoute
   '/_authed/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/_authed/csv/rules': typeof AuthedCsvRulesRoute
+  '/_authed/fit/new': typeof AuthedFitNewRoute
+  '/_authed/fit/weekly': typeof AuthedFitWeeklyRoute
   '/_authed/kintai/employees': typeof AuthedKintaiEmployeesRoute
   '/_authed/kintai/report': typeof AuthedKintaiReportRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_authed/csv/': typeof AuthedCsvIndexRoute
+  '/_authed/fit/': typeof AuthedFitIndexRoute
   '/_authed/kintai/': typeof AuthedKintaiIndexRoute
   '/_authed/csv/cases/$caseId': typeof AuthedCsvCasesCaseIdRoute
   '/_authed/csv/customers/$customerId': typeof AuthedCsvCustomersCustomerIdRoute
+  '/_authed/fit/cases/$caseId': typeof AuthedFitCasesCaseIdRoute
   '/api/csv/files/$fileId': typeof ApiCsvFilesFileIdRoute
   '/api/csv/cases/$caseId/chat': typeof ApiCsvCasesCaseIdChatRoute
   '/api/csv/cases/$caseId/files': typeof ApiCsvCasesCaseIdFilesRoute
@@ -165,15 +209,20 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/csv'
+    | '/fit'
     | '/csv/feedback'
     | '/csv/rules'
+    | '/fit/new'
+    | '/fit/weekly'
     | '/kintai/employees'
     | '/kintai/report'
     | '/api/auth/$'
     | '/csv/'
+    | '/fit/'
     | '/kintai/'
     | '/csv/cases/$caseId'
     | '/csv/customers/$customerId'
+    | '/fit/cases/$caseId'
     | '/api/csv/files/$fileId'
     | '/api/csv/cases/$caseId/chat'
     | '/api/csv/cases/$caseId/files'
@@ -183,13 +232,17 @@ export interface FileRouteTypes {
     | '/'
     | '/csv/feedback'
     | '/csv/rules'
+    | '/fit/new'
+    | '/fit/weekly'
     | '/kintai/employees'
     | '/kintai/report'
     | '/api/auth/$'
     | '/csv'
+    | '/fit'
     | '/kintai'
     | '/csv/cases/$caseId'
     | '/csv/customers/$customerId'
+    | '/fit/cases/$caseId'
     | '/api/csv/files/$fileId'
     | '/api/csv/cases/$caseId/chat'
     | '/api/csv/cases/$caseId/files'
@@ -198,16 +251,21 @@ export interface FileRouteTypes {
     | '/_authed'
     | '/login'
     | '/_authed/csv'
+    | '/_authed/fit'
     | '/_authed/'
     | '/_authed/csv/feedback'
     | '/_authed/csv/rules'
+    | '/_authed/fit/new'
+    | '/_authed/fit/weekly'
     | '/_authed/kintai/employees'
     | '/_authed/kintai/report'
     | '/api/auth/$'
     | '/_authed/csv/'
+    | '/_authed/fit/'
     | '/_authed/kintai/'
     | '/_authed/csv/cases/$caseId'
     | '/_authed/csv/customers/$customerId'
+    | '/_authed/fit/cases/$caseId'
     | '/api/csv/files/$fileId'
     | '/api/csv/cases/$caseId/chat'
     | '/api/csv/cases/$caseId/files'
@@ -252,6 +310,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedCsvRouteImport
       parentRoute: typeof AuthedRoute
     }
+    '/_authed/fit': {
+      id: '/_authed/fit'
+      path: '/fit'
+      fullPath: '/fit'
+      preLoaderRoute: typeof AuthedFitRouteImport
+      parentRoute: typeof AuthedRoute
+    }
     '/_authed/csv/': {
       id: '/_authed/csv/'
       path: '/'
@@ -272,6 +337,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/csv/rules'
       preLoaderRoute: typeof AuthedCsvRulesRouteImport
       parentRoute: typeof AuthedCsvRoute
+    }
+    '/_authed/fit/': {
+      id: '/_authed/fit/'
+      path: '/'
+      fullPath: '/fit/'
+      preLoaderRoute: typeof AuthedFitIndexRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
+    '/_authed/fit/new': {
+      id: '/_authed/fit/new'
+      path: '/new'
+      fullPath: '/fit/new'
+      preLoaderRoute: typeof AuthedFitNewRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
+    '/_authed/fit/weekly': {
+      id: '/_authed/fit/weekly'
+      path: '/weekly'
+      fullPath: '/fit/weekly'
+      preLoaderRoute: typeof AuthedFitWeeklyRouteImport
+      parentRoute: typeof AuthedFitRoute
     }
     '/_authed/kintai/': {
       id: '/_authed/kintai/'
@@ -314,6 +400,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/csv/customers/$customerId'
       preLoaderRoute: typeof AuthedCsvCustomersCustomerIdRouteImport
       parentRoute: typeof AuthedCsvRoute
+    }
+    '/_authed/fit/cases/$caseId': {
+      id: '/_authed/fit/cases/$caseId'
+      path: '/cases/$caseId'
+      fullPath: '/fit/cases/$caseId'
+      preLoaderRoute: typeof AuthedFitCasesCaseIdRouteImport
+      parentRoute: typeof AuthedFitRoute
     }
     '/api/csv/files/$fileId': {
       id: '/api/csv/files/$fileId'
@@ -359,8 +452,27 @@ const AuthedCsvRouteWithChildren = AuthedCsvRoute._addFileChildren(
   AuthedCsvRouteChildren,
 )
 
+interface AuthedFitRouteChildren {
+  AuthedFitNewRoute: typeof AuthedFitNewRoute
+  AuthedFitWeeklyRoute: typeof AuthedFitWeeklyRoute
+  AuthedFitIndexRoute: typeof AuthedFitIndexRoute
+  AuthedFitCasesCaseIdRoute: typeof AuthedFitCasesCaseIdRoute
+}
+
+const AuthedFitRouteChildren: AuthedFitRouteChildren = {
+  AuthedFitNewRoute: AuthedFitNewRoute,
+  AuthedFitWeeklyRoute: AuthedFitWeeklyRoute,
+  AuthedFitIndexRoute: AuthedFitIndexRoute,
+  AuthedFitCasesCaseIdRoute: AuthedFitCasesCaseIdRoute,
+}
+
+const AuthedFitRouteWithChildren = AuthedFitRoute._addFileChildren(
+  AuthedFitRouteChildren,
+)
+
 interface AuthedRouteChildren {
   AuthedCsvRoute: typeof AuthedCsvRouteWithChildren
+  AuthedFitRoute: typeof AuthedFitRouteWithChildren
   AuthedIndexRoute: typeof AuthedIndexRoute
   AuthedKintaiEmployeesRoute: typeof AuthedKintaiEmployeesRoute
   AuthedKintaiReportRoute: typeof AuthedKintaiReportRoute
@@ -369,6 +481,7 @@ interface AuthedRouteChildren {
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedCsvRoute: AuthedCsvRouteWithChildren,
+  AuthedFitRoute: AuthedFitRouteWithChildren,
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedKintaiEmployeesRoute: AuthedKintaiEmployeesRoute,
   AuthedKintaiReportRoute: AuthedKintaiReportRoute,
