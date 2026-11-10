@@ -5,6 +5,8 @@ export const APP_NAME = "青池事務所"
 export const KINTAI_NAME = "青池事務所 勤怠"
 /** 工事経歴書 CSV のページの名前 */
 export const CSV_NAME = "青池事務所 工事経歴CSV"
+/** FIT 申請のページの名前 */
+export const FIT_NAME = "青池事務所 FIT申請"
 
 /** 使う Claude のモデル（工事経歴書 CSV の変換・チャット・工事場所の調査） */
 export const MODEL = "claude-opus-5-5"
