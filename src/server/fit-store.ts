@@ -138,6 +138,12 @@ export async function saveEquipment(db: Db, caseId: string, items: Equipment[], 
   return output
 }
 
+/** 侍で作った請求書の番号と発行日を、手続にまとめて入れる（請求の月の明細から） */
+export async function setInvoice(db: Db, ids: string[], invoiceNumber: string, invoicedOn: string) {
+  // D1 は1つの文に渡せる値が100個まで
+  for (let i = 0; i < ids.length; i += 90) await db.update(fitProcedures).set({ invoiceNumber, invoicedOn }).where(inArray(fitProcedures.id, ids.slice(i, i + 90)))
+}
+
 // ---- 不備・補正 ----
 
 export async function addDefect(db: Db, procedureId: string, input: DefectInput) {
@@ -175,7 +181,7 @@ export async function saveSettings(db: Db, value: FitSettings) {
 // ---- 一覧・案件の画面 ----
 
 export type ProcedureListRow = FitProcedure & {
-  case: Pick<FitCase, "id" | "commonId" | "name" | "kana" | "builder" | "siteAddressKind">
+  case: Pick<FitCase, "id" | "commonId" | "name" | "kana" | "builder" | "siteAddressKind" | "address">
   /** まだ済んでいない不備・補正 */
   openDefects: Pick<FitDefect, "kind" | "content" | "dueOn">[]
 }
@@ -184,7 +190,7 @@ export type ProcedureListRow = FitProcedure & {
 export async function listProcedures(db: Db): Promise<ProcedureListRow[]> {
   const [rows, defects] = await Promise.all([
     db
-      .select({ p: fitProcedures, c: { id: fitCases.id, commonId: fitCases.commonId, name: fitCases.name, kana: fitCases.kana, builder: fitCases.builder, siteAddressKind: fitCases.siteAddressKind } })
+      .select({ p: fitProcedures, c: { id: fitCases.id, commonId: fitCases.commonId, name: fitCases.name, kana: fitCases.kana, builder: fitCases.builder, siteAddressKind: fitCases.siteAddressKind, address: fitCases.address } })
       .from(fitProcedures)
       .innerJoin(fitCases, eq(fitCases.id, fitProcedures.caseId))
       .orderBy(asc(fitProcedures.bookYear), asc(fitProcedures.seq)),

@@ -9,8 +9,11 @@ export const bookYearOf = (receivedOn: string) => Number(receivedOn.slice(0, 4))
  * 今の事件簿の「30-097」と見分けがつき、SHARP の案件表の「貴社管理番号」にもこのまま出す
  */
 export function bookNumber(bookYear: number, seq: number) {
-  return `F${bookYear - 2018}-${String(seq).padStart(4, "0")}`
+  return `F${reiwaOf(bookYear)}-${String(seq).padStart(4, "0")}`
 }
+
+/** 令和の年の数字（2026 → 8） */
+export const reiwaOf = (year: number) => year - 2018
 
 /** 受任日＝申込書と委任状がそろった日（遅いほう）。片方でも無ければまだ受任していない */
 export function acceptedOnOf(p: { receivedOn: string; poaReceivedOn: string | null }): string | null {

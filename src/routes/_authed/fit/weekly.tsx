@@ -10,7 +10,7 @@ import { formatDate } from "@/lib/fit/procedure"
 import { WEEKLY_COLUMNS, WEEKLY_DATE_COLUMNS, isUpdated, type WeeklyRow } from "@/lib/fit/weekly"
 import { todayIso } from "@/lib/period"
 import { cn } from "@/lib/utils"
-import { saveFile } from "@/lib/save-file"
+import { XLSX_TYPE, saveFile } from "@/lib/save-file"
 import { exportWeeklyFn, getWeeklyReportFn, weeklyPreviewFn } from "@/server/fit-fns"
 
 export const Route = createFileRoute("/_authed/fit/weekly")({
@@ -18,8 +18,6 @@ export const Route = createFileRoute("/_authed/fit/weekly")({
   head: () => ({ meta: [{ title: `週次の案件表 | ${FIT_NAME}` }] }),
   component: WeeklyPage,
 })
-
-const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 /** Excel を作ってダウンロードさせる（ExcelJS は大きいので、出すときだけ読み込む） */
 async function download(rows: WeeklyRow[], createdAt: number) {

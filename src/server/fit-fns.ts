@@ -150,6 +150,11 @@ export const saveEquipmentFn = createServerFn({ method: "POST" })
   )
   .handler(({ data }) => store.saveEquipment(getFitDb(), data.caseId, data.items, data.useOutput))
 
+export const setInvoiceFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ ids: z.array(id).min(1).max(1000), invoiceNumber: text(50).min(1, "請求書番号を入れてください"), invoicedOn: isoDate }))
+  .handler(({ data }) => store.setInvoice(getFitDb(), data.ids, data.invoiceNumber, data.invoicedOn))
+
 export const addDefectFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ procedureId: id, defect: defectSchema }))
