@@ -7,13 +7,17 @@ import { NativeSelect } from "@/components/ui/native-select"
 import type { FitCase } from "@/db/fit-schema"
 import { errorMessage } from "@/lib/errors"
 import { EQUIPMENT_KINDS, EQUIPMENT_KIND_LABELS, equipmentTotals, outputKwOf, type Equipment, type EquipmentKind } from "@/lib/fit/checks"
-import { saveEquipmentFn, updateCaseFn } from "@/server/fit-fns"
-import { caseInput, caseValues } from "./case-fields"
+import { saveEquipmentFn } from "@/server/fit-fns"
 
 type Row = { kind: EquipmentKind; maker: string; model: string; watts: string; count: string }
 
 const toRow = (e: Equipment): Row => ({ ...e, watts: String(e.watts), count: String(e.count) })
-const toItem = (r: Row): Equipment => ({ ...r, watts: Number(r.watts), count: Number(r.count) })
+/** 半角・全角の数字（「265W」「３０００」も）を整数にする。読めなければ 0（サーバーが「入れてください」と断る） */
+const num = (v: string) => {
+  const n = Number(v.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[^\d]/g, ""))
+  return Number.isFinite(n) ? n : 0
+}
+const toItem = (r: Row): Equipment => ({ ...r, watts: num(r.watts), count: num(r.count) })
 const emptyRow = (kind: EquipmentKind): Row => ({ kind, maker: "", model: "", watts: "", count: kind === "pcs" ? "1" : "" })
 
 /** 設備（割付図のパネル・パワコンの型式と数量）。出力はパネルの合計とパワコンの合計の小さいほう（小数第2位で切り捨て） */
@@ -21,7 +25,7 @@ export function EquipmentEditor({ fitCase, equipment, onChanged }: { fitCase: Fi
   const [rows, setRows] = useState<Row[]>(() => (equipment.length ? equipment.map(toRow) : [emptyRow("panel"), emptyRow("pcs")]))
   const [saving, setSaving] = useState(false)
   const filled = rows.filter((r) => r.watts.trim() || r.count.trim() || r.model.trim())
-  const items = filled.filter((r) => Number(r.watts) > 0 && Number(r.count) > 0).map(toItem)
+  const items = filled.map(toItem).filter((e) => e.watts > 0 && e.count > 0)
   const totals = equipmentTotals(items)
   const kw = outputKwOf(items)
   const set = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)))
@@ -29,9 +33,8 @@ export function EquipmentEditor({ fitCase, equipment, onChanged }: { fitCase: Fi
   async function save(useOutput: boolean) {
     setSaving(true)
     try {
-      await saveEquipmentFn({ data: { caseId: fitCase.id, items: filled.map(toItem) } })
-      if (useOutput && kw !== null) await updateCaseFn({ data: { id: fitCase.id, fitCase: { ...caseInput(caseValues(fitCase)), outputKw: kw } } })
-      toast.success(useOutput ? `設備を保存し、出力を ${kw?.toFixed(1)}kW にしました` : "設備を保存しました")
+      const output = await saveEquipmentFn({ data: { caseId: fitCase.id, items: filled.map(toItem), useOutput } })
+      toast.success(output !== null ? `設備を保存し、出力を ${output.toFixed(1)}kW にしました` : "設備を保存しました")
       onChanged()
     } catch (e) {
       toast.error(errorMessage(e))

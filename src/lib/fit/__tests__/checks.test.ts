@@ -24,7 +24,7 @@ const src = (over: Partial<CheckSource> = {}): CheckSource => ({
   appliedOn: null,
   approvedOn: null,
   noticeSaved: false,
-  case: { commonId: "CP00000001", outputKw: 3.0, hasBattery: false, sharedOwnership: false },
+  case: { commonId: "CP00000001", outputKw: 3.0, sharedOwnership: false },
   equipment: [panel(265, 12), pcs(3000, 1)],
   docTypes: new Set(),
   ...over,

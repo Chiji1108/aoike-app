@@ -50,7 +50,7 @@ export type CheckSource = {
   appliedOn: string | null
   approvedOn: string | null
   noticeSaved: boolean
-  case: { commonId: string | null; outputKw: number | null; hasBattery: boolean; sharedOwnership: boolean }
+  case: { commonId: string | null; outputKw: number | null; sharedOwnership: boolean }
   equipment: readonly Equipment[]
   /** 置いた書類の種類 */
   docTypes: ReadonlySet<DocType>

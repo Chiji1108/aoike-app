@@ -144,9 +144,11 @@ export const saveEquipmentFn = createServerFn({ method: "POST" })
           }),
         )
         .max(50),
+      /** 求めた出力を案件の出力にも入れる */
+      useOutput: z.boolean().optional(),
     }),
   )
-  .handler(({ data }) => store.saveEquipment(getFitDb(), data.caseId, data.items))
+  .handler(({ data }) => store.saveEquipment(getFitDb(), data.caseId, data.items, data.useOutput))
 
 export const addDefectFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

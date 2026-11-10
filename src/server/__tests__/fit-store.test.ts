@@ -260,7 +260,12 @@ test("設備はまとめて入れ替える（並びを保つ）", async () => {
   await saveEquipment(db, caseId, items)
   await saveEquipment(db, caseId, [...items].reverse())
   expect((await getEquipment(db, caseId)).map((e) => e.model)).toEqual(["C1", "P1"])
+  // 出力も一緒に入れる（ほかの項目は変えない）
+  expect(await saveEquipment(db, caseId, items, true)).toBe(3.0)
+  const page = await getCasePage(db, caseId)
+  expect([page!.fitCase.outputKw, page!.fitCase.name]).toEqual([3.0, "見本 太郎"])
   await saveEquipment(db, caseId, [])
   expect(await getEquipment(db, caseId)).toEqual([])
+  await expect(saveEquipment(db, caseId, [], true)).rejects.toThrow("出力を求められます")
   await expect(saveEquipment(db, "nope", items)).rejects.toThrow("案件が見つかりません")
 })
