@@ -1,4 +1,5 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { EQUIPMENT_KINDS, type ManualCheck } from "../lib/fit/checks"
 import { DOC_TYPES } from "../lib/fit/documents"
 import type { FitSettings } from "../lib/fit/settings"
 import { CLOSE_REASONS, DEFECT_KINDS, DEFECT_PARTIES, PROCEDURE_KINDS, SITE_ADDRESS_KINDS, SPECIAL_PAYERS } from "../lib/fit/types"
@@ -102,11 +103,32 @@ export const fitProcedures = sqliteTable(
     paidOn: text("paid_on"),
     /** 途中で終わった理由（取下げ・中止）。最後まで進んだものは持たない */
     closeReason: text("close_reason", { enum: CLOSE_REASONS }),
+    /** 整合性チェックのうち、職員が書類を見比べて印を付けたもの */
+    checks: text("checks", { mode: "json" }).$type<Partial<Record<ManualCheck, boolean>>>().default({}).notNull(),
     note: text("note").default("").notNull(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("fit_procedures_number_uq").on(t.bookYear, t.seq), index("fit_procedures_case_idx").on(t.caseId)],
+)
+
+/** 設備（案件ごとのパネル・パワコンの型式と数量）。出力の計算と整合性チェック、あとで電子申請の入力補助に使う */
+export const fitEquipment = sqliteTable(
+  "fit_equipment",
+  {
+    id: id(),
+    caseId: text("case_id")
+      .notNull()
+      .references(() => fitCases.id),
+    kind: text("kind", { enum: EQUIPMENT_KINDS }).notNull(),
+    maker: text("maker").default("").notNull(),
+    model: text("model").default("").notNull(),
+    /** 1枚・1台の出力（W） */
+    watts: integer("watts").notNull(),
+    count: integer("count").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+  },
+  (t) => [index("fit_equipment_case_idx").on(t.caseId)],
 )
 
 /** 不備・補正（手続ごとにいくつでも） */

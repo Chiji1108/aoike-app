@@ -5,7 +5,9 @@ import { toast } from "sonner"
 import { AppShell, FIT } from "@/components/app-shell"
 import { CaseFields, caseInput, caseValues, type CaseValues } from "@/components/fit/case-fields"
 import { Defects } from "@/components/fit/defects"
+import { Checks } from "@/components/fit/checks"
 import { Documents } from "@/components/fit/documents"
+import { EquipmentEditor } from "@/components/fit/equipment"
 import { DateField, SelectField, optionsOf } from "@/components/fit/fields"
 import { ProcedureDialog } from "@/components/fit/procedure-dialog"
 import { StatusBadge } from "@/components/fit/status-badge"
@@ -15,6 +17,7 @@ import type { FitCase, FitDefect, FitProcedure } from "@/db/fit-schema"
 import { FIT_NAME } from "@/lib/constants"
 import { errorMessage } from "@/lib/errors"
 import { acceptedOnOf, bookNumber, formatDate, formatYen, statusOf } from "@/lib/fit/procedure"
+import type { Equipment } from "@/lib/fit/checks"
 import type { FeeTable } from "@/lib/fit/settings"
 import { todayIso } from "@/lib/period"
 import { APPROVAL_KINDS, CLOSE_REASON_LABELS, PROCEDURE_KIND_LABELS, SITE_ADDRESS_KIND_LABELS, type ProcedureKind } from "@/lib/fit/types"
@@ -32,7 +35,7 @@ export const Route = createFileRoute("/_authed/fit/cases/$caseId")({
 })
 
 function CasePage() {
-  const { fitCase, procedures, defects, files, feeTables } = Route.useLoaderData()
+  const { fitCase, procedures, defects, files, equipment, feeTables } = Route.useLoaderData()
   const router = useRouter()
   const reload = () => void router.invalidate()
   const [editing, setEditing] = useState(false)
@@ -76,13 +79,17 @@ function CasePage() {
               procedure={p}
               defects={defects.filter((d) => d.procedureId === p.id)}
               files={files.filter((f) => f.procedureId === p.id)}
-              sharedOwnership={fitCase.sharedOwnership}
+              fitCase={fitCase}
+              equipment={equipment}
               feeTables={feeTables}
               onChanged={reload}
             />
           ))}
         </section>
-        <CaseSummary fitCase={fitCase} />
+        <div className="grid content-start gap-6">
+          <CaseSummary fitCase={fitCase} />
+          <EquipmentEditor key={JSON.stringify(equipment)} fitCase={fitCase} equipment={equipment} onChanged={reload} />
+        </div>
       </div>
 
       {editing && <CaseDialog fitCase={fitCase} onClose={() => setEditing(false)} onSaved={reload} />}
@@ -95,14 +102,16 @@ function ProcedureCard({
   procedure: p,
   defects,
   files,
-  sharedOwnership,
+  fitCase,
+  equipment,
   feeTables,
   onChanged,
 }: {
   procedure: FitProcedure
   defects: FitDefect[]
   files: FileView[]
-  sharedOwnership: boolean
+  fitCase: FitCase
+  equipment: Equipment[]
   feeTables: readonly FeeTable[]
   onChanged: () => void
 }) {
@@ -146,7 +155,8 @@ function ProcedureCard({
         ))}
       </dl>
       {p.note && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{p.note}</p>}
-      <Documents procedureId={p.id} kind={p.kind} sharedOwnership={sharedOwnership} files={files} onChanged={onChanged} />
+      <Documents procedureId={p.id} kind={p.kind} sharedOwnership={fitCase.sharedOwnership} files={files} onChanged={onChanged} />
+      {APPROVAL_KINDS.has(p.kind) && <Checks key={JSON.stringify(p.checks)} procedure={p} source={{ ...p, case: fitCase, equipment, docTypes: new Set(files.map((f) => f.docType)) }} onChanged={onChanged} />}
       <Defects procedureId={p.id} defects={defects} applied={!!p.appliedOn} onChanged={onChanged} />
       {open && <ProcedureDialog procedure={p} feeTables={feeTables} open={open} onOpenChange={setOpen} onSaved={onChanged} />}
     </article>

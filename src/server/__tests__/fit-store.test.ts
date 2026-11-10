@@ -13,6 +13,8 @@ import {
   addProcedure,
   createCase,
   getCasePage,
+  getEquipment,
+  saveEquipment,
   getProcedure,
   getSettings,
   saveSettings,
@@ -246,4 +248,19 @@ describe("書類", () => {
     expect((await getFileRow(db, f1!.id))!.purgedAt).toBeInstanceOf(Date)
     expect(await purgeableFiles(db, 2, "2029-01-01")).toEqual([])
   })
+})
+
+test("設備はまとめて入れ替える（並びを保つ）", async () => {
+  const { db } = migratedFitDb()
+  const { caseId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+  const items = [
+    { kind: "panel" as const, maker: "A", model: "P1", watts: 265, count: 12 },
+    { kind: "pcs" as const, maker: "A", model: "C1", watts: 3000, count: 1 },
+  ]
+  await saveEquipment(db, caseId, items)
+  await saveEquipment(db, caseId, [...items].reverse())
+  expect((await getEquipment(db, caseId)).map((e) => e.model)).toEqual(["C1", "P1"])
+  await saveEquipment(db, caseId, [])
+  expect(await getEquipment(db, caseId)).toEqual([])
+  await expect(saveEquipment(db, "nope", items)).rejects.toThrow("案件が見つかりません")
 })

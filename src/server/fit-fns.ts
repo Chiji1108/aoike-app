@@ -3,6 +3,7 @@ import { z } from "zod"
 import { env } from "cloudflare:workers"
 import { getFitDb } from "@/db"
 import { CLOSE_REASONS, DEFECT_KINDS, DEFECT_PARTIES, PROCEDURE_KINDS, SITE_ADDRESS_KINDS, SPECIAL_PAYERS } from "@/lib/fit/types"
+import { EQUIPMENT_KINDS, MANUAL_CHECKS } from "@/lib/fit/checks"
 import { settingsSchema } from "@/lib/fit/settings"
 import { compareWeekly, weeklyValues } from "@/lib/fit/weekly"
 import { todayIso } from "@/lib/period"
@@ -64,6 +65,7 @@ const procedurePatchSchema = z
     invoiceNumber: text(50),
     paidOn: optionalDate,
     closeReason: z.enum(CLOSE_REASONS).nullable(),
+    checks: z.partialRecord(z.enum(MANUAL_CHECKS), z.boolean()),
     note: text(2000),
   })
   .partial()
@@ -125,6 +127,26 @@ export const updateProcedureFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ id, patch: procedurePatchSchema }))
   .handler(({ data }) => store.updateProcedure(getFitDb(), data.id, data.patch))
+
+export const saveEquipmentFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(
+    z.object({
+      caseId: id,
+      items: z
+        .array(
+          z.object({
+            kind: z.enum(EQUIPMENT_KINDS),
+            maker: text(100),
+            model: text(100),
+            watts: z.number().int("出力は整数の W で入れてください").min(1, "出力（W）を入れてください").max(100_000, "出力（W）が大きすぎます"),
+            count: z.number().int("数は整数で入れてください").min(1, "数を入れてください").max(1000, "数が大きすぎます"),
+          }),
+        )
+        .max(50),
+    }),
+  )
+  .handler(({ data }) => store.saveEquipment(getFitDb(), data.caseId, data.items))
 
 export const addDefectFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

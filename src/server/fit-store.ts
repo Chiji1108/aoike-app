@@ -1,7 +1,8 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, lte, max, or, sql } from "drizzle-orm"
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
-import { fitCases, fitDefects, fitFileDownloads, fitFiles, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitFile, type FitProcedure } from "@/db/fit-schema"
+import { fitCases, fitDefects, fitEquipment, fitFileDownloads, fitFiles, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitFile, type FitProcedure } from "@/db/fit-schema"
+import type { Equipment } from "@/lib/fit/checks"
 import { lastPurgeableBookYear, r2KeyOf, type DocType } from "@/lib/fit/documents"
 import type * as schema from "@/db/fit-schema"
 import { acceptedOnOf, bookYearOf } from "@/lib/fit/procedure"
@@ -110,6 +111,24 @@ export async function updateProcedure(db: Db, id: string, patch: ProcedurePatch)
     .where(eq(fitProcedures.id, id))
 }
 
+// ---- 設備 ----
+
+export async function getEquipment(db: Db, caseId: string): Promise<Equipment[]> {
+  return db
+    .select({ kind: fitEquipment.kind, maker: fitEquipment.maker, model: fitEquipment.model, watts: fitEquipment.watts, count: fitEquipment.count })
+    .from(fitEquipment)
+    .where(eq(fitEquipment.caseId, caseId))
+    .orderBy(asc(fitEquipment.sortOrder))
+}
+
+/** 案件の設備をまとめて入れ替える（1つの処理で消して足す） */
+export async function saveEquipment(db: Db, caseId: string, items: Equipment[]) {
+  if (!(await getCase(db, caseId))) throw new Error("案件が見つかりません")
+  const remove = db.delete(fitEquipment).where(eq(fitEquipment.caseId, caseId))
+  if (items.length === 0) return void (await remove)
+  await db.batch([remove, db.insert(fitEquipment).values(items.map((e, i) => ({ ...e, caseId, sortOrder: i })))])
+}
+
 // ---- 不備・補正 ----
 
 export async function addDefect(db: Db, procedureId: string, input: DefectInput) {
@@ -183,11 +202,14 @@ export async function getCasePage(db: Db, id: string) {
         .where(eq(fitProcedures.caseId, id))
         .orderBy(asc(fitDefects.createdAt))
     : []
-  const files = await listFiles(
-    db,
-    procedures.map((p) => p.id),
-  )
-  return { fitCase, procedures, defects: defects.map((r) => r.d), files }
+  const [files, equipment] = await Promise.all([
+    listFiles(
+      db,
+      procedures.map((p) => p.id),
+    ),
+    getEquipment(db, id),
+  ])
+  return { fitCase, procedures, defects: defects.map((r) => r.d), files, equipment }
 }
 
 // ---- 週次の案件表 ----
