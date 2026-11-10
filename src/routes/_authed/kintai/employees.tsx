@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router"
 import { ChevronDown, Loader2, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, UserRoundX, Users } from "lucide-react"
 import { toast } from "sonner"
-import { AppShell, KINTAI_NAV, PageHeader } from "@/components/app-shell"
+import { AppShell, KINTAI, PageHeader } from "@/components/app-shell"
 import { KINTAI_NAME } from "@/lib/constants"
 import {
   AlertDialog,
@@ -82,7 +82,7 @@ function EmployeesPage() {
   }
 
   return (
-    <AppShell nav={KINTAI_NAV}>
+    <AppShell tool={KINTAI}>
       <PageHeader
         title="従業員"
         description="勤怠を記録するスタッフを登録します。"

@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { HeadContent, Scripts, createRootRoute, Link } from "@tanstack/react-router"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -34,6 +35,10 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  // React が画面につながった印（<html data-hydrated>）。つながる前の入力や押下は効かないので、E2E はこれを待ってから操作する
+  useEffect(() => {
+    document.documentElement.dataset.hydrated = ""
+  }, [])
   return (
     <html lang="ja">
       <head>

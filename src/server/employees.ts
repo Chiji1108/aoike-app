@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start"
 import { asc, desc, eq, max } from "drizzle-orm"
 import { z } from "zod"
-import { getDb } from "@/db"
+import { getKintaiDb } from "@/db"
 import { COMMUTE_TYPES, attendanceRecords, employees } from "@/db/kintai-schema"
 import { authMiddleware } from "./middleware"
 
@@ -24,7 +24,7 @@ const commuteSchema = z.object({
 export const listEmployees = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async () => {
-    const db = getDb()
+    const db = getKintaiDb()
     return db
       .select({
         id: employees.id,
@@ -44,7 +44,7 @@ export const createEmployee = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ name: nameSchema, ...commuteSchema.partial().shape }))
   .handler(async ({ data }) => {
-    const db = getDb()
+    const db = getKintaiDb()
     const [row] = await db.select({ value: max(employees.sortOrder) }).from(employees)
     const [created] = await db
       .insert(employees)
@@ -65,7 +65,7 @@ export const updateEmployee = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { id, ...values } = data
-    await getDb().update(employees).set(values).where(eq(employees.id, id))
+    await getKintaiDb().update(employees).set(values).where(eq(employees.id, id))
     return { ok: true }
   })
 
@@ -74,7 +74,7 @@ export const deleteEmployee = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ id: z.string().min(1) }))
   .handler(async ({ data }) => {
-    const db = getDb()
+    const db = getKintaiDb()
     const [used] = await db
       .select({ id: attendanceRecords.id })
       .from(attendanceRecords)

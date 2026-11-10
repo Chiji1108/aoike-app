@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start"
 import { and, asc, desc, eq, gte, lte, ne } from "drizzle-orm"
 import { z } from "zod"
-import { getDb } from "@/db"
+import { getKintaiDb } from "@/db"
 import { attendanceRecords, employees } from "@/db/kintai-schema"
 import { DATE_RE, PERIOD_KEY_RE, getPeriodRange } from "@/lib/period"
 import { TIME_RE, timeToMinutes } from "@/lib/time"
@@ -34,7 +34,7 @@ export const getPeriodAttendance = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .validator(z.object({ employeeId: z.string().min(1), period: z.string().regex(PERIOD_KEY_RE) }))
   .handler(async ({ data }) => {
-    const db = getDb()
+    const db = getKintaiDb()
     const { start, end } = getPeriodRange(data.period)
     const [employee] = await db
       .select({
@@ -107,7 +107,7 @@ export const saveAttendance = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(recordInput)
   .handler(async ({ data }) => {
-    const db = getDb()
+    const db = getKintaiDb()
     const { id, ...values } = data
 
     const [dup] = await db
@@ -135,6 +135,6 @@ export const deleteAttendance = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ id: z.string().min(1) }))
   .handler(async ({ data }) => {
-    await getDb().delete(attendanceRecords).where(eq(attendanceRecords.id, data.id))
+    await getKintaiDb().delete(attendanceRecords).where(eq(attendanceRecords.id, data.id))
     return { ok: true }
   })

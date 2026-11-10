@@ -3,7 +3,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router"
 import { FileText, Plus, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
-import { AppShell, KINTAI_NAV } from "@/components/app-shell"
+import { AppShell, KINTAI } from "@/components/app-shell"
 import { KINTAI_NAME } from "@/lib/constants"
 import { DayList } from "@/components/attendance/day-list"
 import { EmployeePicker } from "@/components/attendance/employee-picker"
@@ -109,7 +109,7 @@ function AttendancePage() {
 
   if (employees.filter((e) => e.active).length === 0 && !selectedId) {
     return (
-      <AppShell nav={KINTAI_NAV}>
+      <AppShell tool={KINTAI}>
         <div className="mx-auto mt-10 flex max-w-md flex-col items-center rounded-2xl border bg-card px-6 py-14 text-center">
           <span className="flex size-12 items-center justify-center rounded-full bg-brand-soft text-brand">
             <UserPlus className="size-6" />
@@ -137,7 +137,7 @@ function AttendancePage() {
       : undefined
 
   return (
-    <AppShell nav={KINTAI_NAV}>
+    <AppShell tool={KINTAI}>
       <section className="space-y-6">
         <div>
           <h2 className="mb-2.5 text-xs font-medium tracking-wide text-muted-foreground">従業員</h2>

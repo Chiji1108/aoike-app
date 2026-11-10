@@ -1,0 +1,48 @@
+import { columnLetter, type MappingPlan, type SheetGrid } from "../convert/plan"
+import { KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
+
+/** AI に渡す案件の文脈: 元データの見出しと数行、今の列の対応。全行は送らない（AI はコードで元のファイルを読む） */
+export function caseContext(sheets: readonly SheetGrid[], grid: SheetGrid, plan: MappingPlan<KojiFieldId>, previous?: { fiscalYear: number; lines: readonly string[] }) {
+  /** 空でないセルだけを「列:値」で並べる */
+  const row = (r: string[] | undefined) =>
+    (r ?? [])
+      .flatMap((c, i) => (c.trim() ? [`${columnLetter(i)}:${c.slice(0, 30)}`] : []))
+      .join(" | ")
+  const lines = [
+    `シート: ${sheets.map((s) => `${s.name}（${s.rows.length}行）`).join("、")}。計画の元は「${grid.name}」（使うシート: ${plan.sheets.join("、")}）`,
+    `見出し（${plan.headerRow + 1}行目）: ${row(grid.rows[plan.headerRow])}`,
+    ...grid.rows.slice(plan.headerRow + 1, plan.headerRow + 4).map((r, i) => `${plan.headerRow + 2 + i}行目: ${row(r)}`),
+    `データ行: ${plan.dataRows.start + 1}〜${plan.dataRows.end + 1}行目、金額の単位: ${plan.amountUnit === "yen" ? "円" : "千円"}`,
+    "今の列の対応:",
+  ]
+  for (const f of KOJI_KEIREKI.fields) {
+    const p = plan.fields[f.id]
+    const how =
+      p.kind === "column"
+        ? `${columnLetter(p.column)}列 → ${p.transform}${p.instruction ? `（指示: ${p.instruction}）` : ""}`
+        : p.kind === "columns"
+          ? `${p.columns.map(columnLetter).join("+")}列 → ${p.transform}`
+          : p.kind === "flagColumns"
+            ? `記号の列 ${p.columns.map((c) => `${columnLetter(c.column)}=${c.code}`).join(" ")}`
+            : p.kind === "constant"
+              ? `定数 ${p.value}`
+              : "元データに無い"
+    lines.push(`- ${f.id}: ${how}`)
+  }
+  if (plan.notes.length) lines.push(`計画のメモ: ${plan.notes.join(" / ")}`)
+  // 計画の聞き返し（職員が報告で答える。答えは計画の行の除外 rowFilter に入る）
+  for (const a of plan.asks ?? []) lines.push(`計画の聞き返し: ${a.text}（${columnLetter(a.column)}列${a.values.length ? `が「${a.values.join("」「")}」` : "に値がある"}の行）`)
+  // 出さない行の決まり（set_plan の excludeRows で外すときは、これと同じ列・値を書く）
+  const ex = [...plan.rowFilter.excludeColumns.map((c) => `${columnLetter(c)}列に値がある行`), ...(plan.rowFilter.excludeValues ?? []).map((f) => `${columnLetter(f.column)}列が「${f.values.join("」「")}」の行`)]
+  if (ex.length) lines.push(`出さない行: ${ex.join("、")}`)
+  // 去年の元の Excel と形が変わった年は、去年のルール・コードの列の名前と位置をそのまま使えない
+  if (previous) lines.push(`去年（${previous.fiscalYear}年度）の元の Excel との違い（決まった処理で見出しを比べたもの）:`, ...previous.lines.map((l) => `- ${l}`))
+  return lines.join("\n")
+}
+
+/** 変換の元の表が無い案件（届いたファイルが PDF・画像だけ）の文脈。AI がファイルを読んで一から表を作る */
+export const NO_SOURCE_CONTEXT = [
+  "変換の元の表はありません（届いたファイルは PDF・画像など、表として読めないもの）。今の表は空か、前に足した行だけ。",
+  "ファイルから工事を読み取り、add_rows で行を足す（文字の層のある PDF は pypdf で読み、文字の層の無い PDF〔スキャン・手書き〕と画像は view_file で見て読み、read_from:\"image\" を付ける）。足した行はすべて要確認として職員に見せる。",
+  "読み取れない値は空のままにし、推測で埋めない（空の欄は顧客への問い合わせに回る）。",
+].join("\n")

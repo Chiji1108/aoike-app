@@ -9,8 +9,8 @@ export const Route = createFileRoute("/_authed/")({
 })
 
 type Tool = { name: string; description: string; icon: LucideIcon } & (
-  | { to: "/kintai"; href?: never }
-  // app.aoike.jp にまだまとめていないツールは、今の URL を開く
+  | { to: "/kintai" | "/csv"; href?: never }
+  // app.aoike.jp の外（ホームページなど）は、その URL を開く
   | { to?: never; href: string }
 )
 
@@ -25,7 +25,7 @@ const TOOLS: Tool[] = [
     name: "工事経歴書 CSV",
     description: "工事経歴書の Excel から、建設業.NET に読み込む CSV を作る",
     icon: FileSpreadsheet,
-    href: "https://csv.aoike.jp",
+    to: "/csv",
   },
   {
     name: "ホームページ",
