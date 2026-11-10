@@ -308,6 +308,12 @@ describe("書類のゴミ箱", () => {
     expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(false)
     await restoreFile(db, n1!.id)
     expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(true)
+    // 完了通知したら、最後の認定通知書は消せない（ほかに残っていれば消せる）
+    await updateProcedure(db, procedureId, { completedOn: "2026-12-02" })
+    await expect(trashFile(db, n1!.id, "u1")).rejects.toThrow("最後の1つを消せません")
+    await restoreFile(db, n2!.id)
+    await trashFile(db, n1!.id, "u1")
+    expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(true)
   })
 
   test("ゴミ箱の書類は保存期間の一覧に出さない", async () => {

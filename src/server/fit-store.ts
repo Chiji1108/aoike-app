@@ -1,9 +1,9 @@
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, lte, max, or, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, lte, max, ne, or, sql } from "drizzle-orm"
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
 import { fitCases, fitDefects, fitEquipment, fitFileDownloads, fitFiles, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitFile, type FitProcedure } from "@/db/fit-schema"
 import { outputKwOf, type Equipment } from "@/lib/fit/checks"
-import { TRASH_DAYS, lastPurgeableBookYear, r2KeyOf, type DocType } from "@/lib/fit/documents"
+import { lastPurgeableBookYear, r2KeyOf, trashExpiresAt, type DocType } from "@/lib/fit/documents"
 import type * as schema from "@/db/fit-schema"
 import { acceptedOnOf, bookYearOf } from "@/lib/fit/procedure"
 import { feeFor, withDefaults, type FitSettings } from "@/lib/fit/settings"
@@ -377,28 +377,31 @@ export async function purgeFiles(db: Db, bucket: Bucket, ids: string[], years: n
 
 // ---- ゴミ箱 ----
 
-/** 手続にまだ使える（ゴミ箱でも消してもいない）認定通知書があるか */
-async function hasLiveNotice(db: Db, procedureId: string) {
+/** 手続に、except のほかにまだ使える（ゴミ箱でも消してもいない）認定通知書があるか */
+async function hasLiveNotice(db: Db, procedureId: string, except: string) {
   const [row] = await db
     .select({ id: fitFiles.id })
     .from(fitFiles)
-    .where(and(eq(fitFiles.procedureId, procedureId), eq(fitFiles.docType, "approval_notice"), isNull(fitFiles.deletedAt), isNull(fitFiles.purgedAt)))
+    .where(and(eq(fitFiles.procedureId, procedureId), eq(fitFiles.docType, "approval_notice"), ne(fitFiles.id, except), isNull(fitFiles.deletedAt), isNull(fitFiles.purgedAt)))
     .limit(1)
   return !!row
 }
 
 /**
  * 書類をゴミ箱に入れる（30日のうちは戻せる）。認定通知書がほかに残らなければ「認定通知書を保存した」を外す
- * （置き間違いを消したのに保存済みのままだと、完了通知に進めてしまう）
+ * （置き間違いを消したのに保存済みのままだと、完了通知に進めてしまう）。
+ * 完了通知した手続は認定通知書を持っている前提なので、最後の1つは消させない（正しいものを置き直してから消す）
  */
 export async function trashFile(db: Db, id: string, userId: string) {
   const row = await getFileRow(db, id)
   if (!row || row.purgedAt) throw new Error("書類が見つかりません")
   if (row.deletedAt) return
-  await db.update(fitFiles).set({ deletedAt: new Date(), deletedBy: userId }).where(eq(fitFiles.id, id))
-  if (row.docType === "approval_notice" && !(await hasLiveNotice(db, row.procedureId))) {
-    await db.update(fitProcedures).set({ noticeSaved: false }).where(eq(fitProcedures.id, row.procedureId))
+  const lastNotice = row.docType === "approval_notice" && !(await hasLiveNotice(db, row.procedureId, id))
+  if (lastNotice && (await getProcedure(db, row.procedureId))?.completedOn) {
+    throw new Error("完了通知した手続の認定通知書は、最後の1つを消せません。正しい認定通知書を置き直してから消してください")
   }
+  await db.update(fitFiles).set({ deletedAt: new Date(), deletedBy: userId }).where(eq(fitFiles.id, id))
+  if (lastNotice) await db.update(fitProcedures).set({ noticeSaved: false }).where(eq(fitProcedures.id, row.procedureId))
 }
 
 /** ゴミ箱から戻す（R2 から消える前だけ）。認定通知書なら「保存した」に戻す */
@@ -415,7 +418,8 @@ export async function emptyTrash(db: Db, bucket: Bucket, now = Date.now()) {
   const rows = await db
     .select({ id: fitFiles.id, r2Key: fitFiles.r2Key })
     .from(fitFiles)
-    .where(and(isNull(fitFiles.purgedAt), lt(fitFiles.deletedAt, new Date(now - TRASH_DAYS * 86_400_000))))
+    // ゴミ箱から消える日時（trashExpiresAt）を過ぎたもの
+    .where(and(isNull(fitFiles.purgedAt), lt(fitFiles.deletedAt, new Date(now - trashExpiresAt(0)))))
   // D1 は1つの文に渡せる値が100個まで
   for (let i = 0; i < rows.length; i += 90) {
     const chunk = rows.slice(i, i + 90)
