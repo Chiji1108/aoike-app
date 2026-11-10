@@ -40,6 +40,9 @@ export function daysBetween(from: string, to: string) {
   return Math.round((parseDate(to).getTime() - parseDate(from).getTime()) / 86_400_000)
 }
 
+/** 令和の年の数字（2026 → 8） */
+export const reiwaOf = (year: number) => year - 2018
+
 /** 日本時間の今日（YYYY-MM-DD）。now を渡すと、その時刻の日本時間の日付 */
 export function todayIso(now = new Date()) {
   return formatIsoDate(new Date(now.getTime() + 9 * 60 * 60 * 1000))
