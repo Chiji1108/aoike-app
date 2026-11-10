@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
 import { FIT_NAME, OFFICE_NAME } from "@/lib/constants"
 import { bookRows, bookYears } from "@/lib/fit/ledger"
-import { formatDate, formatYen } from "@/lib/fit/procedure"
+import { formatDate, formatYen, reiwaOf } from "@/lib/fit/procedure"
 import { todayIso } from "@/lib/period"
 import { XLSX_TYPE, saveFile } from "@/lib/save-file"
 import { listProceduresFn } from "@/server/fit-fns"
@@ -22,7 +22,7 @@ export const Route = createFileRoute("/_authed/fit/book")({
 })
 
 /** 2026 → 令和8年 */
-const eraYear = (y: number) => `令和${y - 2018}年`
+const eraYear = (y: number) => `令和${reiwaOf(y)}年`
 
 const HEADERS = ["事件簿番号", "受付日", "受任日", "事件の名称", "依頼者氏名", "依頼者住所", "報酬額（税込）", "結果"]
 

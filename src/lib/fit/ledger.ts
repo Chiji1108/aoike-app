@@ -41,6 +41,8 @@ export type BillingRow = {
   fee: number | null
   /** SHARP が負担する特殊対応の額（SHARP に請求する） */
   special: number
+  /** SHARP が負担する特殊対応なのに額が空 */
+  specialMissing: boolean
   invoicedOn: string | null
   invoiceNumber: string
 }
@@ -61,6 +63,7 @@ export function billingRows(rows: readonly LedgerSource[], month: string): Billi
       completedOn: r.completedOn!,
       fee: r.fee,
       special: r.special && r.specialPayer === "sharp" ? (r.specialAmount ?? 0) : 0,
+      specialMissing: r.special && r.specialPayer === "sharp" && r.specialAmount == null,
       invoicedOn: r.invoicedOn,
       invoiceNumber: r.invoiceNumber,
     }))

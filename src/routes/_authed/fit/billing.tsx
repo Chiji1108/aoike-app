@@ -40,6 +40,9 @@ function BillingPage() {
   const rows = useMemo(() => billingRows(sources, month), [sources, month])
   const total = billingTotal(rows)
   const missingFee = rows.filter((r) => r.fee == null)
+  const missingSpecial = rows.filter((r) => r.specialMissing)
+  // 額が決まっていない手続があるうちは、請求書を入れさせない（侍の請求書と明細がずれる）
+  const blocked = missingFee.length > 0 || missingSpecial.length > 0
   const notInvoiced = rows.filter((r) => !r.invoicedOn)
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [invoicedOn, setInvoicedOn] = useState(todayIso)
@@ -105,6 +108,9 @@ function BillingPage() {
         </span>
       </div>
       {missingFee.length > 0 && <p className="mb-3 text-sm text-red-700 dark:text-red-400">報酬額が空の手続があります（{missingFee.map((r) => r.number).join("、")}）。手続の画面で入れてください。</p>}
+      {missingSpecial.length > 0 && (
+        <p className="mb-3 text-sm text-red-700 dark:text-red-400">SHARP が負担する特殊対応の額が空の手続があります（{missingSpecial.map((r) => r.number).join("、")}）。手続の画面で入れてください。</p>
+      )}
 
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">{monthLabel(month)}に完了通知した手続はありません。</p>
@@ -147,6 +153,7 @@ function BillingPage() {
             <ReceiptText className="size-4" />
             侍で作った請求書を入れる（まだの {notInvoiced.length}件）
           </p>
+          {blocked && <p className="text-xs text-red-700 sm:col-span-3 dark:text-red-400">額が空の手続があるので、先に額を入れてください。</p>}
           <div className="grid gap-1.5">
             <Label htmlFor="invoiceNumber" className="text-xs text-muted-foreground">
               請求書番号（侍）
@@ -159,7 +166,7 @@ function BillingPage() {
             </Label>
             <Input id="invoicedOn" type="date" value={invoicedOn} onChange={(e) => setInvoicedOn(e.target.value)} className="h-9 num" />
           </div>
-          <Button type="submit" disabled={saving || !invoiceNumber.trim() || !invoicedOn} data-testid="billing-invoice-save">
+          <Button type="submit" disabled={saving || blocked || !invoiceNumber.trim() || !invoicedOn} data-testid="billing-invoice-save">
             {saving && <Loader2 className="animate-spin" />}
             まとめて入れる
           </Button>

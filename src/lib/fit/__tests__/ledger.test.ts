@@ -43,6 +43,8 @@ describe("請求", () => {
     ])
     expect(billingTotal(nov)).toBe(5_500 + 3_300 + 11_000 + 11_000)
     expect(billingMonths(rows)).toEqual(["2026-12", "2026-11"])
+    // SHARP 負担なのに額が空なら知らせる
+    expect(billingRows([src({ completedOn: "2026-11-01", special: true, specialPayer: "sharp" })], "2026-11")[0]!.specialMissing).toBe(true)
   })
 })
 
