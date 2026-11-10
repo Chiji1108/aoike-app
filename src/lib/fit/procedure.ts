@@ -1,4 +1,5 @@
 import { formatYen as yen } from "../commute"
+import { reiwaOf } from "../period"
 import type { CloseReason } from "./types"
 
 /** 事件簿の年（受付日の年。今の事件簿と同じく暦年で区切る） */
@@ -11,9 +12,6 @@ export const bookYearOf = (receivedOn: string) => Number(receivedOn.slice(0, 4))
 export function bookNumber(bookYear: number, seq: number) {
   return `F${reiwaOf(bookYear)}-${String(seq).padStart(4, "0")}`
 }
-
-/** 令和の年の数字（2026 → 8） */
-export const reiwaOf = (year: number) => year - 2018
 
 /** 受任日＝申込書と委任状がそろった日（遅いほう）。片方でも無ければまだ受任していない */
 export function acceptedOnOf(p: { receivedOn: string; poaReceivedOn: string | null }): string | null {

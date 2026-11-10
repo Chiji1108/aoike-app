@@ -2,8 +2,7 @@ import { Link, createFileRoute } from "@tanstack/react-router"
 import { ArrowRight, CalendarDays, ExternalLink, FileSpreadsheet, Globe, Sun, type LucideIcon } from "lucide-react"
 import { AppShell } from "@/components/app-shell"
 import { APP_NAME } from "@/lib/constants"
-import { reiwaOf } from "@/lib/fit/procedure"
-import { formatDateLong, todayIso, weekdayLabel } from "@/lib/period"
+import { formatDateLong, reiwaOf, todayIso, weekdayLabel } from "@/lib/period"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/_authed/")({
@@ -37,7 +36,8 @@ function PortalPage() {
   return (
     <AppShell>
       <header className="mb-8">
-        <p className="text-sm text-muted-foreground num">
+        {/* 日付はサーバーと画面で別に求めるので、日をまたぐ瞬間に開くと違うことがある（画面の値をそのまま使う） */}
+        <p className="text-sm text-muted-foreground num" suppressHydrationWarning>
           {formatDateLong(today)}（{weekdayLabel(today)}）・令和{reiwaOf(Number(today.slice(0, 4)))}年
         </p>
         <h1 className="mt-1 font-serif text-2xl font-semibold tracking-tight">業務ツール</h1>
