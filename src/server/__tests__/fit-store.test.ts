@@ -2,6 +2,13 @@ import { describe, expect, test } from "bun:test"
 import type { CaseInput } from "../fit-store"
 import {
   DuplicateCommonIdError,
+  addFile,
+  getFileRow,
+  listFiles,
+  purgeFiles,
+  purgeableFiles,
+  recordDownload,
+  type Bucket,
   addDefect,
   addProcedure,
   createCase,
@@ -160,5 +167,83 @@ describe("週次の案件表の記録", () => {
     ])
     expect((await getWeeklyReport(db, second.id))!.previous).toEqual({ p1: ["a"] })
     expect((await getWeeklyReport(db, first.id))!.previous).toBeNull()
+  })
+})
+
+/** R2 の代わり */
+function memoryBucket() {
+  const objects = new Map<string, number>()
+  const bucket: Bucket & { objects: typeof objects; failPut?: boolean } = {
+    objects,
+    async put(key, value) {
+      if (bucket.failPut) return null
+      const size = typeof value === "string" ? value.length : value instanceof Uint8Array ? value.byteLength : value instanceof ArrayBuffer ? value.byteLength : 0
+      objects.set(key, size)
+      return { size }
+    },
+    async delete(keys) {
+      for (const k of keys) objects.delete(k)
+    },
+  }
+  return bucket
+}
+
+const doc = (over: Partial<Parameters<typeof addFile>[3]> = {}) => ({ docType: "poa" as const, name: "委任状.pdf", contentType: "application/pdf", body: new Uint8Array(10), uploadedBy: "u1", ...over })
+
+describe("書類", () => {
+  test("同じ種類を置き直すと版が上がり、前の版も残る。ダウンロードを記録する", async () => {
+    const { db } = migratedFitDb()
+    const bucket = memoryBucket()
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    const v1 = await addFile(db, bucket, procedureId, doc())
+    const v2 = await addFile(db, bucket, procedureId, doc({ body: new Uint8Array(20) }))
+    await addFile(db, bucket, procedureId, doc({ docType: "seal_cert", name: "印鑑証明.jpg" }))
+    expect([v1!.version, v2!.version]).toEqual([1, 2])
+    await recordDownload(db, v1!.id, "u1")
+    await recordDownload(db, v1!.id, "u2")
+    const files = await listFiles(db, [procedureId])
+    expect(files.map((f) => [f.docType, f.version, f.size, f.downloads])).toEqual([
+      ["poa", 2, 20, 0],
+      ["poa", 1, 10, 2],
+      ["seal_cert", 1, 10, 0],
+    ])
+    expect(files[1]!.lastDownloadAt).toBeGreaterThan(0)
+    expect(bucket.objects.size).toBe(3)
+    expect(await addFile(db, bucket, "nope", doc())).toBeUndefined()
+  })
+
+  test("認定通知書を置くと「認定通知書を保存した」になる", async () => {
+    const { db } = migratedFitDb()
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    await addFile(db, memoryBucket(), procedureId, doc({ docType: "approval_notice", name: "認定通知書.pdf" }))
+    expect((await getProcedure(db, procedureId))!.noticeSaved).toBe(true)
+  })
+
+  test("R2 に置けなければ記録しない", async () => {
+    const { db } = migratedFitDb()
+    const bucket = memoryBucket()
+    bucket.failPut = true
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    await expect(addFile(db, bucket, procedureId, doc())).rejects.toThrow("書類を置けませんでした")
+    expect(await listFiles(db, [procedureId])).toEqual([])
+  })
+
+  test("保存期間：終わった手続で、帳簿を閉じた年末から2年たった書類だけ消せる。消しても記録は残る", async () => {
+    const { db } = migratedFitDb()
+    const bucket = memoryBucket()
+    const done = await createCase(db, caseInput({ commonId: "CP1" }), { kind: "new", receivedOn: "2026-11-02" })
+    const open = await createCase(db, caseInput({ commonId: "CP2" }), { kind: "new", receivedOn: "2026-11-03" })
+    await updateProcedure(db, done.procedureId, { closeReason: "cancelled" })
+    const f1 = await addFile(db, bucket, done.procedureId, doc())
+    await addFile(db, bucket, open.procedureId, doc())
+    expect(await purgeableFiles(db, 2, "2028-12-31")).toEqual([])
+    const listed = await purgeableFiles(db, 2, "2029-01-01")
+    expect(listed.map((r) => r.file.id)).toEqual([f1!.id])
+    // 期間が過ぎていないもの（終わっていない手続の書類）は、id を渡しても消さない
+    const all = await listFiles(db, [done.procedureId, open.procedureId])
+    expect(await purgeFiles(db, bucket, all.map((f) => f.id), 2, "2029-01-01")).toBe(1)
+    expect(bucket.objects.size).toBe(1)
+    expect((await getFileRow(db, f1!.id))!.purgedAt).toBeInstanceOf(Date)
+    expect(await purgeableFiles(db, 2, "2029-01-01")).toEqual([])
   })
 })

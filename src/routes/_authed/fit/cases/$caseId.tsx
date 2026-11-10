@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { AppShell, FIT } from "@/components/app-shell"
 import { CaseFields, caseInput, caseValues, type CaseValues } from "@/components/fit/case-fields"
 import { Defects } from "@/components/fit/defects"
+import { Documents } from "@/components/fit/documents"
 import { DateField, SelectField, optionsOf } from "@/components/fit/fields"
 import { ProcedureDialog } from "@/components/fit/procedure-dialog"
 import { StatusBadge } from "@/components/fit/status-badge"
@@ -16,8 +17,9 @@ import { errorMessage } from "@/lib/errors"
 import { acceptedOnOf, bookNumber, formatDate, formatYen, statusOf } from "@/lib/fit/procedure"
 import type { FeeTable } from "@/lib/fit/settings"
 import { todayIso } from "@/lib/period"
-import { CLOSE_REASON_LABELS, PROCEDURE_KIND_LABELS, SITE_ADDRESS_KIND_LABELS, type ProcedureKind } from "@/lib/fit/types"
+import { APPROVAL_KINDS, CLOSE_REASON_LABELS, PROCEDURE_KIND_LABELS, SITE_ADDRESS_KIND_LABELS, type ProcedureKind } from "@/lib/fit/types"
 import { addProcedureFn, getCasePageFn, updateCaseFn } from "@/server/fit-fns"
+import type { FileView } from "@/server/fit-store"
 
 export const Route = createFileRoute("/_authed/fit/cases/$caseId")({
   loader: async ({ params }) => {
@@ -30,7 +32,7 @@ export const Route = createFileRoute("/_authed/fit/cases/$caseId")({
 })
 
 function CasePage() {
-  const { fitCase, procedures, defects, feeTables } = Route.useLoaderData()
+  const { fitCase, procedures, defects, files, feeTables } = Route.useLoaderData()
   const router = useRouter()
   const reload = () => void router.invalidate()
   const [editing, setEditing] = useState(false)
@@ -69,7 +71,15 @@ function CasePage() {
             </Button>
           </div>
           {procedures.map((p) => (
-            <ProcedureCard key={p.id} procedure={p} defects={defects.filter((d) => d.procedureId === p.id)} feeTables={feeTables} onChanged={reload} />
+            <ProcedureCard
+              key={p.id}
+              procedure={p}
+              defects={defects.filter((d) => d.procedureId === p.id)}
+              files={files.filter((f) => f.procedureId === p.id)}
+              sharedOwnership={fitCase.sharedOwnership}
+              feeTables={feeTables}
+              onChanged={reload}
+            />
           ))}
         </section>
         <CaseSummary fitCase={fitCase} />
@@ -81,7 +91,21 @@ function CasePage() {
   )
 }
 
-function ProcedureCard({ procedure: p, defects, feeTables, onChanged }: { procedure: FitProcedure; defects: FitDefect[]; feeTables: readonly FeeTable[]; onChanged: () => void }) {
+function ProcedureCard({
+  procedure: p,
+  defects,
+  files,
+  sharedOwnership,
+  feeTables,
+  onChanged,
+}: {
+  procedure: FitProcedure
+  defects: FitDefect[]
+  files: FileView[]
+  sharedOwnership: boolean
+  feeTables: readonly FeeTable[]
+  onChanged: () => void
+}) {
   const [open, setOpen] = useState(false)
   const status = statusOf(p, defects.filter((d) => !d.resolvedOn))
   const items: [string, string][] = [
@@ -96,6 +120,7 @@ function ProcedureCard({ procedure: p, defects, feeTables, onChanged }: { proced
     ["完了通知日", formatDate(p.completedOn)],
     ["請求書発行日", formatDate(p.invoicedOn)],
     ["入金日", formatDate(p.paidOn)],
+    ...(APPROVAL_KINDS.has(p.kind) ? ([["認定通知書", p.noticeSaved ? "保存済み" : "未保存"]] as [string, string][]) : []),
   ]
   return (
     <article className="grid gap-4 rounded-2xl border bg-card p-5" data-testid="fit-procedure">
@@ -121,6 +146,7 @@ function ProcedureCard({ procedure: p, defects, feeTables, onChanged }: { proced
         ))}
       </dl>
       {p.note && <p className="text-sm whitespace-pre-wrap text-muted-foreground">{p.note}</p>}
+      <Documents procedureId={p.id} kind={p.kind} sharedOwnership={sharedOwnership} files={files} onChanged={onChanged} />
       <Defects procedureId={p.id} defects={defects} applied={!!p.appliedOn} onChanged={onChanged} />
       {open && <ProcedureDialog procedure={p} feeTables={feeTables} open={open} onOpenChange={setOpen} onSaved={onChanged} />}
     </article>

@@ -1,4 +1,5 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { DOC_TYPES } from "../lib/fit/documents"
 import type { FitSettings } from "../lib/fit/settings"
 import { CLOSE_REASONS, DEFECT_KINDS, DEFECT_PARTIES, PROCEDURE_KINDS, SITE_ADDRESS_KINDS, SPECIAL_PAYERS } from "../lib/fit/types"
 import { createdAt, updatedAt } from "./auth-schema"
@@ -140,6 +141,45 @@ export const fitWeeklyReports = sqliteTable("fit_weekly_reports", {
   createdAt: createdAt(),
 })
 
+/**
+ * 手続の書類（本体は R2 の FIT_FILES）。同じ種類を置き直すと版を1つ上げて足す（上書き・削除はしない）。
+ * 保存期間が過ぎて消したものは、R2 から消して purgedAt を入れ、記録は残す
+ */
+export const fitFiles = sqliteTable(
+  "fit_files",
+  {
+    id: id(),
+    procedureId: text("procedure_id")
+      .notNull()
+      .references(() => fitProcedures.id),
+    docType: text("doc_type", { enum: DOC_TYPES }).notNull(),
+    version: integer("version").notNull(),
+    name: text("name").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    r2Key: text("r2_key").notNull(),
+    /** 置いた人（認証用 D1 のユーザー id。別の D1 なので外部キーにしない） */
+    uploadedBy: text("uploaded_by").notNull(),
+    purgedAt: integer("purged_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("fit_files_version_uq").on(t.procedureId, t.docType, t.version)],
+)
+
+/** 書類をだれがいつダウンロードしたか */
+export const fitFileDownloads = sqliteTable(
+  "fit_file_downloads",
+  {
+    id: id(),
+    fileId: text("file_id")
+      .notNull()
+      .references(() => fitFiles.id),
+    userId: text("user_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("fit_file_downloads_file_idx").on(t.fileId)],
+)
+
 /** FIT の設定（1行だけ。id は "default"）。無い項目は src/lib/fit/settings.ts の初期値 */
 export const fitSettings = sqliteTable("fit_settings", {
   id: text("id").primaryKey(),
@@ -150,3 +190,4 @@ export const fitSettings = sqliteTable("fit_settings", {
 export type FitCase = typeof fitCases.$inferSelect
 export type FitProcedure = typeof fitProcedures.$inferSelect
 export type FitDefect = typeof fitDefects.$inferSelect
+export type FitFile = typeof fitFiles.$inferSelect

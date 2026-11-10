@@ -80,6 +80,11 @@
 		{
 			"binding": "CSV_FILES",
 			"bucket_name": "aoike-kensetsu-csv-files"
+		},
+		/** FIT 申請の手続の書類（公開アクセスなし。ログインした人だけが Worker 経由でダウンロードする） */
+		{
+			"binding": "FIT_FILES",
+			"bucket_name": "aoike-fit-files"
 		}
 	],
 	/** 工事経歴書 CSV の工事場所の一括調査（src/server/location-workflow.ts。src/worker.ts から出している） */

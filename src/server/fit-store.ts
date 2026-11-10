@@ -1,7 +1,8 @@
-import { asc, desc, eq, isNull, lt, sql } from "drizzle-orm"
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, lt, lte, max, or, sql } from "drizzle-orm"
 import type { BatchItem, BatchResponse } from "drizzle-orm/batch"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
-import { fitCases, fitDefects, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitProcedure } from "@/db/fit-schema"
+import { fitCases, fitDefects, fitFileDownloads, fitFiles, fitProcedures, fitSettings, fitWeeklyReports, type FitCase, type FitDefect, type FitFile, type FitProcedure } from "@/db/fit-schema"
+import { lastPurgeableBookYear, r2KeyOf, type DocType } from "@/lib/fit/documents"
 import type * as schema from "@/db/fit-schema"
 import { acceptedOnOf, bookYearOf } from "@/lib/fit/procedure"
 import { feeFor, withDefaults, type FitSettings } from "@/lib/fit/settings"
@@ -182,7 +183,11 @@ export async function getCasePage(db: Db, id: string) {
         .where(eq(fitProcedures.caseId, id))
         .orderBy(asc(fitDefects.createdAt))
     : []
-  return { fitCase, procedures, defects: defects.map((r) => r.d) }
+  const files = await listFiles(
+    db,
+    procedures.map((p) => p.id),
+  )
+  return { fitCase, procedures, defects: defects.map((r) => r.d), files }
 }
 
 // ---- 週次の案件表 ----
@@ -224,4 +229,103 @@ export async function getWeeklyReport(db: Db, id: string) {
     .orderBy(desc(fitWeeklyReports.createdAt))
     .limit(1)
   return { meta: toMeta(report), rows: report.rows, previous: previous?.rows ?? null }
+}
+
+// ---- 書類 ----
+
+/** R2Bucket のうち使うところ（テストは手元の代わりで回す） */
+export type Bucket = {
+  put(key: string, value: ReadableStream | ArrayBuffer | Uint8Array | string, options?: { httpMetadata?: { contentType?: string } }): Promise<{ size: number } | null>
+  delete(keys: string[]): Promise<void>
+}
+
+export type FileView = Omit<FitFile, "r2Key" | "createdAt" | "purgedAt"> & { createdAt: number; purgedAt: number | null; downloads: number; lastDownloadAt: number | null }
+
+/**
+ * 手続に書類を置く（同じ種類なら版を1つ上げる）。R2 に置いてから記録し、記録できなければ R2 からも消す。
+ * 認定通知書を置いたら「認定通知書を保存した」にする（手で印を付けない）
+ */
+export async function addFile(
+  db: Db,
+  bucket: Bucket,
+  procedureId: string,
+  file: { docType: DocType; name: string; contentType: string; body: ReadableStream | ArrayBuffer | Uint8Array; uploadedBy: string },
+): Promise<{ id: string; version: number } | undefined> {
+  if (!(await getProcedure(db, procedureId))) return undefined
+  const id = crypto.randomUUID()
+  const r2Key = r2KeyOf(procedureId, id)
+  const put = await bucket.put(r2Key, file.body, { httpMetadata: { contentType: file.contentType } })
+  if (!put) throw new Error("書類を置けませんでした")
+  const nextVersion = sql<number>`(select coalesce(max(${fitFiles.version}), 0) + 1 from ${fitFiles} where ${fitFiles.procedureId} = ${procedureId} and ${fitFiles.docType} = ${file.docType})`
+  try {
+    const [row] = await db
+      .insert(fitFiles)
+      .values({ id, procedureId, docType: file.docType, version: nextVersion, name: file.name, contentType: file.contentType, size: put.size, r2Key, uploadedBy: file.uploadedBy })
+      .returning({ id: fitFiles.id, version: fitFiles.version })
+    if (file.docType === "approval_notice") await db.update(fitProcedures).set({ noticeSaved: true }).where(eq(fitProcedures.id, procedureId))
+    return row!
+  } catch (e) {
+    await bucket.delete([r2Key])
+    throw e
+  }
+}
+
+/** 手続の書類（種類・版の順。ダウンロードの回数と最後の日時をつける） */
+export async function listFiles(db: Db, procedureIds: string[]): Promise<FileView[]> {
+  if (procedureIds.length === 0) return []
+  const rows = await db
+    .select({ f: fitFiles, downloads: count(fitFileDownloads.id), last: max(fitFileDownloads.createdAt) })
+    .from(fitFiles)
+    .leftJoin(fitFileDownloads, eq(fitFileDownloads.fileId, fitFiles.id))
+    .where(inArray(fitFiles.procedureId, procedureIds))
+    .groupBy(fitFiles.id)
+    .orderBy(asc(fitFiles.docType), desc(fitFiles.version))
+  return rows.map(({ f: { r2Key: _, ...f }, downloads, last }) => ({
+    ...f,
+    createdAt: f.createdAt.getTime(),
+    purgedAt: f.purgedAt?.getTime() ?? null,
+    downloads,
+    // max() は列の型を引き継がず、sqlite のミリ秒の数のまま返る
+    lastDownloadAt: last == null ? null : Number(last instanceof Date ? last.getTime() : last),
+  }))
+}
+
+export async function getFileRow(db: Db, id: string) {
+  const [row] = await db.select().from(fitFiles).where(eq(fitFiles.id, id))
+  return row
+}
+
+export async function recordDownload(db: Db, fileId: string, userId: string) {
+  await db.insert(fitFileDownloads).values({ fileId, userId })
+}
+
+/** 手続が終わった（入金済み・取下げ・中止） */
+const finished = or(isNotNull(fitProcedures.paidOn), isNotNull(fitProcedures.closeReason))
+
+/** 保存期間が過ぎて消してよい書類（消す前に一覧で確かめる） */
+export async function purgeableFiles(db: Db, years: number, today: string) {
+  const rows = await db
+    .select({ file: fitFiles, bookYear: fitProcedures.bookYear, seq: fitProcedures.seq, caseId: fitProcedures.caseId, name: fitCases.name })
+    .from(fitFiles)
+    .innerJoin(fitProcedures, eq(fitProcedures.id, fitFiles.procedureId))
+    .innerJoin(fitCases, eq(fitCases.id, fitProcedures.caseId))
+    // 帳簿を閉じた年末から years 年たった年の書類だけを読む
+    .where(and(isNull(fitFiles.purgedAt), finished, lte(fitProcedures.bookYear, lastPurgeableBookYear(years, today))))
+    .orderBy(asc(fitProcedures.bookYear), asc(fitProcedures.seq), asc(fitFiles.docType), asc(fitFiles.version))
+  return rows.map(({ file: { r2Key: _, ...f }, ...r }) => ({ ...r, file: { ...f, createdAt: f.createdAt.getTime(), purgedAt: null } }))
+}
+
+/** 保存期間が過ぎた書類を R2 から消し、記録に消した日時を入れる（期間が過ぎていないものは消さない） */
+export async function purgeFiles(db: Db, bucket: Bucket, ids: string[], years: number, today: string) {
+  const allowed = new Set((await purgeableFiles(db, years, today)).map((r) => r.file.id))
+  const targets = ids.filter((id) => allowed.has(id))
+  if (targets.length === 0) return 0
+  // D1 は1つの文に渡せる値が100個までなので分けて消す（R2 の delete は1000件まで）
+  for (let i = 0; i < targets.length; i += 90) {
+    const chunk = targets.slice(i, i + 90)
+    const rows = await db.select({ r2Key: fitFiles.r2Key }).from(fitFiles).where(inArray(fitFiles.id, chunk))
+    await bucket.delete(rows.map((r) => r.r2Key))
+    await db.update(fitFiles).set({ purgedAt: new Date() }).where(inArray(fitFiles.id, chunk))
+  }
+  return targets.length
 }
