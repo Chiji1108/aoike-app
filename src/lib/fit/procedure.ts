@@ -1,9 +1,5 @@
+import { formatYen as yen } from "../commute"
 import type { CloseReason, ProcedureKind } from "./types"
-
-/** 今日（日本時間）の YYYY-MM-DD */
-export function todayIso(now = new Date()) {
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
-}
 
 /** 事件簿の年（受付日の年。今の事件簿と同じく暦年で区切る） */
 export const bookYearOf = (receivedOn: string) => Number(receivedOn.slice(0, 4))
@@ -93,7 +89,8 @@ export function formatDate(iso: string | null | undefined) {
   return `${y}/${Number(m)}/${Number(d)}`
 }
 
-export const formatYen = (n: number | null | undefined) => (n == null ? "" : `${n.toLocaleString("ja-JP")}円`)
+/** 報酬額の表示（まだ無ければ空） */
+export const formatYen = (n: number | null | undefined) => (n == null ? "" : yen(n))
 
 /** 手続と、済んでいない不備・補正から状況を決める */
 export function statusOf(p: Omit<StatusInput, "openCorrection">, openDefects: readonly { kind: string }[]): ProcedureStatus {

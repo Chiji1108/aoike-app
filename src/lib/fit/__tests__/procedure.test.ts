@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { acceptedOnOf, bookNumber, feeFor, looksLikeCommonId, procedureStatus, todayIso, type StatusInput } from "../procedure"
+import { todayIso } from "../../period"
+import { acceptedOnOf, bookNumber, feeFor, looksLikeCommonId, procedureStatus, type StatusInput } from "../procedure"
 import { compareWeekly, isUpdated, weeklyValues, type WeeklySource } from "../weekly"
 
 const base: StatusInput = {

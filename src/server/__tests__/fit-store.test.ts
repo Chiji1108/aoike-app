@@ -100,6 +100,14 @@ describe("FIT の案件・手続", () => {
     expect((await getProcedure(db, change.id))!.completedOn).toBe("2027-02-20")
   })
 
+  test("受付日は番号の年の中でだけ直せる", async () => {
+    const { db } = migratedFitDb()
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-12-28" })
+    await updateProcedure(db, procedureId, { receivedOn: "2026-12-25" })
+    expect((await getProcedure(db, procedureId))!.receivedOn).toBe("2026-12-25")
+    await expect(updateProcedure(db, procedureId, { receivedOn: "2027-01-04" })).rejects.toThrow("番号の年（2026年）")
+  })
+
   test("その他変更認定は報酬表に額が無いので空のまま", async () => {
     const { db } = migratedFitDb()
     const { procedureId } = await createCase(db, caseInput(), { kind: "other_change", receivedOn: "2026-11-02" })

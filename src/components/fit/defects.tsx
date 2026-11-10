@@ -4,8 +4,9 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import type { FitDefect } from "@/db/fit-schema"
 import { errorMessage } from "@/lib/errors"
-import { formatDate, todayIso } from "@/lib/fit/procedure"
+import { formatDate } from "@/lib/fit/procedure"
 import { DEFECT_KIND_LABELS, DEFECT_PARTY_LABELS, type DefectKind, type DefectParty } from "@/lib/fit/types"
+import { todayIso } from "@/lib/period"
 import { cn } from "@/lib/utils"
 import { addDefectFn, deleteDefectFn, updateDefectFn } from "@/server/fit-fns"
 import { DateField, SelectField, TextField, dateOrNull, optionsOf } from "./fields"
@@ -16,13 +17,16 @@ import { DateField, SelectField, TextField, dateOrNull, optionsOf } from "./fiel
 export function Defects({ procedureId, defects, applied, onChanged }: { procedureId: string; defects: FitDefect[]; applied: boolean; onChanged: () => void }) {
   const [adding, setAdding] = useState(false)
 
+  /** うまくいったら true（失敗したら知らせて false。足すフォームは閉じずに入力を残す） */
   async function run(action: () => Promise<unknown>, done: string) {
     try {
       await action()
       toast.success(done)
       onChanged()
+      return true
     } catch (e) {
       toast.error(errorMessage(e))
+      return false
     }
   }
 
@@ -64,8 +68,7 @@ export function Defects({ procedureId, defects, applied, onChanged }: { procedur
           defaultKind={applied ? "after" : "before"}
           onCancel={() => setAdding(false)}
           onSubmit={async (defect) => {
-            await run(() => addDefectFn({ data: { procedureId, defect } }), "不備を足しました")
-            setAdding(false)
+            if (await run(() => addDefectFn({ data: { procedureId, defect } }), "不備を足しました")) setAdding(false)
           }}
         />
       )}

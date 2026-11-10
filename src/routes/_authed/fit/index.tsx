@@ -26,9 +26,9 @@ type Row = Source & { number: string; status: ProcedureStatus; acceptedOn: strin
 const features = tableFeatures({ rowSortingFeature, sortedRowModel: createSortedRowModel(), sortFns: { alphanumeric: sortFn_alphanumeric } })
 const col = createColumnHelper<typeof features, Row>()
 
-/** 日付の列（空は並べ替えで後ろ） */
+/** 日付の列（空はどちら向きに並べ替えても後ろ） */
 const dateColumn = (id: keyof Row & string, header: string) =>
-  col.accessor((r) => (r[id] as string | null) ?? "", { id, header, sortFn: "alphanumeric", cell: (c) => <span className="num">{formatDate(c.getValue())}</span> })
+  col.accessor((r) => (r[id] as string | null) || undefined, { id, header, sortFn: "alphanumeric", sortUndefined: "last", cell: (c) => <span className="num">{formatDate(c.getValue())}</span> })
 
 const columns = col.columns([
   col.accessor((r) => r.bookYear * 100_000 + r.seq, {

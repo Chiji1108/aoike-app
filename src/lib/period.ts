@@ -28,10 +28,9 @@ export function addDays(iso: string, days: number) {
   return formatIsoDate(d)
 }
 
-/** 日本時間の今日（YYYY-MM-DD） */
-export function todayIso() {
-  const now = new Date(Date.now() + 9 * 60 * 60 * 1000)
-  return formatIsoDate(now)
+/** 日本時間の今日（YYYY-MM-DD）。now を渡すと、その時刻の日本時間の日付 */
+export function todayIso(now = new Date()) {
+  return formatIsoDate(new Date(now.getTime() + 9 * 60 * 60 * 1000))
 }
 
 export function periodKeyOf(year: number, month: number): PeriodKey {

@@ -8,7 +8,7 @@ import { DateField, SelectField, optionsOf } from "@/components/fit/fields"
 import { Button } from "@/components/ui/button"
 import { FIT_NAME } from "@/lib/constants"
 import { errorMessage } from "@/lib/errors"
-import { todayIso } from "@/lib/fit/procedure"
+import { todayIso } from "@/lib/period"
 import { PROCEDURE_KIND_LABELS, type ProcedureKind } from "@/lib/fit/types"
 import { createCaseFn } from "@/server/fit-fns"
 

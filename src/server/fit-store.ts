@@ -94,6 +94,8 @@ export async function getProcedure(db: Db, id: string) {
 export async function updateProcedure(db: Db, id: string, patch: ProcedurePatch) {
   const current = await getProcedure(db, id)
   if (!current) throw new Error("手続が見つかりません")
+  // 番号は受付日の年で付けたので、年をまたぐ直しはさせない（番号の年と受付日の年がずれる）
+  if (patch.receivedOn && bookYearOf(patch.receivedOn) !== current.bookYear) throw new Error(`受付日は番号の年（${current.bookYear}年）の日付にしてください。年が違うなら新しい手続を足してください`)
   const kindChanged = patch.kind !== undefined && patch.kind !== current.kind && patch.fee === undefined
   const next = { ...current, ...patch, ...(kindChanged && { fee: null }) }
   // 認定通知書は1回しかダウンロードできないので、保存したと印を付けるまで完了通知に進めない
