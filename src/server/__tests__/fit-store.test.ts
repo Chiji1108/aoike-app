@@ -7,6 +7,8 @@ import {
   createCase,
   getCasePage,
   getProcedure,
+  getSettings,
+  saveSettings,
   getWeeklyReport,
   latestWeeklyRows,
   listProcedures,
@@ -126,6 +128,21 @@ describe("FIT の案件・手続", () => {
     const page = await getCasePage(db, caseId)
     expect(page!.defects.map((d) => d.content)).toEqual(["委任状", "割付図"])
     expect(await getCasePage(db, "nope")).toBeUndefined()
+  })
+})
+
+describe("設定", () => {
+  test("保存していなければ初期値。保存し直せて、報酬は保存した報酬表から入る", async () => {
+    const { db } = migratedFitDb()
+    const initial = await getSettings(db)
+    expect(initial.sealWarnDays).toBe(14)
+    const next = { ...initial, feeTables: [{ acceptedUntil: "2027-03-31", fees: { ...initial.feeTables[0]!.fees, new: 12_100 } }] }
+    await saveSettings(db, next)
+    await saveSettings(db, { ...next, sealWarnDays: 10 })
+    expect((await getSettings(db)).sealWarnDays).toBe(10)
+    const { procedureId } = await createCase(db, caseInput(), { kind: "new", receivedOn: "2026-11-02" })
+    await updateProcedure(db, procedureId, { poaReceivedOn: "2026-11-05" })
+    expect((await getProcedure(db, procedureId))!.fee).toBe(12_100)
   })
 })
 

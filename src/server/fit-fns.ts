@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start"
 import { z } from "zod"
 import { getFitDb } from "@/db"
 import { CLOSE_REASONS, DEFECT_KINDS, DEFECT_PARTIES, PROCEDURE_KINDS, SITE_ADDRESS_KINDS, SPECIAL_PAYERS } from "@/lib/fit/types"
+import { settingsSchema } from "@/lib/fit/settings"
 import { compareWeekly, weeklyValues } from "@/lib/fit/weekly"
 import { authMiddleware } from "./middleware"
 import * as store from "./fit-store"
@@ -74,9 +75,23 @@ const defectSchema = z.object({
   resolvedOn: optionalDate,
 })
 
+/** 手続の一覧とトップ：手続と、期限の見張りに使う設定 */
 export const listProceduresFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
-  .handler(() => store.listProcedures(getFitDb()))
+  .handler(async () => {
+    const db = getFitDb()
+    const [rows, settings] = await Promise.all([store.listProcedures(db), store.getSettings(db)])
+    return { rows, settings }
+  })
+
+export const getSettingsFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(() => store.getSettings(getFitDb()))
+
+export const saveSettingsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(settingsSchema)
+  .handler(({ data }) => store.saveSettings(getFitDb(), data))
 
 /** 申込書を受け付けたとき：案件と最初の手続を作る */
 export const createCaseFn = createServerFn({ method: "POST" })
@@ -84,11 +99,15 @@ export const createCaseFn = createServerFn({ method: "POST" })
   .validator(z.object({ fitCase: caseSchema, kind: z.enum(PROCEDURE_KINDS), receivedOn: isoDate }))
   .handler(({ data }) => store.createCase(getFitDb(), data.fitCase, { kind: data.kind, receivedOn: data.receivedOn }))
 
-/** 案件の画面。案件が無ければ null */
+/** 案件の画面（手続の編集で報酬表の額を見せるので、報酬表もつける）。案件が無ければ null */
 export const getCasePageFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .validator(z.object({ id }))
-  .handler(async ({ data }) => (await store.getCasePage(getFitDb(), data.id)) ?? null)
+  .handler(async ({ data }) => {
+    const db = getFitDb()
+    const [page, settings] = await Promise.all([store.getCasePage(db, data.id), store.getSettings(db)])
+    return page ? { ...page, feeTables: settings.feeTables } : null
+  })
 
 export const updateCaseFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])

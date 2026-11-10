@@ -74,7 +74,7 @@ export function CaseFields({ values, set }: { values: CaseValues; set: <K extend
         <TextField label="現住所（または仮住まい）" value={values.address} onChange={(v) => set("address", v)} hint="設置場所と違えば、あとで事後変更届になりやすい" />
         <TextField label="設置場所の郵便番号" value={values.sitePostalCode} onChange={(v) => set("sitePostalCode", v)} />
         <TextField label="設置場所" value={values.siteAddress} onChange={(v) => set("siteAddress", v)} testId="fit-site-address" />
-        <SelectField label="設置場所の書き方" value={values.siteAddressKind} onChange={(v) => set("siteAddressKind", v)} options={optionsOf(SITE_ADDRESS_KIND_LABELS)} empty="—" />
+        <SelectField label="設置場所の書き方" value={values.siteAddressKind} onChange={(v) => set("siteAddressKind", v)} options={optionsOf(SITE_ADDRESS_KIND_LABELS)} empty="—" testId="fit-site-kind" />
         <TextField label="設置場所のフリガナ" value={values.siteKana} onChange={(v) => set("siteKana", v)} hint={values.siteAddressKind === "lot" ? "地番で申請したら、住居表示が決まったときに事前変更届" : undefined} />
       </section>
 

@@ -28,6 +28,18 @@ export function addDays(iso: string, days: number) {
   return formatIsoDate(d)
 }
 
+/** months か月後の同じ日（その月に無ければ月末。11/30 の3か月後は 2/28） */
+export function addMonths(iso: string, months: number) {
+  const [y, m, d] = iso.split("-").map(Number)
+  const last = new Date(Date.UTC(y!, m! - 1 + months + 1, 0)).getUTCDate()
+  return formatIsoDate(new Date(Date.UTC(y!, m! - 1 + months, Math.min(d!, last))))
+}
+
+/** from から to までの日数（to が前なら負） */
+export function daysBetween(from: string, to: string) {
+  return Math.round((parseDate(to).getTime() - parseDate(from).getTime()) / 86_400_000)
+}
+
 /** 日本時間の今日（YYYY-MM-DD）。now を渡すと、その時刻の日本時間の日付 */
 export function todayIso(now = new Date()) {
   return formatIsoDate(new Date(now.getTime() + 9 * 60 * 60 * 1000))

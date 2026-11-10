@@ -1,5 +1,5 @@
 import { formatYen as yen } from "../commute"
-import type { CloseReason, ProcedureKind } from "./types"
+import type { CloseReason } from "./types"
 
 /** 事件簿の年（受付日の年。今の事件簿と同じく暦年で区切る） */
 export const bookYearOf = (receivedOn: string) => Number(receivedOn.slice(0, 4))
@@ -16,21 +16,6 @@ export function bookNumber(bookYear: number, seq: number) {
 export function acceptedOnOf(p: { receivedOn: string; poaReceivedOn: string | null }): string | null {
   if (!p.poaReceivedOn) return null
   return p.poaReceivedOn > p.receivedOn ? p.poaReceivedOn : p.receivedOn
-}
-
-/**
- * 報酬表（税込・円）。acceptedUntil までに受任したものにその表を使う（古い順に並べる）。
- * 申込書の別紙1（2027-03-31 までに受任時の価格）。その他変更認定は事案ごとなので表に額が無い（手で入れる）。
- * 次の報酬表が決まったら、下に足す
- */
-export const FEE_TABLES: readonly { acceptedUntil: string; fees: Record<ProcedureKind, number | null> }[] = [
-  { acceptedUntil: "2027-03-31", fees: { new: 11_000, pre_change: 5_500, post_change: 5_500, change_approval: 5_500, other_change: null } },
-]
-
-/** 受任日の報酬表の額。表が無い（期間の外）か、事案ごとの区分なら null */
-export function feeFor(kind: ProcedureKind, acceptedOn: string): number | null {
-  const table = FEE_TABLES.find((t) => acceptedOn <= t.acceptedUntil)
-  return table?.fees[kind] ?? null
 }
 
 /** 手続の状況（日付と印から決める。手では入れない） */
@@ -95,4 +80,11 @@ export const formatYen = (n: number | null | undefined) => (n == null ? "" : yen
 /** 手続と、済んでいない不備・補正から状況を決める */
 export function statusOf(p: Omit<StatusInput, "openCorrection">, openDefects: readonly { kind: string }[]): ProcedureStatus {
   return procedureStatus({ ...p, openCorrection: openDefects.some((d) => d.kind === "after") })
+}
+
+/** 状況ごとの件数 */
+export function countByStatus(statuses: Iterable<ProcedureStatus>): Map<ProcedureStatus, number> {
+  const m = new Map<ProcedureStatus, number>()
+  for (const s of statuses) m.set(s, (m.get(s) ?? 0) + 1)
+  return m
 }

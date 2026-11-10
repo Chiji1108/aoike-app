@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import type { FitProcedure } from "@/db/fit-schema"
 import { errorMessage } from "@/lib/errors"
-import { acceptedOnOf, bookNumber, feeFor, formatDate, formatYen } from "@/lib/fit/procedure"
+import { acceptedOnOf, bookNumber, formatDate, formatYen } from "@/lib/fit/procedure"
+import { feeFor, type FeeTable } from "@/lib/fit/settings"
 import { CLOSE_REASON_LABELS, NOTICE_KINDS, PROCEDURE_KIND_LABELS, SPECIAL_PAYER_LABELS, type CloseReason, type ProcedureKind, type SpecialPayer } from "@/lib/fit/types"
 import { updateProcedureFn } from "@/server/fit-fns"
 import { CheckField, DateField, SelectField, TextField, TextareaField, dateOrNull, intOrNull, optionsOf } from "./fields"
@@ -107,14 +108,26 @@ function changedPatch(before: Values, after: Values) {
 }
 
 /** 手続の編集。保存したら閉じて、画面を読み直す */
-export function ProcedureDialog({ procedure, open, onOpenChange, onSaved }: { procedure: FitProcedure; open: boolean; onOpenChange: (open: boolean) => void; onSaved: () => void }) {
+export function ProcedureDialog({
+  procedure,
+  feeTables,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  procedure: FitProcedure
+  feeTables: readonly FeeTable[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+}) {
   const [initial] = useState(() => valuesOf(procedure))
   const [values, setValues] = useState(initial)
   const [saving, setSaving] = useState(false)
   const set = <K extends keyof Values>(key: K, value: Values[K]) => setValues((v) => ({ ...v, [key]: value }))
 
   const accepted = acceptedOnOf({ receivedOn: values.receivedOn, poaReceivedOn: dateOrNull(values.poaReceivedOn) })
-  const tableFee = accepted ? feeFor(values.kind, accepted) : null
+  const tableFee = accepted ? feeFor(values.kind, accepted, feeTables) : null
   const isChange = NOTICE_KINDS.has(values.kind)
 
   async function save(e: React.FormEvent) {
@@ -150,7 +163,7 @@ export function ProcedureDialog({ procedure, open, onOpenChange, onSaved }: { pr
               <SelectField label="申請区分" value={values.kind} onChange={(v) => v && set("kind", v)} options={optionsOf(PROCEDURE_KIND_LABELS)} testId="proc-kind" />
               <DateField label="申込書の受付日" value={values.receivedOn} onChange={(v) => v && set("receivedOn", v)} />
               <DateField label="委任状の受付日" value={values.poaReceivedOn} onChange={(v) => set("poaReceivedOn", v)} testId="proc-poa" hint={accepted ? `受任日 ${formatDate(accepted)}（遅いほう）` : "申込書と委任状がそろった日が受任日"} />
-              <DateField label="印鑑証明の発行日" value={values.sealCertIssuedOn} onChange={(v) => set("sealCertIssuedOn", v)} hint="申請時点で発行から3か月以内" />
+              <DateField label="印鑑証明の発行日" value={values.sealCertIssuedOn} onChange={(v) => set("sealCertIssuedOn", v)} hint="申請時点で発行から3か月以内" testId="proc-seal" />
               <TextField
                 label="報酬額（税込・円）"
                 type="number"

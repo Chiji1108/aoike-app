@@ -19,6 +19,8 @@ import { Route as AuthedCsvFeedbackRouteImport } from './routes/_authed/csv/feed
 import { Route as AuthedCsvRulesRouteImport } from './routes/_authed/csv/rules'
 import { Route as AuthedFitIndexRouteImport } from './routes/_authed/fit/index'
 import { Route as AuthedFitNewRouteImport } from './routes/_authed/fit/new'
+import { Route as AuthedFitProceduresRouteImport } from './routes/_authed/fit/procedures'
+import { Route as AuthedFitSettingsRouteImport } from './routes/_authed/fit/settings'
 import { Route as AuthedFitWeeklyRouteImport } from './routes/_authed/fit/weekly'
 import { Route as AuthedKintaiIndexRouteImport } from './routes/_authed/kintai/index'
 import { Route as AuthedKintaiEmployeesRouteImport } from './routes/_authed/kintai/employees'
@@ -78,6 +80,16 @@ const AuthedFitIndexRoute = AuthedFitIndexRouteImport.update({
 const AuthedFitNewRoute = AuthedFitNewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
+const AuthedFitProceduresRoute = AuthedFitProceduresRouteImport.update({
+  id: '/procedures',
+  path: '/procedures',
+  getParentRoute: () => AuthedFitRoute,
+} as any)
+const AuthedFitSettingsRoute = AuthedFitSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AuthedFitRoute,
 } as any)
 const AuthedFitWeeklyRoute = AuthedFitWeeklyRouteImport.update({
@@ -145,6 +157,8 @@ export interface FileRoutesByFullPath {
   '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
   '/fit/new': typeof AuthedFitNewRoute
+  '/fit/procedures': typeof AuthedFitProceduresRoute
+  '/fit/settings': typeof AuthedFitSettingsRoute
   '/fit/weekly': typeof AuthedFitWeeklyRoute
   '/kintai/employees': typeof AuthedKintaiEmployeesRoute
   '/kintai/report': typeof AuthedKintaiReportRoute
@@ -165,6 +179,8 @@ export interface FileRoutesByTo {
   '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
   '/fit/new': typeof AuthedFitNewRoute
+  '/fit/procedures': typeof AuthedFitProceduresRoute
+  '/fit/settings': typeof AuthedFitSettingsRoute
   '/fit/weekly': typeof AuthedFitWeeklyRoute
   '/kintai/employees': typeof AuthedKintaiEmployeesRoute
   '/kintai/report': typeof AuthedKintaiReportRoute
@@ -189,6 +205,8 @@ export interface FileRoutesById {
   '/_authed/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/_authed/csv/rules': typeof AuthedCsvRulesRoute
   '/_authed/fit/new': typeof AuthedFitNewRoute
+  '/_authed/fit/procedures': typeof AuthedFitProceduresRoute
+  '/_authed/fit/settings': typeof AuthedFitSettingsRoute
   '/_authed/fit/weekly': typeof AuthedFitWeeklyRoute
   '/_authed/kintai/employees': typeof AuthedKintaiEmployeesRoute
   '/_authed/kintai/report': typeof AuthedKintaiReportRoute
@@ -213,6 +231,8 @@ export interface FileRouteTypes {
     | '/csv/feedback'
     | '/csv/rules'
     | '/fit/new'
+    | '/fit/procedures'
+    | '/fit/settings'
     | '/fit/weekly'
     | '/kintai/employees'
     | '/kintai/report'
@@ -233,6 +253,8 @@ export interface FileRouteTypes {
     | '/csv/feedback'
     | '/csv/rules'
     | '/fit/new'
+    | '/fit/procedures'
+    | '/fit/settings'
     | '/fit/weekly'
     | '/kintai/employees'
     | '/kintai/report'
@@ -256,6 +278,8 @@ export interface FileRouteTypes {
     | '/_authed/csv/feedback'
     | '/_authed/csv/rules'
     | '/_authed/fit/new'
+    | '/_authed/fit/procedures'
+    | '/_authed/fit/settings'
     | '/_authed/fit/weekly'
     | '/_authed/kintai/employees'
     | '/_authed/kintai/report'
@@ -350,6 +374,20 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/fit/new'
       preLoaderRoute: typeof AuthedFitNewRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
+    '/_authed/fit/procedures': {
+      id: '/_authed/fit/procedures'
+      path: '/procedures'
+      fullPath: '/fit/procedures'
+      preLoaderRoute: typeof AuthedFitProceduresRouteImport
+      parentRoute: typeof AuthedFitRoute
+    }
+    '/_authed/fit/settings': {
+      id: '/_authed/fit/settings'
+      path: '/settings'
+      fullPath: '/fit/settings'
+      preLoaderRoute: typeof AuthedFitSettingsRouteImport
       parentRoute: typeof AuthedFitRoute
     }
     '/_authed/fit/weekly': {
@@ -454,6 +492,8 @@ const AuthedCsvRouteWithChildren = AuthedCsvRoute._addFileChildren(
 
 interface AuthedFitRouteChildren {
   AuthedFitNewRoute: typeof AuthedFitNewRoute
+  AuthedFitProceduresRoute: typeof AuthedFitProceduresRoute
+  AuthedFitSettingsRoute: typeof AuthedFitSettingsRoute
   AuthedFitWeeklyRoute: typeof AuthedFitWeeklyRoute
   AuthedFitIndexRoute: typeof AuthedFitIndexRoute
   AuthedFitCasesCaseIdRoute: typeof AuthedFitCasesCaseIdRoute
@@ -461,6 +501,8 @@ interface AuthedFitRouteChildren {
 
 const AuthedFitRouteChildren: AuthedFitRouteChildren = {
   AuthedFitNewRoute: AuthedFitNewRoute,
+  AuthedFitProceduresRoute: AuthedFitProceduresRoute,
+  AuthedFitSettingsRoute: AuthedFitSettingsRoute,
   AuthedFitWeeklyRoute: AuthedFitWeeklyRoute,
   AuthedFitIndexRoute: AuthedFitIndexRoute,
   AuthedFitCasesCaseIdRoute: AuthedFitCasesCaseIdRoute,
