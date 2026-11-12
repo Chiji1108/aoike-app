@@ -142,8 +142,8 @@ describe("チャットの道具（決まった入力で）", () => {
         { key: "s!3", field: "client", value: "佐藤　花子" },
         { key: "s!3", field: "workName", value: "佐藤様邸改修工事" },
         { key: "s!1", field: "client", value: "㈱テスト" },
-        // AI が get_table で見た今の値（業種の言葉の付いた形）
-        { key: "s!2", field: "workName", value: "〔Ｂ〕様邸改修に伴う電気工事" },
+        // 業種の言葉を付ける前の元の名前のまま書いても、今と同じなので聞かない
+        { key: "s!2", field: "workName", value: "〔Ｂ〕様邸改修工事" },
       ],
     })
     expect(res).toMatchObject({ ok: true, applied: 4 })

@@ -12,21 +12,26 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 /** 前に付けた業種の言葉（業種を選び直したとき・手直しで付いたまま書いたときに外す） */
 const ADDED_RE = new RegExp(`に伴う(?:${named.map((g) => escapeRe(g.label)).join("|")})工事$`)
 
+/** 業種の言葉（「に伴う〇〇工事」）で終わるか */
+export const endsWithGyoshuWords = (name: string) => ADDED_RE.test(name)
+
 /** 業種の工事の名の一覧（知っている語に入れる） */
 export const GYOSHU_WORK_LABELS: readonly string[] = named.map((g) => `${g.label}工事`)
 
 
 /**
  * 工事名の末尾に業種の言葉を付ける（「〇〇ビル新築工事」+ 管 → 「〇〇ビル新築に伴う管工事」、「〜設置」→「〜設置に伴う電気工事」）。
+ * code は決まった業種コード（推定・エラー・空なら undefined）。edited は手直しで入れた値か（画面の付いた形を写して直した値かもしれない）
  * - 前に付けた「に伴う〇〇工事」は外してから付ける（何度当てても同じ。業種を選び直すと付け替わる）
  * - もうその業種の工事の名で終わる名前（「〇〇ビル管工事」「〇〇内装工事」〔内装仕上の別名〕）はそのまま
  * - 末尾の「工事」は取ってからつなぐ（「新築工事に伴う」にしない）
- * - 付けない業種（一式・その他）は前に付けた言葉だけ外す。コードでない値・空の工事名はそのまま
+ * - 付けない行（一式・その他・業種が決まっていない）は、手直しの値に付いたままの言葉だけ「工事」に戻す
+ *   （「〇〇新築に伴う管工事」→「〇〇新築工事」）。元データの値は顧客の書いたまま
+ * - 空の工事名はそのまま
  */
-export function withGyoshuWorkName(name: string, code: string): string {
-  const g = named.find((x) => x.code === code)
-  // 付けない業種に選び直したら、前に付けた言葉を「工事」に戻す（「〇〇新築に伴う管工事」→「〇〇新築工事」）
-  if (!g) return GYOSHU.some((x) => x.code === code) ? name.replace(ADDED_RE, "工事") : name
+export function withGyoshuWorkName(name: string, code: string | undefined, edited = false): string {
+  const g = code === undefined ? undefined : named.find((x) => x.code === code)
+  if (!g) return edited ? name.replace(ADDED_RE, "工事") : name
   if (name === "") return name
   const base = name.replace(ADDED_RE, "")
   if ([g.label, ...g.aliases].some((w) => base.endsWith(`${w}工事`))) return base

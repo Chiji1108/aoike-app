@@ -3,7 +3,7 @@ import { parseYearMonth } from "../convert/dates"
 import { collapseSpaces, nfkc, removeSpaces } from "../convert/text"
 import { gyoshuCode, looksLikeOrganization, PERSONAL_WORK_NAME_RE, type TransformId } from "../convert/transforms"
 import { PLACE_FORMAT } from "./place"
-import { withGyoshuWorkName } from "./work-name"
+import { endsWithGyoshuWords, withGyoshuWorkName } from "./work-name"
 import { prefectureFromShortName } from "./prefectures"
 import type { CsvSpec, FieldSpec } from "./types"
 
@@ -200,11 +200,12 @@ export const KOJI_KEIREKI: CsvSpec<KojiFieldId> = {
       id: "gyoshuInWorkName",
       field: "workName",
       description:
-        "業種が決まった行（推定・エラーでない業種コード。土木一式・建築一式・その他〔1・2・30〕は除く）の工事名の末尾に「に伴う〇〇工事」を付ける（「〇〇ビル新築工事」→「〇〇ビル新築に伴う管工事」。末尾の「工事」は取る。もうその業種の工事の名で終わる名前はそのまま。業種を選び直すと付け替わる）",
+        "業種が決まった行（推定・エラーでない業種コード。土木一式・建築一式・その他〔1・2・30〕は除く）の工事名の末尾に「に伴う〇〇工事」を付ける（「〇〇ビル新築工事」→「〇〇ビル新築に伴う管工事」。末尾の「工事」は取る。もうその業種の工事の名で終わる名前はそのまま。業種を選び直すと付け替わり、付けない行に変わると手直しの値に付いたままの言葉は「工事」に戻す）",
       shape: ({ gyoshu, workName }) => {
-        if (gyoshu.guessed || gyoshu.status === "error" || gyoshu.status === "warning") return undefined
-        const value = withGyoshuWorkName(workName.value, gyoshu.value)
-        return value === workName.value ? undefined : { value, reason: "業種の言葉を付けた" }
+        const decided = !gyoshu.guessed && gyoshu.status !== "error" && gyoshu.status !== "warning"
+        const value = withGyoshuWorkName(workName.value, decided ? gyoshu.value : undefined, workName.by !== undefined)
+        if (value === workName.value) return undefined
+        return { value, reason: endsWithGyoshuWords(value) ? "業種の言葉を付けた" : "業種の言葉を外した" }
       },
     },
   ],

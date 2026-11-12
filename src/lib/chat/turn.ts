@@ -279,8 +279,10 @@ async function anonymizeChanges(state: TurnState, edited: TableView["edited"], c
     const rule = KOJI_ANONYMIZE[c.field]
     if (!rule) return
     const text = withNames(c.edit.value, (name) => name)
-    const now = rowOf.get(c.key)?.cells[c.field].value
-    if ((now !== undefined && withNames(now, (name) => name) === text) || !rule.mayHavePersons(text)) return
+    // 今の値（工事名は業種の言葉を付ける前の値も。AI が元の名前のまま書いても今と同じ）
+    const now = rowOf.get(c.key)?.cells[c.field]
+    const same = [now?.value, now?.shapedFrom].some((v) => v !== undefined && withNames(v, (name) => name) === text)
+    if (same || !rule.mayHavePersons(text)) return
     const input = getTransform(rule.transform).ai!.input?.([text]) ?? text
     asks.set(rule.transform, [...(asks.get(rule.transform) ?? []), { index, input }])
   })

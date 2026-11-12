@@ -67,8 +67,8 @@ export type FillRule<F extends string> = {
   fill: (cells: Record<F, string>, open: ReadonlySet<F>) => { values: Partial<Record<F, string>>; reason: string; review?: true } | undefined
 }
 
-/** shapeRules が見るセル（値と、決まった値か。推定・エラーの値から形を変えない） */
-export type ShapeCell = { value: string; status: string; guessed?: true }
+/** shapeRules が見るセル（値と、決まった値か〔推定・エラーの値から形を変えない〕と、手直しで入れた値か） */
+export type ShapeCell = { value: string; status: string; guessed?: true; by?: string }
 
 /**
  * 項目の値を同じ行のほかの項目に合わせた形にそろえる（例: 工事名の末尾に業種の言葉）。applyEdits の最後（手直し・空欄を埋めたあと）に当てる。
