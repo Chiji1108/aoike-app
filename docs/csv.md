@@ -11,7 +11,7 @@ URL：https://app.aoike.jp/csv（旧 https://csv.aoike.jp は転送だけ）
 
 SheetJS / ExcelJS（印付きの Excel・記入用Excel・最後の Excel） / encoding-japanese / @geolonia/normalize-japanese-addresses（住所の分割） / jsdiff（変更案の文字の差分） / Claude API（`@anthropic-ai/sdk`・AI SDK、モデル `claude-opus-5-5`） / Streamdown
 
-住所データ：`public/japanese-addresses/api/ja.json` は [Geolonia 住所データ](https://github.com/geolonia/japanese-addresses-v2)（CC BY 4.0、出典: デジタル庁 アドレス・ベース・レジストリ ほか）の市区町村の一覧です。`pnpm exec tsx scripts/update-addresses.ts` で最新にします（町字のデータは使わないので同梱しない）。
+住所データ：`public/japanese-addresses/api/ja.json` は [Geolonia 住所データ](https://github.com/geolonia/japanese-addresses-v2)（CC BY 4.0、出典: デジタル庁 アドレス・ベース・レジストリ ほか）の市区町村の一覧です。`pnpm exec tsx scripts/update-addresses.ts` で最新にします（町字のデータは使わないので同梱しない）。更新したら `pnpm exec vitest run -u src/lib/convert/__tests__/address-split.test.ts` で分け方の記録（`src/lib/convert/__tests__/__snapshots__/address-split.json`）を作り直し、変わったところ（市町村の合併など）が正しいか確かめてから入れます。Worker と同じ版で分けるテスト（`address-bundled.test.ts`）も同じ記録と比べます。
 
 ## 使い方
 

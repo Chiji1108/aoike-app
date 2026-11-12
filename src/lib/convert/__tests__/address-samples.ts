@@ -39,5 +39,8 @@ export const ADDRESSES = [
   "高知県梼原町",
 ]
 
-/** どちらの版でも、この分け方になる（Node 向けの版・ブラウザ向けの版のテストが同じファイルと比べる） */
+/**
+ * どちらの版でも、この分け方になる（Node 向けの版・ブラウザ向けの版のテストが同じファイルと比べる）。
+ * 住所データを更新したら作り直す（docs/csv.md の住所データ）
+ */
 export const SPLIT_SNAPSHOT = "./__snapshots__/address-split.json"
