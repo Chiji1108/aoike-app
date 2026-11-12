@@ -71,6 +71,13 @@
       "when": 1794458109294,
       "tag": "0009_work_name_gyoshu_rule",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794459790443,
+      "tag": "0010_tidy_global_rules",
+      "breakpoints": true
     }
   ]
 }

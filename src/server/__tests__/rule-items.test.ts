@@ -210,7 +210,7 @@ function applyMigrations(sqlite: Database.Database, tags: string[]) {
   for (const tag of tags) for (const statement of readFileSync(new URL(`../../../drizzle/csv/${tag}.sql`, import.meta.url), "utf8").split("--> statement-breakpoint")) sqlite.exec(statement)
 }
 const BEFORE = ["0000_init", "0001_cases", "0002_rule_appends", "0003_location_search"]
-const AFTER_0004 = ["0005_drop_old_rule_columns", "0006_drop_format_note", "0007_feedback", "0008_drop_auth_tables", "0009_work_name_gyoshu_rule"]
+const AFTER_0004 = ["0005_drop_old_rule_columns", "0006_drop_format_note", "0007_feedback", "0008_drop_auth_tables", "0009_work_name_gyoshu_rule", "0010_tidy_global_rules"]
 
 describe("前の形（1つの文章）から項目に移す（0004）", () => {
   test("行ごとに項目にする。空行は飛ばし、前後の空白と先頭の箇条書きの記号を取る。並びは元の行の順。保存したことがあれば初期値を入れない", async () => {
@@ -238,26 +238,28 @@ describe("前の形（1つの文章）から項目に移す（0004）", () => {
   })
 })
 
-describe("全体ルールの工事名の項目を今の文にする（0009）", () => {
-  const texts = (db: Database.Database) => (db.prepare("select text from csv_rule_items where scope = 'global' order by position").all() as { text: string }[]).map((r) => r.text)
-  const WORK_NAME = 2
+describe("全体ルールの初期値を今の文にする（0009・0010）", () => {
+  const texts = (db: Database.Database) => (db.prepare("select text, version from csv_rule_items where scope = 'global' order by position").all() as { text: string; version: number }[])
+  /** 0009 のあとの初期値（0010 が直す前） */
+  const AFTER_0009 = ["字数を超えたときの縮め方の順: 空白を取る → 株式会社を㈱・有限会社を㈲ → 法人格を省く → それでも長ければ職員に聞く。", "工事名は場所と内容が分かるようにする。業種の言葉（「〜に伴う管工事」）は業種が決まった行に決まった処理が付けるので、書き足さない。"]
 
-  test("初期値のままの項目を今の文にし、版を上げる", () => {
+  test("初期値のままの項目を今の文にし、直すたびに版を上げる", () => {
     const old = new Database(":memory:")
-    applyMigrations(old, [...BEFORE, "0004_rule_items", ...AFTER_0004.slice(0, -1)])
-    const before = texts(old)
-    expect(before[WORK_NAME]).toContain("その業種の言葉を補う")
+    applyMigrations(old, [...BEFORE, "0004_rule_items", ...AFTER_0004.slice(0, -2)])
+    expect(texts(old)[2]!.text).toContain("その業種の言葉を補う")
+    applyMigrations(old, AFTER_0004.slice(-2, -1))
+    expect([texts(old)[0]!.text, texts(old)[2]!.text]).toEqual(AFTER_0009)
     applyMigrations(old, AFTER_0004.slice(-1))
-    expect(texts(old)).toEqual(before.with(WORK_NAME, DEFAULT_GLOBAL_RULE_ITEMS[WORK_NAME]!))
-    expect(old.prepare("select version from csv_rule_items where text = ?").get(DEFAULT_GLOBAL_RULE_ITEMS[WORK_NAME])).toEqual({ version: 2 })
+    expect(texts(old).map((r) => r.text)).toEqual([...DEFAULT_GLOBAL_RULE_ITEMS])
+    expect(texts(old).map((r) => r.version)).toEqual([2, 1, 3, 1, 1])
   })
 
   test("職員が直した項目は触らない", () => {
     const old = new Database(":memory:")
-    applyMigrations(old, [...BEFORE, "0004_rule_items", ...AFTER_0004.slice(0, -1)])
-    old.exec("update csv_rule_items set text = '工事名は職員が直した文。' where scope = 'global' and position = 3")
+    applyMigrations(old, [...BEFORE, "0004_rule_items"])
+    old.exec("update csv_rule_items set text = '職員が直した文。' where scope = 'global' and position in (1, 3)")
     const before = texts(old)
-    applyMigrations(old, AFTER_0004.slice(-1))
+    applyMigrations(old, AFTER_0004)
     expect(texts(old)).toEqual(before)
   })
 })
