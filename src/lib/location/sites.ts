@@ -25,7 +25,7 @@ export const SKIP_REASONS: Record<SiteSkip, string> = {
 }
 
 /**
- * 調べる現場（同じ工事名・注文者の行をまとめたもの）。workName・client は CSV に出す値（匿名化のあと）で、外の検索にはこれだけを送る。
+ * 調べる現場（同じ工事名・注文者の行をまとめたもの）。workName・client は CSV に出す値（匿名化のあと。工事名は業種の言葉を付ける前）で、外の検索にはこれだけを送る。
  * knowledgeTried は、変換の AI の推定（現場名・注文者からの推定）でもう知識で答えようとした（自信が無かった・答えられなかった）か
  */
 export type Site = { key: string; workName: string; client: string; rowKeys: string[]; knowledgeTried: boolean; skip?: SiteSkip }
@@ -64,7 +64,8 @@ function siteOf(r: Row): Site {
   const { prefecture, place, workName, client } = r.cells
   const knowledgeTried = prefecture.byAi === true || place.byAi === true
   if (hasPersons(workName.stored ?? "") || hasPersons(client.stored ?? "")) return { key: `personal\t${r.key}`, workName: "", client: "", rowKeys: [r.key], knowledgeTried, skip: "personal" }
-  const w = collapseSpaces(workName.value)
+  // 業種の言葉を付ける前の工事名（業種ごとに分けた行を1つの現場にし、検索にも元の名前を送る）
+  const w = collapseSpaces(workName.shapedFrom ?? workName.value)
   const c = collapseSpaces(client.value)
   return { key: siteKeyOf(w, c), workName: w, client: c, rowKeys: [r.key], knowledgeTried, ...(!w && !c ? { skip: "empty" as const } : {}) }
 }

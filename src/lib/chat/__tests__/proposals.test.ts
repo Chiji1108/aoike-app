@@ -76,7 +76,7 @@ describe("変更案を表に重ねる", () => {
     const edit = { value: `${yamada}様邸新築工事`, by: "chat" as const }
     const reordered = { ...table, manual: new Map([["s!1", false]]) }
     const next = applyChanges(reordered, deriveTable(reordered).edited, [{ kind: "cell", rowKey: "s!2", field: "workName", edit }])
-    expect(deriveTable(next).output[0]!.cells.workName.value).toBe("Ａ様邸新築工事")
+    expect(deriveTable(next).output[0]!.cells.workName.value).toBe("Ａ様邸新築に伴う電気工事")
   })
 })
 

@@ -3,6 +3,7 @@ import { parseYearMonth } from "../convert/dates"
 import { collapseSpaces, nfkc, removeSpaces } from "../convert/text"
 import { gyoshuCode, looksLikeOrganization, PERSONAL_WORK_NAME_RE, type TransformId } from "../convert/transforms"
 import { PLACE_FORMAT } from "./place"
+import { endsWithGyoshuWords, withGyoshuWorkName } from "./work-name"
 import { prefectureFromShortName } from "./prefectures"
 import type { CsvSpec, FieldSpec } from "./types"
 
@@ -57,7 +58,7 @@ const FIELDS = [
     required: false,
     filing: true,
     valueType: { type: "text", maxWidth: 51, person: "residence" },
-    description: "51文字（17文字×3行。半角英数・半角カナは0.5文字で数える）まで。元データの表記（半角カナ・全角・㈱などの記号）はそのまま残す（全角にそろえない）。個人名を含む場合は「Ａ邸新築工事」のように置き換える",
+    description: "51文字（17文字×3行。半角英数・半角カナは0.5文字で数える）まで。元データの表記（半角カナ・全角・㈱などの記号）はそのまま残す（全角にそろえない）。個人名を含む場合は「Ａ邸新築工事」のように置き換える。業種の言葉（「〇〇ビル新築に伴う管工事」）は業種が決まった専門工事の行に決まった処理が付けるので、書き足さない",
   },
   {
     id: "prefecture",
@@ -191,6 +192,20 @@ export const KOJI_KEIREKI: CsvSpec<KojiFieldId> = {
         if (open.has("supervisingEngineer") && chief === "0")
           return { values: { supervisingEngineer: "1" }, reason: "主任技術者が 0 のため監理技術者を 1 と推定（監理技術者を置いた工事か要確認）", review: true }
         return undefined
+      },
+    },
+  ],
+  shapeRules: [
+    {
+      id: "gyoshuInWorkName",
+      field: "workName",
+      description:
+        "業種が決まった行（推定・エラーでない業種コード。土木一式・建築一式・その他〔1・2・30〕は除く）の工事名の末尾に「に伴う〇〇工事」を付ける（「〇〇ビル新築工事」→「〇〇ビル新築に伴う管工事」。末尾の「工事」は取る。もうその業種の工事の名で終わる名前はそのまま。業種を選び直すと付け替わり、付けない行に変わると手直しの値に付いたままの言葉は「工事」に戻す）",
+      shape: ({ gyoshu, workName }) => {
+        const decided = !gyoshu.guessed && gyoshu.status !== "error" && gyoshu.status !== "warning"
+        const value = withGyoshuWorkName(workName.value, decided ? gyoshu.value : undefined, workName.by !== undefined)
+        if (value === workName.value) return undefined
+        return { value, reason: endsWithGyoshuWords(value) ? "業種の言葉を付けた" : "業種の言葉を外した" }
       },
     },
   ],

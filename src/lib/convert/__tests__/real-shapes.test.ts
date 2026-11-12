@@ -70,7 +70,8 @@ describe("業種シートに分かれ、業種を○で表す表", () => {
     expect(valuesOf(rows[0]!)).toMatchObject({
       client: "株式会社テスト不動産",
       motoukeShitauke: "1",
-      workName: "テストビル改修工事",
+      // 業種（電気）の言葉を付ける
+      workName: "テストビル改修に伴う電気工事",
       amount: "12345",
       startYm: "202504",
       endYm: "202603",

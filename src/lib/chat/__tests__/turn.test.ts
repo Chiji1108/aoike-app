@@ -101,7 +101,8 @@ describe("チャットの道具（決まった入力で）", () => {
     ])
     expect(state.start).toBe(table)
     const after = deriveTable(applyChanges(table, deriveTable(table).edited, state.pending))
-    expect(after.output.map((r) => r.cells.workName.value)).toEqual(["Ａ様邸新築工事", "Ｂ様邸改修工事", "テストビル電気工事"])
+    // 業種（電気）の言葉を付ける。もう「電気工事」で終わる名前はそのまま
+    expect(after.output.map((r) => r.cells.workName.value)).toEqual(["Ａ様邸新築に伴う電気工事", "Ｂ様邸改修に伴う電気工事", "テストビル電気工事"])
   })
 
   test("指示の間に行を外して記号が付け直されても、AI に見せた「〔Ｂ〕」は同じ人のまま", async () => {
@@ -129,7 +130,7 @@ describe("チャットの道具（決まった入力で）", () => {
     await call(tools, "set_cells", { changes: [{ key: "s!3", field: "client", value: "〔Ａ〕様" }, { key: "s!3", field: "workName", value: "工".repeat(52) }] })
     const report = await call(tools, "check_table", {})
     expect(report).toMatchObject({ includedRows: 3, errors: 1 })
-    expect(report.firstErrors).toEqual([{ key: "s!3", field: "workName", value: "工".repeat(52), message: expect.stringContaining("字数が上限") }])
+    expect(report.firstErrors).toEqual([{ key: "s!3", field: "workName", value: `${"工".repeat(52)}に伴う電気工事`, message: expect.stringContaining("字数が上限") }])
   })
 
   test("注文者・工事名に AI が書いた素の氏名は、変換と同じ匿名化に通して印にする。法人・今と同じ値は AI に聞かない", async () => {
@@ -141,6 +142,7 @@ describe("チャットの道具（決まった入力で）", () => {
         { key: "s!3", field: "client", value: "佐藤　花子" },
         { key: "s!3", field: "workName", value: "佐藤様邸改修工事" },
         { key: "s!1", field: "client", value: "㈱テスト" },
+        // 業種の言葉を付ける前の元の名前のまま書いても、今と同じなので聞かない
         { key: "s!2", field: "workName", value: "〔Ｂ〕様邸改修工事" },
       ],
     })
@@ -150,7 +152,7 @@ describe("チャットの道具（決まった入力で）", () => {
     const csv = deriveTable(applyChanges(table, deriveTable(table).edited, state.pending)).output
     const text = JSON.stringify(csv.map((r) => [r.cells.client.value, r.cells.workName.value]))
     expect(text).not.toContain("佐藤")
-    expect(csv.find((r) => r.key === "s!3")!.cells.workName.value).toMatch(/^[Ａ-Ｚ]様邸改修工事$/)
+    expect(csv.find((r) => r.key === "s!3")!.cells.workName.value).toMatch(/^[Ａ-Ｚ]様邸改修に伴う電気工事$/)
   })
 
   test("匿名化を確かめられない（AI が無い・検算に落ちた）素の氏名は受け取らない", async () => {
@@ -367,7 +369,7 @@ describe("顧客の回答を読む（get_inquiries・record_answers）", () => {
     const out = await call(chatTools(newTurnState({ ...answering, tax: "unknown" }, undefined, undefined, null, answers)), "get_inquiries", {})
     expect(out.tax).toBe(true)
     expect(out.cells.map((c: { key: string; field: string }) => `${c.key}:${c.field}`)).toEqual(["s!2:engineer", "s!2:endYm", "s!3:prefecture", "s!3:place"])
-    expect(out.cells[0]).toMatchObject({ label: "配置技術者", reason: "データに無い", workName: "〔Ａ〕邸新築工事", client: "〔Ａ〕" })
+    expect(out.cells[0]).toMatchObject({ label: "配置技術者", reason: "データに無い", workName: "〔Ａ〕邸新築に伴う電気工事", client: "〔Ａ〕" })
   })
 
   test("record_answers は記入用Excelと同じ決まりで値にして、顧客の回答の変更案に溜める（表には入れない）。読めない答えは返す", async () => {

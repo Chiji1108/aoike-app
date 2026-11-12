@@ -7,6 +7,7 @@ import { nfkc, removeSpaces } from "../convert/text"
 import { tryParseJson } from "../json"
 import { CODE_SETS } from "../spec/code-sets"
 import { KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
+import { GYOSHU_WORK_LABELS } from "../spec/work-name"
 import type { ChatMessage } from "./messages"
 import type { Proposal } from "./proposals"
 
@@ -253,11 +254,12 @@ export const MASKED = "〔伏せた語〕"
 /** 固有名になりうる語: 漢字の続き・カタカナの続き（ひらがなは区切りとみなす） */
 export const PROPER_RE = /[\p{Script=Han}々〆ヵヶ]+|[\p{Script=Katakana}ー]+/gu
 
-/** 書式の決まり（14列の名前・説明・公式の記載ルール・コードの名前）。ルールと一緒に、知っている語に入れる */
+/** 書式の決まり（14列の名前・説明・公式の記載ルール・コードの名前・工事名に付ける業種の工事の名）。ルールと一緒に、知っている語に入れる */
 export const SPEC_TEXT = [
   ...KOJI_KEIREKI.fields.flatMap((f) => [f.label, f.description]),
   ...KOJI_KEIREKI.writingRules,
   ...Object.values(CODE_SETS).flatMap((set) => set.map((c) => c.label)),
+  ...GYOSHU_WORK_LABELS,
 ].join("\n")
 
 /** 語の比べ方（NFKC にして空白を除く。知っている語・要望の固有名の確かめで同じもの） */
