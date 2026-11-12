@@ -244,7 +244,7 @@ test("行の多い表: 仮想スクロールの先でも絞り込み・検索・
   await test.step("検索: 表に出ている列の文字で絞り込む", async () => {
     await search.fill("第123倉庫")
     await expect(page.locator(ROWS)).toHaveCount(1)
-    await expect(page.locator(ROWS).locator('td[data-field="workName"]')).toContainText("サンプル第123倉庫改修工事")
+    await expect(page.locator(ROWS).locator('td[data-field="workName"]')).toContainText("サンプル第123倉庫改修に伴う管工事")
     await search.fill("第31倉庫")
     await filterButton(page, "fix").click()
     await expect(page.getByTestId("no-match")).toContainText("「第31倉庫」を含む")

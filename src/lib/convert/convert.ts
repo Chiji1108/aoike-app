@@ -33,6 +33,11 @@ export type CellResult = {
   by?: CellEdit["by"]
   /** 職員が顧客に聞くと決めた（チャットの問い合わせの変更案の承認）。空でも聞く */
   ask?: true
+  /**
+   * shapeRules が形を変える前の値（工事名の業種の言葉を付ける前）。工事場所の調査はこの値で現場をまとめて調べる
+   * （1つの工事を業種ごとに分けた行は、付ける言葉が違っても同じ現場）
+   */
+  shapedFrom?: string
 }
 
 /** 出力行の元。flagColumns で1行を複数に分けたときは同じ元を持つ行が複数できる */
@@ -301,7 +306,7 @@ function normalizeReplacement(field: FieldSpec, v: string) {
 }
 
 /**
- * 一括置換 → 職員の手直し → 空欄を埋める（fillRules・whenMissing）。行ごとに閉じた処理（ほかの行を見ない）。
+ * 一括置換 → 職員の手直し → 空欄を埋める（fillRules・whenMissing）→ 形をそろえる（shapeRules）。行ごとに閉じた処理（ほかの行を見ない）。
  * 個人名は印のまま、検証もまだ（記号と検証は finalizeRows。どの行を CSV に書くかはこの結果から選ぶ）。
  */
 export function applyEdits<F extends string>(
@@ -346,6 +351,13 @@ export function applyEdits<F extends string>(
     }
     for (const f of spec.fields) {
       if (f.whenMissing && cells[f.id].value === "" && !edited.has(f.id)) cells[f.id] = { ...cells[f.id], value: f.whenMissing.value, status: "changed", message: f.whenMissing.reason }
+    }
+    for (const rule of spec.shapeRules) {
+      const shaped = rule.shape(cells)
+      if (!shaped) continue
+      const cell = cells[rule.field]
+      const message = [cell.message, shaped.reason].filter(Boolean).join(" / ")
+      cells[rule.field] = { ...cell, value: shaped.value, status: cell.status === "ok" ? "changed" : cell.status, message, shapedFrom: cell.value }
     }
     return { ...row, cells }
   })

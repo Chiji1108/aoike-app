@@ -401,11 +401,12 @@ describe("回答の取り込み", () => {
     guessedWork.cells.workName = { value: `${yamada}邸新築工事`, status: "warning", source: "C列", original: "山田太郎邸新築工事", guessed: true }
     const before = [kojiRow({ ...full, client: personToken("鈴木一郎") }, 4), guessedWork]
     const nowRows = finalize(before)
-    expect(nowRows[1]!.cells.workName.value).toBe("Ｂ邸新築工事")
+    expect(nowRows[1]!.cells.workName.value).toBe("Ｂ邸新築に伴う電気工事")
     const qs = cellInquiries(collectInquiries(nowRows, { tax: "included" }))
     const s = inquirySheet(nowRows, qs)
     const header = s.columns.map((c) => c.header)
-    expect(s.rows[0]!.cells[header.indexOf("工事名")]!.value).toBe("山田太郎邸新築工事")
+    // 顧客に見せる工事名も CSV に出す形（業種の言葉を付けたもの）
+    expect(s.rows[0]!.cells[header.indexOf("工事名")]!.value).toBe("山田太郎邸新築に伴う電気工事")
     const grid: SheetGrid[] = [
       { name: "記入用", rows: [header, ...s.rows.map((r) => r.cells.map((c, i) => (header[i] === "工事名" ? "山田太郎邸改修工事（Ａ棟）" : c.value)))], hidden: [] },
     ]
@@ -415,7 +416,7 @@ describe("回答の取り込み", () => {
     if ("error" in report) throw new Error(report.error)
     expect(sentToAi).toEqual(["山田太郎邸改修工事（Ａ棟）"])
     expect(customerEdits(report)).toEqual([[editKey("s!40", "workName"), { value: `${yamada}邸改修工事（Ａ棟）`, by: "customer", status: "ai", byAi: true }]])
-    expect(finalize(before, new Map(report.edits))[1]!.cells.workName.value).toBe("Ｂ邸改修工事（Ａ棟）")
+    expect(finalize(before, new Map(report.edits))[1]!.cells.workName.value).toBe("Ｂ邸改修工事（Ａ棟）に伴う電気工事")
   })
 
   test("あとで別の記入用Excelを作っても、前に送った記入用Excelの回答をそのまま取り込める（何を聞いたかはファイルの各行から読む）", async () => {
@@ -478,7 +479,7 @@ describe("回答の取り込み", () => {
     if ("error" in report) throw new Error(report.error)
     expect(sentToAi.sort()).toEqual(["anonymizeClient:山田 太郎", "anonymizeWorkName:山田太郎邸新築工事"])
     const out = finalize([blank], new Map(report.edits))[0]!.cells
-    expect([out.client.value, out.workName.value]).toEqual(["Ａ", "Ａ邸新築工事"])
+    expect([out.client.value, out.workName.value]).toEqual(["Ａ", "Ａ邸新築に伴う電気工事"])
     expect(out.client).toMatchObject({ status: "ai", source: "顧客の回答" })
 
     for (const unavailable of [noAi(), { ...noAi(), callAi: async () => ({ ok: false as const, message: "通信エラー" }) }]) {
@@ -730,7 +731,7 @@ describe("個人名の記号（セルには人を入れ、記号は最後の行�
     const first = await readAnswers(ask([blank], { 注文者: "田中 花子", 工事名: "山田太郎邸改修工事" }), finalize(all), { ctx, lookup: fileAddressLookup, cache, callAi: cannedAnonymize, fields: plan.fields })
     if ("error" in first) throw new Error(first.error)
     const edits = new Map(first.edits)
-    expect(shown(finalize(all, edits)).at(-1)).toBe("Ｄ/Ａ邸改修工事")
+    expect(shown(finalize(all, edits)).at(-1)).toBe("Ｄ/Ａ邸改修に伴う電気工事")
 
     const second = kojiRow({ ...full, client: "" }, 91)
     const withSecond = [...all, second]

@@ -53,6 +53,7 @@ describe("調べる現場を集める", () => {
     const view = deriveTable(tableOf(rows(), { manual: new Map([["s!7", false]]) }))
     const sites = locationTargets(view)
     expect(sites.map((s) => s.rowKeys)).toEqual([["s!1", "s!2"], ["s!3"], ["s!6"], ["s!8"]])
+    // 工事名は業種の言葉を付ける前の値
     expect(sites[0]).toMatchObject({ key: siteKeyOf("テストビル改修工事", "株式会社テスト"), workName: "テストビル改修工事", client: "株式会社テスト", knowledgeTried: false })
     expect(sites[1]).toMatchObject({ workName: "第二小学校体育館工事", client: "市役所", knowledgeTried: true })
     expect(sites[2]).toMatchObject({ workName: "", client: "", skip: "personal" })
@@ -194,6 +195,16 @@ describe("レビューで見つかった穴", () => {
     expect(r.cells.prefecture.value).toBe("東京都")
     expect(r.cells.place).toMatchObject({ value: "港区" })
     expect(r.cells.place.by).toBeUndefined()
+  })
+
+  test("1つの工事を業種ごとに分けた行は、付ける業種の言葉が違っても1つの現場にし、検索には付ける前の工事名を送る", () => {
+    const split = [
+      kojiRow({ ...base, gyoshu: "8", client: "株式会社テスト", workName: "テストビル改修工事" }, 1),
+      kojiRow({ ...base, gyoshu: "9", client: "株式会社テスト", workName: "テストビル改修工事" }, 2),
+    ]
+    const view = deriveTable(tableOf(split))
+    expect(view.shown.map((r) => r.cells.workName.value)).toEqual(["テストビル改修に伴う電気工事", "テストビル改修に伴う管工事"])
+    expect(locationTargets(view)).toMatchObject([{ rowKeys: ["s!1", "s!2"], workName: "テストビル改修工事" }])
   })
 
   test("一括調査の1回分は先頭から上限まで。残りの数も同じ決め方で数える", () => {

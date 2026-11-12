@@ -415,11 +415,12 @@ test("PDF だけの案件: チャットで AI が作った行は変更案にな�
   await showAllRows(page)
   const rows = page.locator('[data-testid="preview-table"] tbody tr[data-row-key]')
   await expect(rows).toHaveCount(2)
-  await expect(rows.first()).toContainText("サンプル事務所内装改修工事")
+  // 業種（内装仕上）の言葉を付けた工事名
+  await expect(rows.first()).toContainText("サンプル事務所内装改修に伴う内装仕上工事")
   await expect(page.getByTestId("preview-table").locator('[data-status="warning"]').first()).toBeVisible()
   // 2件目（下請・少額）は7割で載らない。足した行も変換した行と同じく7割で選ぶ
   const csv = await downloadCsv(page)
-  expect(csv).toContain("サンプル事務所内装改修工事")
+  expect(csv).toContain("サンプル事務所内装改修に伴う内装仕上工事")
   await expect(rows.nth(1)).toHaveAttribute("data-included", "0")
 
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved")

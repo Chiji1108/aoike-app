@@ -170,7 +170,7 @@ describe("最後の Excel の上げ直し", () => {
     ])
     const after = deriveTable(applyChanges(table, deriveTable(table).edited, r.changes))
     expect(after.output.map((x) => x.cells.client.value)).toEqual(["Ａ", "Ｂ", "株式会社サンプル"])
-    expect(after.output[0]!.cells.workName.value).toBe("Ａ邸改修工事")
+    expect(after.output[0]!.cells.workName.value).toBe("Ａ邸改修に伴う電気工事")
     const noAi = await read(sheets, table, { rounding: "floor", cache: new Map(), lookup: fileAddressLookup } as typeof ai)
     expect(cellsOf(noAi.changes)).toEqual([])
     expect(noAi.report.refused.map((x) => x.field).sort()).toEqual(["client", "workName"])

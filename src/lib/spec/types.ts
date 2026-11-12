@@ -67,6 +67,22 @@ export type FillRule<F extends string> = {
   fill: (cells: Record<F, string>, open: ReadonlySet<F>) => { values: Partial<Record<F, string>>; reason: string; review?: true } | undefined
 }
 
+/** shapeRules が見るセル（値と、決まった値か。推定・エラーの値から形を変えない） */
+export type ShapeCell = { value: string; status: string; guessed?: true }
+
+/**
+ * 項目の値を同じ行のほかの項目に合わせた形にそろえる（例: 工事名の末尾に業種の言葉）。applyEdits の最後（手直し・空欄を埋めたあと）に当てる。
+ * 手直しした値にも、業種を変えたあとにも当てるので、何度当てても同じになる（前に付けた形を外してから付ける）ように書く。
+ * 形を変えないときは undefined
+ */
+export type ShapeRule<F extends string> = {
+  id: string
+  field: F
+  /** 職員・AI 向けのそろえ方の説明 */
+  description: string
+  shape: (cells: Readonly<Record<F, ShapeCell>>) => { value: string; reason: string } | undefined
+}
+
 export type CsvSpec<F extends string> = {
   id: string
   title: string
@@ -75,6 +91,7 @@ export type CsvSpec<F extends string> = {
   fields: readonly FieldSpec<F>[]
   rowRules: readonly RowRule<F>[]
   fillRules: readonly FillRule<F>[]
+  shapeRules: readonly ShapeRule<F>[]
   /** 公式の記載ルール（AIへの指示と画面の注意書きに使う） */
   writingRules: readonly string[]
 }

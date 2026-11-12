@@ -80,7 +80,7 @@ describe("最後の Excel", () => {
     const rows = XLSX.utils.sheet_to_json<string[]>(book.Sheets[CHECK_SHEET_NAME]!, { header: 1, raw: false, defval: "" })
     expect(rows[0]!.slice(0, 2)).toEqual([CHECK_MARK, "1"])
     expect(rows.filter((r) => r[0] === "row").map((r) => r[1])).toEqual(output.map((r) => r.key))
-    expect(rows.find((r) => r[1] === "s!1")).toContain("〔Ａ〕邸新築工事")
+    expect(rows.find((r) => r[1] === "s!1")).toContain("〔Ａ〕邸新築に伴う電気工事")
     expect(rows.filter((r) => r[0] === "person").map((r) => r[1])).toEqual(["Ａ"])
     expect(JSON.stringify(rows)).not.toContain("山田")
     expect(JSON.parse(rows[1]![1]!)).toMatchObject({ caseId: "case-1", keyMark: expect.stringMatching(/^[0-9a-f]{16}$/) })

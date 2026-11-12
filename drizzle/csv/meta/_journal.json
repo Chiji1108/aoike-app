@@ -64,6 +64,13 @@
       "when": 1794288075042,
       "tag": "0008_drop_auth_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794458109294,
+      "tag": "0009_work_name_gyoshu_rule",
+      "breakpoints": true
     }
   ]
 }
