@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS } from "../../spec/koji-keireki"
 import { heuristicPlan } from "../heuristic-plan"
 import { applyPlanPatch, beforeOf, columnIndex, describePlanPatch, patchFromInput, planPatchInputSchema, sheetShapeOf } from "../plan-patch"

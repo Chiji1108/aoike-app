@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { aiKey } from "../../convert/convert"
 import { personToken } from "../../convert/persons"

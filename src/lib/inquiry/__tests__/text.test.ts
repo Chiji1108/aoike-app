@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { kojiRow } from "../../convert/__tests__/helpers"
 import { ADDRESSEE_PLACEHOLDER, countsByItem, DEFAULT_SUBJECT, inquiryEmail } from "../email"
 import { ASKED_HEADER, collectInquiries, inquirySheet, MANAGEMENT_HEADER, outsideCells, QUESTION_HEADER, type CellInquiry } from "../inquiry"

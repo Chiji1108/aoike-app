@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { beforeEach, describe, expect, test } from "bun:test"
+import Database from "better-sqlite3"
+import { beforeEach, describe, expect, test } from "vitest"
 import { readFileSync } from "node:fs"
 import type { AiBatchRequest } from "@/lib/convert/ai-tasks"
 import type { ProposalRecord } from "@/lib/chat/proposals"
@@ -19,7 +19,7 @@ import { migratedDb } from "./sqlite"
 const index = placeIndex(jaSchema.parse(JSON.parse(readFileSync(new URL("../../../public/japanese-addresses/api/ja.json", import.meta.url), "utf8"))))
 
 let db: Db
-let sqlite: Database
+let sqlite: Database.Database
 beforeEach(() => {
   ;({ db, sqlite } = migratedDb())
 })
@@ -231,7 +231,7 @@ describe("一括調査の回", () => {
     )
     expect(searched.length).toBeLessThanOrEqual(4)
     expect(put.size).toBe(0)
-    for (const t of ["csv_location_runs", "csv_location_sites", "csv_cases"]) expect((sqlite.query(`select count(*) as n from ${t}`).get() as { n: number }).n).toBe(0)
+    for (const t of ["csv_location_runs", "csv_location_sites", "csv_cases"]) expect((sqlite.prepare(`select count(*) as n from ${t}`).get() as { n: number }).n).toBe(0)
   })
 
   test("変更案を置いている間に削除が始まったら、置いたものを消す", async () => {
@@ -283,7 +283,7 @@ describe("覚えた結果", () => {
     await db.update((await import("@/db/cases-schema")).csvCases).set({ deleting: true })
     expect(await loc.remember(db, next.id, [{ site: { workName: "別の工事", client: "株式会社テスト" }, found }])).toBe(0)
     await deleteCustomer(db, bucket, customer.id)
-    expect((sqlite.query("select count(*) as n from csv_location_memory").get() as { n: number }).n).toBe(0)
+    expect((sqlite.prepare("select count(*) as n from csv_location_memory").get() as { n: number }).n).toBe(0)
   })
 
   test("1件だけ調べる: 覚えた結果があれば AI を呼ばず、無ければ知識 → 検索", async () => {
@@ -320,7 +320,7 @@ describe("レビューで見つかった穴（D1 の結果）", () => {
     const { kase } = await newCase()
     const created = await loc.createRun(db, kase.id, sites().slice(1, 3))
     if (!created.ok) throw new Error("回を作れません")
-    sqlite.run(`update csv_location_sites set outcome = '{"kind":"found","prefecture":1}' where run_id = '${created.run.id}' and idx = 0`)
+    sqlite.exec(`update csv_location_sites set outcome = '{"kind":"found","prefecture":1}' where run_id = '${created.run.id}' and idx = 0`)
     const { put, deps } = proposals()
     await runLocationSearch(
       { db, index, knowledge: knowledge({}), search: search({ 第二小学校体育館工事: { kind: "found", ...found, prefecture: "静岡県", place: "静岡市葵区" } }), ...deps },

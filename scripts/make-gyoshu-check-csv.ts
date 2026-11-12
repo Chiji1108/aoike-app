@@ -1,7 +1,7 @@
 /**
  * 業種コード確認用の CSV を作る
  *
- *   bun scripts/make-gyoshu-check-csv.ts   # docs/業種コード確認.csv
+ *   pnpm exec tsx scripts/make-gyoshu-check-csv.ts   # docs/業種コード確認.csv
  *
  * 業種コード 1〜30 を1行ずつ並べた工事経歴データ。建設業.NET の更新後に取り込み、
  * 各行（工事名「業種コード確認n」）がどの業種になったかを見て src/lib/spec/code-sets.ts の表と合っているか確かめる。

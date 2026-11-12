@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { chatDataSchemas, currentAction } from "../messages"
 
 describe("保存した会話のボタン", () => {

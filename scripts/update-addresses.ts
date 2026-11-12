@@ -2,7 +2,7 @@
  * 同梱の住所データ（市区町村の一覧）を Geolonia の住所データ（CC BY 4.0）の最新に更新する。
  * 住所の分割（@geolonia/normalize-japanese-addresses）は市区町村までしか使わないので、町字のデータは同梱しない。
  *
- *   bun scripts/update-addresses.ts
+ *   pnpm exec tsx scripts/update-addresses.ts
  */
 import { mkdirSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"

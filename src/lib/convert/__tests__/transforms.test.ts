@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { NO_ADDRESSES } from "../address"
 import { fileAddressLookup } from "../address-file"
 import { parsePeriod, parseYearMonth, formatYearMonth } from "../dates"

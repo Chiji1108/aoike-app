@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { billingMonths, billingRows, billingTotal, bookRows, bookYears, type LedgerSource } from "../ledger"
 
 const src = (over: Partial<LedgerSource> = {}): LedgerSource => ({

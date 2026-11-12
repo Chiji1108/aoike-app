@@ -1,7 +1,7 @@
 /**
  * 照合の結果を1つの表にする。回のフォルダ（scripts/eval.ts の EVAL_OUT）を並べると、案件・variant ごとに回をまたいだ揺れ（平均・最小〜最大）を出す。
  *
- *   bun scripts/eval-report.ts [--cases <案件定義の JSON>] [--out <フォルダ>] <回のフォルダ>...
+ *   pnpm exec tsx scripts/eval-report.ts [--cases <案件定義の JSON>] [--out <フォルダ>] <回のフォルダ>...
  *
  * --out に report.md と report.json を書く（無ければ Markdown を出すだけ）。--cases を渡すと案件定義の順に並べる。
  * 結果は顧客の情報を含まない（案件の呼び名と数だけ）が、案件の呼び名は案件定義のキーなので、置き場所は案件定義と同じリポジトリの外にする。

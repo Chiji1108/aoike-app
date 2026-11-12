@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, test } from "vitest"
 import { createCase, createCustomer, deleteCase, type Bucket, type Db } from "../case-store"
 import { addFeedback, bumpFeedback, listFeedback, openFeedbackSummaries, setFeedbackStatus } from "../feedback-store"
 import { migratedDb } from "./sqlite"

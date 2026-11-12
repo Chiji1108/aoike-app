@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { editKey, editSession, type CellResult, type RowResult } from "@/lib/convert/convert"
 import { personToken } from "@/lib/convert/persons"
 import { finalizeAll, kojiRow } from "@/lib/convert/__tests__/helpers"

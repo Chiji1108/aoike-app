@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { isStepCount, simulateReadableStream, streamText, tool } from "ai"
 import { MockLanguageModelV4 } from "ai/test"
 import { z } from "zod"

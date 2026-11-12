@@ -1,5 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { kojiRow } from "../../convert/__tests__/helpers"
 import { personToken } from "../../convert/persons"
 import { fromSaved, MAX_STATE_BYTES, newWork, savedWorkSchema, toSavedWork } from "../../cases/state"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { applyChanges } from "../../chat/proposals"
 import { newWork, savedWorkSchema, toSavedWork, type CaseWork } from "../state"
 import { setTax, withPlanTax } from "../tax"

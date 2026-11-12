@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { newWork, savedWorkSchema, toSavedWork } from "../../cases/state"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS } from "../../spec/koji-keireki"
 import { heuristicPlan, planSheets, primarySheet } from "../heuristic-plan"

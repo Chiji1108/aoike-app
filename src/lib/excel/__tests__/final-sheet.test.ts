@@ -1,5 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import * as XLSX from "xlsx"
 import { deriveTable, type CaseTable } from "../../cases/view"
 import { kojiRow } from "../../convert/__tests__/helpers"

@@ -1,5 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { deriveTable, type CaseTable } from "../../cases/view"
 import { kojiRow } from "../../convert/__tests__/helpers"
 import { fixture } from "../../convert/__tests__/helpers"

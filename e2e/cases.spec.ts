@@ -10,7 +10,7 @@ const PDF = { name: "追加の工事.pdf", mimeType: "application/pdf", buffer: 
 /** 手元の R2（wrangler の local。開発サーバーと同じ .wrangler/state）にキーがあるか */
 function inLocalR2(key: string) {
   try {
-    execFileSync("bunx", ["wrangler", "r2", "object", "get", `aoike-kensetsu-csv-files/${key}`, "--local", "--pipe"], { stdio: ["ignore", "ignore", "ignore"] })
+    execFileSync("pnpm", ["exec", "wrangler", "r2", "object", "get", `aoike-kensetsu-csv-files/${key}`, "--local", "--pipe"], { stdio: ["ignore", "ignore", "ignore"] })
     return true
   } catch {
     return false

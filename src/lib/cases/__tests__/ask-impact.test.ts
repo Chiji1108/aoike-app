@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { kojiRow } from "../../convert/__tests__/helpers"
 import { summarizeKoji } from "../../convert/koji-selection"
 import { selectRows } from "../view"

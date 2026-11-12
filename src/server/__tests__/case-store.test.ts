@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { beforeEach, describe, expect, test } from "bun:test"
+import Database from "better-sqlite3"
+import { beforeEach, describe, expect, test } from "vitest"
 import { eq } from "drizzle-orm"
 import * as schema from "@/db/cases-schema"
 import {
@@ -64,13 +64,13 @@ function memoryBucket() {
   return bucket
 }
 
-const tableCounts = (sqlite: Database) =>
+const tableCounts = (sqlite: Database.Database) =>
   Object.fromEntries(
-    ["csv_customers", "csv_cases", "csv_case_states", "csv_case_ai_caches", "csv_case_files"].map((t) => [t, (sqlite.query(`select count(*) as n from ${t}`).get() as { n: number }).n]),
+    ["csv_customers", "csv_cases", "csv_case_states", "csv_case_ai_caches", "csv_case_files"].map((t) => [t, (sqlite.prepare(`select count(*) as n from ${t}`).get() as { n: number }).n]),
   )
 
 let db: Db
-let sqlite: Database
+let sqlite: Database.Database
 let bucket: ReturnType<typeof memoryBucket>
 beforeEach(() => {
   ;({ db, sqlite } = migratedDb())
@@ -177,7 +177,7 @@ describe("削除", () => {
 
   test("外部キーが、ファイルの行を残したまま案件を消すことを止める", async () => {
     const { cases } = await customerWithCases()
-    expect(() => sqlite.run(`delete from csv_cases where id = '${cases[0]!.id}'`)).toThrow(/FOREIGN KEY/)
+    expect(() => sqlite.exec(`delete from csv_cases where id = '${cases[0]!.id}'`)).toThrow(/FOREIGN KEY/)
   })
 })
 

@@ -2,7 +2,7 @@
  * 文字の層の無い PDF・手書きの写真の照合: 変換の元の表が無い案件（届いたファイルが PDF・画像だけ）で、画面の「PDF から表を作って」と同じ1回の指示を
  * 本物の AI に送り、足した行（変更案を全部承認したもの）を期待の値と比べる。合成の例は scripts/make-sample-scan.ts（fixtures/eval/synth-scan/）。
  *
- *   EVAL_OUT=<結果を書くフォルダ> bun scripts/eval-scan.ts [<指示>]
+ *   EVAL_OUT=<結果を書くフォルダ> pnpm exec tsx scripts/eval-scan.ts [<指示>]
  *
  * 結果は EVAL_OUT の scan.json（行ごとの値と一致・道具の記録・費用）。費用は costs.jsonl にも足す。
  */

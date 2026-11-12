@@ -7,7 +7,7 @@ import type { Db } from "./case-store"
 
 /**
  * 工事場所の調査の読み書き（D1）。回（csv_location_runs）・現場（csv_location_sites）・顧客ごとに覚えた結果（csv_location_memory）。
- * D1 でも bun:sqlite でも動く（テストは bun:sqlite）
+ * D1 でも better-sqlite3 でも動く（テストは better-sqlite3）
  */
 
 export const siteSchema: z.ZodType<Site> = siteRefSchema.extend({

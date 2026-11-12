@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { reportPhase, type PhaseInput } from "../phase"
 
 const base: PhaseInput = { aiEnabled: true, loading: null, sourceError: null, planning: false, convertError: null, converting: false, hasTable: false, noSheetSource: false, sourceName: null }

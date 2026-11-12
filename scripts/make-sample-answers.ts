@@ -1,7 +1,7 @@
 /**
  * 照合（scripts/eval.ts の answers）の合成の例を作る: 顧客の回答をいろいろな形で受け取る。実データは使わない（会社名は「サンプル」、人名は架空、住所は実在の市区町村だけ）。
  *
- *   bun scripts/make-sample-answers.ts   # fixtures/eval/synth-answers/ と fixtures/eval/cases.json の synth-answers-*
+ *   pnpm exec tsx scripts/make-sample-answers.ts   # fixtures/eval/synth-answers/ と fixtures/eval/cases.json の synth-answers-*
  *
  * 元の Excel（工事経歴.xlsx）は配置技術者・完成日・工事場所が抜けた行がある内装工事の表。問い合わせはこの抜けた欄になる。
  * - synth-answers-mail: 顧客がメールの本文で答える（職員がチャットに貼る）。「倉庫の件」は2つの倉庫の工事に当てはまるので、AI は決めずに職員に聞くのが正しい

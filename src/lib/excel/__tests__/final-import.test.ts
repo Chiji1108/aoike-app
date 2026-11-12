@@ -1,5 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import ExcelJS from "exceljs"
 import { MAX_ADDED_ROWS } from "../../cases/added"
 import { uploadKind } from "../../cases/upload-kind"

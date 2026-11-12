@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { fileAddressLookup } from "../../convert/address-file"
 import { kojiRow } from "../../convert/__tests__/helpers"
 import { personToken } from "../../convert/persons"

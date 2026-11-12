@@ -1,7 +1,7 @@
 /**
  * 検証用の「工事場所がほとんど書いていない」工事経歴 Excel を作る（工事場所の調査の確認用。実在の公共施設・会社の名前だけを使う合成データ）
  *
- *   bun scripts/make-sample-no-address.ts   # fixtures/sample-no-address.xlsx
+ *   pnpm exec tsx scripts/make-sample-no-address.ts   # fixtures/sample-no-address.xlsx
  *
  * 施工場所の列はあるが、半分ほどの行は空（空の行の工事場所を調べる）。同じ現場が2行（工期を分けた工事）、個人の注文者の行を含む
  */

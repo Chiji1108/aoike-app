@@ -152,7 +152,7 @@ test("顧客ルール: 2つの画面で別の項目を直しても両方残る�
 function putProposalRecord(caseId: string, record: ProposalRecord) {
   const file = join(mkdtempSync(join(tmpdir(), "proposal-")), "record.json")
   writeFileSync(file, JSON.stringify(record))
-  execFileSync("bunx", ["wrangler", "r2", "object", "put", `aoike-kensetsu-csv-files/${proposalKey(caseId, record.proposal.id)}`, "--local", "--file", file, "--content-type", "application/json"], {
+  execFileSync("pnpm", ["exec", "wrangler", "r2", "object", "put", `aoike-kensetsu-csv-files/${proposalKey(caseId, record.proposal.id)}`, "--local", "--file", file, "--content-type", "application/json"], {
     stdio: ["ignore", "ignore", "inherit"],
   })
 }

@@ -1,7 +1,7 @@
 /**
  * 文字の層の無い PDF・手書きの写真の照合（scripts/eval-scan.ts）と e2e に使う合成の例を作る。実データは使わない（会社名は「サンプル」、人名は架空、住所は実在の市区町村だけ）。
  *
- *   bun scripts/make-sample-scan.ts   # fixtures/eval/synth-scan/、e2e/fixtures/scan.pdf
+ *   pnpm exec tsx scripts/make-sample-scan.ts   # fixtures/eval/synth-scan/、e2e/fixtures/scan.pdf
  *
  * - 工事経歴_スキャン.pdf: 1ページ目は活字の表、2ページ目は手書きの表。どちらも Chrome で描いた絵を JPEG にして PDF に貼る（文字の層が無い。スキャンと同じ）
  * - 手書きメモ.jpg: 手書きの工事のメモを撮った写真（少し傾けて、紙の色と影を付ける）

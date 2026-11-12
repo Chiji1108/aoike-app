@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { addMonths, daysBetween } from "../../period"
 import { addressPending, alertsOf, sealExpiryOf, sortAlerts, type AlertSource } from "../alerts"
 import { DEFAULT_SETTINGS } from "../settings"
