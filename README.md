@@ -114,7 +114,7 @@ kintai.aoike.jp・csv.aoike.jp も同じ形で受けていて、来たアクセ�
 
 `main` への push で Workers Builds がビルド・デプロイします。
 
-Workers & Pages → Worker → 設定 → ビルド
+Workers & Pages → aoike-app → 設定 → ビルド
 
 | 項目 | 値 |
 | --- | --- |
