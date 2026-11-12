@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { AI_TASKS, parseAiResponse } from "../ai-tasks"
 import { dominantGyoshu, GYOSHU_BASIS_LABELS, GYOSHU_GUESS_RULE, gyoshuTrend, suggestionEdits, suggestionInput, trendText, type GyoshuSuggestion } from "../gyoshu-guess"
 import { systemPrompt } from "../../chat/turn"

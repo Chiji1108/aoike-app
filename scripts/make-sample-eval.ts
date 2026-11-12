@@ -1,7 +1,7 @@
 /**
  * 照合（scripts/eval.ts）の合成の例を作る。実データは使わない（会社名は「サンプル」、人名は架空、住所は実在の市区町村だけ）。
  *
- *   bun scripts/make-sample-eval.ts   # fixtures/eval/
+ *   pnpm exec tsx scripts/make-sample-eval.ts   # fixtures/eval/
  *
  * - synth-engineers: 管工事の工事台帳に配置技術者の列が無く、技術者一覧が別ファイル（工事番号で引く）
  * - synth-pdf: 電気工事の Excel と、Excel に無い3件が PDF で届いた（PDF は Chrome で印刷して作る。E2E_CHROME で Chrome を指定できる）

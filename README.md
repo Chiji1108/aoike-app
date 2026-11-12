@@ -16,7 +16,7 @@
 
 ## 技術スタック
 
-TanStack Start / React / TypeScript / Tailwind CSS v4 / shadcn/ui（Base UI 版） / Cloudflare Workers / Cloudflare D1 / R2 / Workflows / Drizzle ORM / Better Auth / Zod / Bun。ツールごとに足したライブラリは各ツールの説明にあります。
+TanStack Start / React / TypeScript / Tailwind CSS v4 / shadcn/ui（Base UI 版） / Cloudflare Workers / Cloudflare D1 / R2 / Workflows / Drizzle ORM / Better Auth / Zod / pnpm。ツールごとに足したライブラリは各ツールの説明にあります。
 
 ## 画面（共通）
 
@@ -25,25 +25,27 @@ TanStack Start / React / TypeScript / Tailwind CSS v4 / shadcn/ui（Base UI 版�
 | ログイン `/login` | パスワードのみ入力。ログイン状態は90日間保持（利用するたびに延長）。ログインすると、開こうとしていたページに戻る |
 | ポータル `/` | ツールの一覧 |
 
-デスクトップやタスクバーにアプリとして入れられます（PWA。`public/manifest.webmanifest`。オフライン対応はしない）。アイコンは `bun run icons` で作り直せます。
+デスクトップやタスクバーにアプリとして入れられます（PWA。`public/manifest.webmanifest`。オフライン対応はしない）。アイコンは `pnpm run icons` で作り直せます。
 
 ## 開発環境のセットアップ
 
+Node は `.node-version` の版、pnpm は `package.json` の `packageManager` の版を使います（CI と Workers Builds も同じ版）。単体テストは Vitest で、手元の D1 の代わりに better-sqlite3 を使います（`src/server/__tests__/sqlite.ts`）。
+
 ```bash
-bun install
+pnpm install
 cp .dev.vars.example .dev.vars   # BETTER_AUTH_SECRET を32文字以上のランダム値に。工事経歴書 CSV で AI を使うなら ANTHROPIC_API_KEY も
-bun run db:migrate               # ローカル D1（認証用・勤怠・工事経歴書 CSV・FIT 申請）にテーブル作成
-bun run set-password             # 事務所共通パスワードを設定（ローカル）
-bun run dev                      # http://localhost:3210
-bun test                         # 単体テスト
+pnpm run db:migrate               # ローカル D1（認証用・勤怠・工事経歴書 CSV・FIT 申請）にテーブル作成
+pnpm run set-password             # 事務所共通パスワードを設定（ローカル）
+pnpm run dev                      # http://localhost:3210
+pnpm test                         # 単体テスト
 ```
 
 `BETTER_AUTH_SECRET` は `openssl rand -base64 32` などで生成してください。
-ブラウザでの確認（e2e、`bun run e2e`）は [docs/csv.md](docs/csv.md#ブラウザでの確認e2e) を見てください。
+ブラウザでの確認（e2e、`pnpm run e2e`）は [docs/csv.md](docs/csv.md#ブラウザでの確認e2e) を見てください。
 
 ## CI と依存ライブラリの更新
 
-- PR と main への push で GitHub Actions（`.github/workflows/ci.yml`）が typecheck・`bun test`・build を流す。main は CI が通った PR だけを入れる（main に入ると Workers Builds が本番にデプロイするため）。e2e は Chrome とローカルの D1 が要るので CI では流さず、大きい版の更新のときは手元で `bun run e2e` を流す。
+- PR と main への push で GitHub Actions（`.github/workflows/ci.yml`）が typecheck・`pnpm test`・build を流す。main は CI が通った PR だけを入れる（main に入ると Workers Builds が本番にデプロイするため）。e2e は Chrome とローカルの D1 が要るので CI では流さず、大きい版の更新のときは手元で `pnpm run e2e` を流す。
 - 依存ライブラリの更新は Renovate（`renovate.json`）が月曜の朝に PR を出す。細かい更新は1つの PR にまとめ、大きい版の更新は別の PR。自動マージはしない。SheetJS（`xlsx`）は CDN の tgz から入れているので対象外で、手で更新する。
 
 ## データの置き場所
@@ -64,25 +66,25 @@ bun test                         # 単体テスト
 
 ```bash
 # 1. D1 と R2 を作成し、表示された database_id を wrangler.jsonc に設定（R2 に公開アクセスは付けない）
-bunx wrangler d1 create aoike-auth
-bunx wrangler d1 create aoike-attendance
-bunx wrangler d1 create aoike-kensetsu-csv
-bunx wrangler d1 create aoike-fit
-bunx wrangler r2 bucket create aoike-kensetsu-csv-files
-bunx wrangler r2 bucket create aoike-fit-files
+pnpm exec wrangler d1 create aoike-auth
+pnpm exec wrangler d1 create aoike-attendance
+pnpm exec wrangler d1 create aoike-kensetsu-csv
+pnpm exec wrangler d1 create aoike-fit
+pnpm exec wrangler r2 bucket create aoike-kensetsu-csv-files
+pnpm exec wrangler r2 bucket create aoike-fit-files
 
 # 2. テーブル作成
-bun run db:migrate:remote
+pnpm run db:migrate:remote
 
 # 3. シークレットを設定（公開URL BETTER_AUTH_URL は wrangler.jsonc の vars にある）
-bunx wrangler secret put BETTER_AUTH_SECRET   # 32文字以上のランダム文字列
-bunx wrangler secret put ANTHROPIC_API_KEY    # Claude API のキー（工事経歴書 CSV）
+pnpm exec wrangler secret put BETTER_AUTH_SECRET   # 32文字以上のランダム文字列
+pnpm exec wrangler secret put ANTHROPIC_API_KEY    # Claude API のキー（工事経歴書 CSV）
 
 # 4. デプロイ（工事場所の調査の Workflow は wrangler.jsonc の workflows から一緒に作られる）
-bun run deploy
+pnpm run deploy
 
 # 5. 事務所共通パスワードを設定
-bun run set-password --remote
+pnpm run set-password --remote
 ```
 
 ### 公開URL（app.aoike.jp）
@@ -118,16 +120,16 @@ Workers & Pages → Worker → 設定 → ビルド
 | --- | --- |
 | リポジトリ | Chiji1108/aoike-app |
 | ルートディレクトリ | （空欄＝リポジトリのルート） |
-| ビルドコマンド | `bun run build` |
-| デプロイコマンド | `bunx wrangler deploy` |
+| ビルドコマンド | `pnpm run build` |
+| デプロイコマンド | `pnpm exec wrangler deploy` |
 | 本番以外のブランチのビルド（Preview builds） | オフ（ブランチのビルドは Previews 機能として実行され、`wrangler preview` とプレビュー専用 D1 の `previews` 設定が必要になるため使わない） |
 | ビルドの監視パス | なし（すべての変更でビルド） |
-| ビルド変数 `BUN_VERSION` | `1.4.2`（手元の Bun と合わせる。既定の 1.2.15 は `bun.lock` を読めない） |
+| ビルド変数 | なし（Node は `.node-version`、pnpm は `packageManager` から読まれる） |
 
 ### パスワードの変更
 
 - アプリ右上のメニュー →「パスワード変更」から変更できます（他端末をログアウトさせるかを選択可）
-- パスワードを忘れた場合は `bun run set-password --remote` で再設定できます（全端末がログアウトされます）
+- パスワードを忘れた場合は `pnpm run set-password --remote` で再設定できます（全端末がログアウトされます）
 
 ## 設計メモ
 
@@ -143,9 +145,9 @@ Workers & Pages → Worker → 設定 → ビルド
 ### スキーマ変更時
 
 ```bash
-bun run db:generate        # drizzle/<auth|kintai|csv|fit>/ にマイグレーションSQLを生成
-bun run db:migrate         # ローカルに適用
-bun run db:migrate:remote  # 本番に適用
+pnpm run db:generate        # drizzle/<auth|kintai|csv|fit>/ にマイグレーションSQLを生成
+pnpm run db:migrate         # ローカルに適用
+pnpm run db:migrate:remote  # 本番に適用
 ```
 
 ## ディレクトリ構成（共通の部分）
@@ -168,7 +170,7 @@ src/
     api/fit/               FIT 申請の書類
   components/
     app-shell.tsx          ヘッダー（ツールごとのメニュー）
-    ui/                    shadcn/ui（`bunx shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
+    ui/                    shadcn/ui（`pnpm exec shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
   db/                      Drizzle スキーマ（auth-schema・kintai-schema・cases-schema・fit-schema）
   lib/auth.ts, constants.ts, legacy-host.ts  認証の設定・定数・古いホスト名の転送先
   server/middleware.ts     ログインと役割の確かめ

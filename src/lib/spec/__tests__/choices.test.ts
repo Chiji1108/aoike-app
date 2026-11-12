@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { engineerRoleOf, ENGINEER_ROLES } from "../code-sets"
 import { choiceLabel, choicesOf, matchesChoice } from "../choices"
 import { KOJI_KEIREKI } from "../koji-keireki"

@@ -10,11 +10,11 @@ import { casePrefix, r2KeyOf, type Case, type CaseFile, type CaseStatus, type Cu
 
 /**
  * 顧客・案件・ファイルの読み書き（D1 と R2）。サーバー関数とファイルのルートから呼ぶ。
- * D1 でも bun:sqlite でも動くよう、drizzle の sqlite の型で受ける（テストは bun:sqlite と手元の R2 の代わりで回す）
+ * D1 でも better-sqlite3 でも動くよう、drizzle の sqlite の型で受ける（テストは better-sqlite3 と手元の R2 の代わりで回す）
  */
 export type Db = BaseSQLiteDatabase<"sync" | "async", unknown, typeof schema> & Batchable
 
-/** いくつかの書き込みを1つの処理（トランザクション）で流す（D1 の batch。テストの bun:sqlite でも同じ形で持たせる） */
+/** いくつかの書き込みを1つの処理（トランザクション）で流す（D1 の batch。テストの better-sqlite3 でも同じ形で持たせる） */
 type Batchable = { batch<U extends BatchItem<"sqlite">, T extends Readonly<[U, ...U[]]>>(batch: T): Promise<BatchResponse<T>> }
 
 /** R2Bucket のうち使うところ */

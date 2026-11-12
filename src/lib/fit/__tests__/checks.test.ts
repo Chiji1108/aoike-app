@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { autoChecks, outputKwOf, type CheckSource, type Equipment } from "../checks"
 
 const panel = (watts: number, count: number): Equipment => ({ kind: "panel", maker: "", model: "P", watts, count })

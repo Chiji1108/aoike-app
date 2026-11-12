@@ -1,7 +1,7 @@
 /**
  * 案件定義の variants を順に流す（1回分）。同じ条件で回を重ねるときは、回ごとに新しい EVAL_OUT にする（工事場所の覚えた結果も回ごとに初めから）。
  *
- *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<この回のフォルダ> bun scripts/eval-run.ts [<case>...]
+ *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<この回のフォルダ> pnpm exec tsx scripts/eval-run.ts [<case>...]
  *
  * 案件を渡さなければ、variants のある案件をすべて。照合の出力は EVAL_OUT の log-<case>-<順番>-<variant>.log に流す。
  * variant が落ちたら、その案件の残りと、その案件を去年（editFrom）に使う案件は流さない（前の variant の結果を使うため）。
@@ -42,7 +42,7 @@ for (const [id, c] of targets) {
     const t0 = Date.now()
     const log = join(OUT, `log-${id}-${i + 1}-${variant}.log`)
     const fd = openSync(log, "w")
-    const r = spawnSync("bun", [script, id, variant], { env: process.env, stdio: ["ignore", fd, fd] })
+    const r = spawnSync(process.execPath, ["--import", "tsx", script, id, variant], { env: process.env, stdio: ["ignore", fd, fd] })
     closeSync(fd)
     const ok = r.status === 0
     console.log(`${id} ${variant}: ${ok ? "ok" : `落ちた（${r.status ?? r.signal}）`} ${Math.round((Date.now() - t0) / 1000)}s  累計 $${spent().toFixed(2)}  ${log}`)

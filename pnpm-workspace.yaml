@@ -1,0 +1,4 @@
+# インストール時にスクリプトを動かしてよいもの（ビルド済みの実行ファイルを置く。pnpm は既定で止める）
+allowBuilds:
+  esbuild: true
+  workerd: true

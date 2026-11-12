@@ -6,7 +6,7 @@ import { confirmDelete, deleteCustomer, open, openCaseDelete, openNewCase, reloa
 function insertAiFeedback(caseId: string, want: string) {
   const q = (s: string) => `'${s.replaceAll("'", "''")}'`
   const sql = `insert into csv_feedback (id, case_id, kind, want, did, idea, source) values (${q(crypto.randomUUID())}, ${q(caseId)}, 'detour', ${q(want)}, 'コードで直した。', 'まとめて直す道具。', 'ai')`
-  const r = spawnSync("bunx", ["wrangler", "d1", "execute", "CSV_DB", "--local", "--command", sql], { encoding: "utf8" })
+  const r = spawnSync("pnpm", ["exec", "wrangler", "d1", "execute", "CSV_DB", "--local", "--command", sql], { encoding: "utf8" })
   if (r.status !== 0) throw new Error(`D1 に書けませんでした: ${r.stderr}`)
 }
 

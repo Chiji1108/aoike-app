@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { compareFormats, describeFormatDiff, similarity, type FormatSide } from "../format-diff"
 import type { SheetGrid } from "../plan"
 

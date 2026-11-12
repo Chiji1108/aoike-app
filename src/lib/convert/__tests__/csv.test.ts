@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { KOJI_KEIREKI } from "../../spec/koji-keireki"
 import { csvCell, csvFileName, toCsvBytes } from "../csv"
 import { decodeCp932, encodeCp932, nonCp932Chars } from "../text"

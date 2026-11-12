@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import type { GyoshuSummary } from "../../convert/koji-selection"
 import { exportCheck } from "../export-check"
 

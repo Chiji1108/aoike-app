@@ -113,7 +113,7 @@ D1 `aoike-fit`（`FIT_DB`、マイグレーションは `drizzle/fit/`）。日�
 src/
   routes/_authed/fit.tsx, fit/  トップ・手続の一覧・申込の受付・案件・週次の案件表・設定
   components/fit/               フォームの欄・案件の欄・手続の編集・不備・状況の印
-  server/fit-store.ts           D1 の読み書き（bun:sqlite でもテストする）
+  server/fit-store.ts           D1 の読み書き（better-sqlite3 でもテストする）
   server/fit-fns.ts             サーバー関数（Zod で入力を確かめる、要ログイン）
   server/fit-file-routes.ts     書類のアップロード・ダウンロード（routes/api/fit/）
   db/fit-schema.ts              Drizzle スキーマ

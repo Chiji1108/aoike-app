@@ -23,7 +23,7 @@ function seedMemory(customer: string, items: { workName: string; client: string;
     )
     .join(" union all ")
   const sql = `insert into csv_location_memory (customer_id, site_key, work_name, client, prefecture, place, urls, source, confident, note, case_id, updated_at) ${values}`
-  const r = spawnSync("bunx", ["wrangler", "d1", "execute", "CSV_DB", "--local", "--command", sql], { encoding: "utf8" })
+  const r = spawnSync("pnpm", ["exec", "wrangler", "d1", "execute", "CSV_DB", "--local", "--command", sql], { encoding: "utf8" })
   if (r.status !== 0) throw new Error(`覚えた結果を入れられませんでした: ${r.stderr}`)
 }
 

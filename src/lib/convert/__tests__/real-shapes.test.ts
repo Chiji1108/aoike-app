@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS, type KojiFieldId } from "../../spec/koji-keireki"
 import type { AiBatchRequest } from "../ai-tasks"
 import { editKey, staffEdit, type RowResult } from "../convert"

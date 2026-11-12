@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { abandonTurn, beginTurn, ChatBusyError, ChatConflictError, chatKey, endSession, loadChat, saveChat, settleSession, TURN_LOCK_MS, type ChatBucket, type ChatSession } from "../chat-store"
 

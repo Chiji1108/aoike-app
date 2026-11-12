@@ -1,5 +1,5 @@
-import { Database } from "bun:sqlite"
-import { beforeEach, describe, expect, test } from "bun:test"
+import Database from "better-sqlite3"
+import { beforeEach, describe, expect, test } from "vitest"
 import { readFileSync } from "node:fs"
 import { DEFAULT_GLOBAL_RULE_ITEMS, MAX_RULE_ITEM_LENGTH, MAX_RULE_ITEMS, MAX_RULES_TOTAL, originLabel, rulesText, ruleTextSchema } from "@/lib/chat/rules"
 import {
@@ -32,7 +32,7 @@ const bucket: Bucket = {
 }
 
 let db: Db
-let sqlite: Database
+let sqlite: Database.Database
 beforeEach(() => {
   ;({ db, sqlite } = migratedDb())
 })
@@ -42,7 +42,7 @@ const texts = async (t: RuleTarget) => (await listRuleItems(db, t)).map((i) => i
 
 describe("ルールの項目", () => {
   test("全体ルールの初期値はマイグレーションが入れる。読むだけでは書かない（全部消しても戻さない）", async () => {
-    const counts = () => sqlite.query("select (select count(*) from csv_rule_items) as items, (select count(*) from csv_settings) as settings").get()
+    const counts = () => sqlite.prepare("select (select count(*) from csv_rule_items) as items, (select count(*) from csv_settings) as settings").get()
     const before = counts()
     expect(before).toEqual({ items: DEFAULT_GLOBAL_RULE_ITEMS.length, settings: 1 })
     expect(await texts(GLOBAL)).toEqual([...DEFAULT_GLOBAL_RULE_ITEMS])
@@ -146,7 +146,7 @@ describe("ルールの項目", () => {
       ["工事名の読点は取る", "chat", { caseId: c.id, fiscalYear: 2026, customerName: "合成建設" }],
       ["A", "chat", { caseId: c.id, fiscalYear: 2026, customerName: "合成建設" }],
     ])
-    expect(sqlite.query("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 2 })
+    expect(sqlite.prepare("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 2 })
 
     expect(await appendRuleOnce(db, GLOBAL, { caseId: c.id, proposalId: "p1", item: 2, text: "注文者の株式会社は㈱", source: "chat" })).toBe("added")
     expect((await texts(GLOBAL)).at(-1)).toBe("注文者の株式会社は㈱")
@@ -158,7 +158,7 @@ describe("ルールの項目", () => {
       ["工事名の読点は取る", null],
       ["A", null],
     ])
-    expect(sqlite.query("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 0 })
+    expect(sqlite.prepare("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 0 })
   })
 
   test("振り返りの変更案の承認は、由来を「振り返り」にして足す（由来の言葉も）", async () => {
@@ -178,7 +178,7 @@ describe("ルールの項目", () => {
     const customer = await createCustomer(db, "合成建設")
     const t: RuleTarget = { scope: "customer", customerId: customer.id }
     await addRuleItem(db, t, "A")
-    sqlite.run("update csv_rule_items set source = 'mystery' where scope = 'customer'")
+    sqlite.exec("update csv_rule_items set source = 'mystery' where scope = 'customer'")
     await expect(listRuleItems(db, t)).rejects.toBeInstanceOf(UnknownRuleSourceError)
   })
 
@@ -188,7 +188,7 @@ describe("ルールの項目", () => {
     const t: RuleTarget = { scope: "customer", customerId: customer.id }
     await addRuleItem(db, t, "あ".repeat(MAX_RULES_TOTAL - 2))
     await expect(appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "長い追記", source: "chat" })).rejects.toBeInstanceOf(RulesTooLongError)
-    expect(sqlite.query("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 0 })
+    expect(sqlite.prepare("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 0 })
     expect(await appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "a", source: "chat" })).toBe("added")
   })
 
@@ -199,15 +199,15 @@ describe("ルールの項目", () => {
     await addRuleItem(db, t, "A")
     await appendRuleOnce(db, GLOBAL, { caseId: c.id, proposalId: "p", item: 0, text: "全体へ", source: "chat" })
     await deleteCustomer(db, bucket, customer.id)
-    expect(sqlite.query("select count(*) as n from csv_rule_items where scope = 'customer'").get()).toEqual({ n: 0 })
+    expect(sqlite.prepare("select count(*) as n from csv_rule_items where scope = 'customer'").get()).toEqual({ n: 0 })
     expect((await listRuleItems(db, GLOBAL)).at(-1)).toMatchObject({ text: "全体へ", origin: null })
     await expect(addRuleItem(db, t, "B")).rejects.toThrow("顧客が見つかりません")
   })
 })
 
 /** マイグレーションを番号の順に、途中まで当てる（前の形のデータを入れてから 0004 を当てる） */
-function applyMigrations(sqlite: Database, tags: string[]) {
-  for (const tag of tags) for (const statement of readFileSync(new URL(`../../../drizzle/csv/${tag}.sql`, import.meta.url), "utf8").split("--> statement-breakpoint")) sqlite.run(statement)
+function applyMigrations(sqlite: Database.Database, tags: string[]) {
+  for (const tag of tags) for (const statement of readFileSync(new URL(`../../../drizzle/csv/${tag}.sql`, import.meta.url), "utf8").split("--> statement-breakpoint")) sqlite.exec(statement)
 }
 const BEFORE = ["0000_init", "0001_cases", "0002_rule_appends", "0003_location_search"]
 
@@ -215,24 +215,24 @@ describe("前の形（1つの文章）から項目に移す（0004）", () => {
   test("行ごとに項目にする。空行は飛ばし、前後の空白と先頭の箇条書きの記号を取る。並びは元の行の順。保存したことがあれば初期値を入れない", async () => {
     const old = new Database(":memory:")
     applyMigrations(old, BEFORE)
-    old.run("insert into csv_rules (id, rules) values ('global', ?)", ["一行目。\r\n\n  - 二行目  \n・三行目\n　\n* 四行目\n全角　空白は中だけ残す　\n-"])
-    old.run("insert into csv_customers (id, name, rules) values ('c1', '合成建設', ?)", ["A\nB\n\n"])
-    old.run("insert into csv_customers (id, name, rules) values ('c2', '合成工務店', '')")
+    old.prepare("insert into csv_rules (id, rules) values ('global', ?)").run(...["一行目。\r\n\n  - 二行目  \n・三行目\n　\n* 四行目\n全角　空白は中だけ残す　\n-"])
+    old.prepare("insert into csv_customers (id, name, rules) values ('c1', '合成建設', ?)").run(...["A\nB\n\n"])
+    old.exec("insert into csv_customers (id, name, rules) values ('c2', '合成工務店', '')")
     applyMigrations(old, ["0004_rule_items"])
-    const rows = old.query("select scope, customer_id as customerId, text, position, source, version from csv_rule_items order by scope, customer_id, position").all()
+    const rows = old.prepare("select scope, customer_id as customerId, text, position, source, version from csv_rule_items order by scope, customer_id, position").all()
     expect(rows).toEqual([
       { scope: "customer", customerId: "c1", text: "A", position: 1, source: "staff", version: 1 },
       { scope: "customer", customerId: "c1", text: "B", position: 2, source: "staff", version: 1 },
       ...["一行目。", "二行目", "三行目", "四行目", "全角　空白は中だけ残す"].map((text, i) => ({ scope: "global", customerId: null, text, position: i + 1, source: "staff", version: 1 })),
     ])
-    expect(old.query("select id, rule7_tax as rule7Tax from csv_settings").all()).toEqual([{ id: "global", rule7Tax: "excluded" }])
+    expect(old.prepare("select id, rule7_tax as rule7Tax from csv_settings").all()).toEqual([{ id: "global", rule7Tax: "excluded" }])
   })
 
   test("全体ルールを保存したことが無ければ、初期値の項目（コードの DEFAULT_GLOBAL_RULE_ITEMS と同じ）と設定の行を入れる", () => {
     const old = new Database(":memory:")
     applyMigrations(old, [...BEFORE, "0004_rule_items"])
-    expect(old.query("select id, rule7_tax as rule7Tax from csv_settings").all()).toEqual([{ id: "global", rule7Tax: "excluded" }])
-    const rows = old.query("select scope, customer_id as customerId, text, position, source from csv_rule_items order by position").all()
+    expect(old.prepare("select id, rule7_tax as rule7Tax from csv_settings").all()).toEqual([{ id: "global", rule7Tax: "excluded" }])
+    const rows = old.prepare("select scope, customer_id as customerId, text, position, source from csv_rule_items order by position").all()
     expect(rows).toEqual(DEFAULT_GLOBAL_RULE_ITEMS.map((text, i) => ({ scope: "global", customerId: null, text, position: i + 1, source: "staff" })))
   })
 })
@@ -241,11 +241,11 @@ describe("前の形の列を消す（0005）", () => {
   test("項目に移したあと、全体ルールの文章の表と顧客ルールの文章の列を消す。顧客と項目は残る", () => {
     const old = new Database(":memory:")
     applyMigrations(old, BEFORE)
-    old.run("insert into csv_customers (id, name, rules, format_note) values ('c1', '合成建設', 'A', 'メモ')")
+    old.exec("insert into csv_customers (id, name, rules, format_note) values ('c1', '合成建設', 'A', 'メモ')")
     applyMigrations(old, ["0004_rule_items", "0005_drop_old_rule_columns"])
-    expect(old.query("select name from sqlite_master where name = 'csv_rules'").all()).toEqual([])
-    expect(old.query("select * from csv_customers").all()).toMatchObject([{ id: "c1", name: "合成建設", format_note: "メモ" }])
-    expect(Object.keys(old.query("select * from csv_customers").get() as object)).not.toContain("rules")
-    expect(old.query("select text from csv_rule_items where scope = 'customer'").all()).toEqual([{ text: "A" }])
+    expect(old.prepare("select name from sqlite_master where name = 'csv_rules'").all()).toEqual([])
+    expect(old.prepare("select * from csv_customers").all()).toMatchObject([{ id: "c1", name: "合成建設", format_note: "メモ" }])
+    expect(Object.keys(old.prepare("select * from csv_customers").get() as object)).not.toContain("rules")
+    expect(old.prepare("select text from csv_rule_items where scope = 'customer'").all()).toEqual([{ text: "A" }])
   })
 })

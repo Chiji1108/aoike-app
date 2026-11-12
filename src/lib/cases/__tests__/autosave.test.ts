@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { editKey } from "../../convert/convert"
 import { createAutosave, type SaveRequest, type SaveResponse, type SaveStatus } from "../autosave"
 import { newWork, type CaseWork } from "../state"
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
 const edited = (w: CaseWork, value: string): CaseWork => ({ ...w, edits: new Map(w.edits).set(editKey("工事経歴!3", "place"), { value, by: "staff" }) })
 const converted = (w: CaseWork): CaseWork => ({ ...w, converted: true, aiCache: new Map([["横浜市", { id: 0, value: "横浜市", needsReview: false, note: "" }]]) })
@@ -38,7 +40,7 @@ function setup(s: ReturnType<typeof server>, saved: CaseWork | null = null) {
 }
 
 async function until(cond: () => boolean) {
-  for (let i = 0; i < 200 && !cond(); i++) await Bun.sleep(2)
+  for (let i = 0; i < 200 && !cond(); i++) await sleep(2)
   expect(cond()).toBe(true)
 }
 
@@ -91,7 +93,7 @@ describe("案件の作業の自動保存", () => {
     const { autosave, statuses, last } = setup(s, newWork())
     autosave.change(edited(newWork(), "a"))
     await until(() => last() === "tooLarge")
-    await Bun.sleep(20)
+    await sleep(20)
     expect(s.requests).toHaveLength(1)
     autosave.change(edited(newWork(), "b"))
     await until(() => last() === "saved")
@@ -106,7 +108,7 @@ describe("案件の作業の自動保存", () => {
       autosave.change(edited(newWork(), "a"))
       await until(() => last() === reason)
       autosave.change(edited(newWork(), "b"))
-      await Bun.sleep(20)
+      await sleep(20)
       expect(s.requests).toHaveLength(1)
       expect(autosave.unsaved()).toBe(false)
     })
@@ -121,7 +123,7 @@ describe("案件の作業の自動保存", () => {
     await until(() => release !== undefined)
     autosave.change(edited(newWork(), "b"))
     autosave.change(edited(newWork(), "c"))
-    await Bun.sleep(10)
+    await sleep(10)
     expect(autosave.unsaved()).toBe(true)
     release()
     await until(() => last() === "saved" && s.requests.length === 2)

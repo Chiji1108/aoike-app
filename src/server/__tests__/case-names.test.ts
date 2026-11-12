@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { newWork, toSavedWork } from "@/lib/cases/state"
 import { createCase, createCustomer, saveCaseState } from "../case-store"
 import { namesOfSaved, readSavedCase, UnreadableCaseError } from "../case-names"

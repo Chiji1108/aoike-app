@@ -1,12 +1,13 @@
 /**
  * 事務所共通アカウントの作成 / パスワード再設定
  *
- *   bun run set-password            # ローカル（開発用 D1）
- *   bun run set-password --remote   # 本番 D1
+ *   pnpm run set-password            # ローカル（開発用 D1）
+ *   pnpm run set-password --remote   # 本番 D1
  *
  * パスワードを変更すると、すべての端末でログアウトされます。
  */
 import { spawnSync } from "node:child_process"
+import { createInterface } from "node:readline/promises"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -16,7 +17,17 @@ import { hashPassword } from "../src/lib/password"
 const remote = process.argv.includes("--remote")
 const fromArg = process.argv.slice(2).find((a) => !a.startsWith("--"))
 
-const password = fromArg ?? prompt("新しいパスワードを入力してください（8文字以上）:")?.trim()
+/** 引数で渡さなければ、ターミナルで聞く */
+async function ask(question: string) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    return (await rl.question(question)).trim()
+  } finally {
+    rl.close()
+  }
+}
+
+const password = fromArg ?? (await ask("新しいパスワードを入力してください（8文字以上）: "))
 if (!password || password.length < 8) {
   console.error("パスワードは8文字以上で入力してください。")
   process.exit(1)
@@ -44,8 +55,8 @@ const file = join(dir, "set-password.sql")
 writeFileSync(file, sql)
 try {
   const proc = spawnSync(
-    "bunx",
-    ["wrangler", "d1", "execute", "AUTH_DB", remote ? "--remote" : "--local", "--yes", `--file=${file}`],
+    "pnpm",
+    ["exec", "wrangler", "d1", "execute", "AUTH_DB", remote ? "--remote" : "--local", "--yes", `--file=${file}`],
     { stdio: "inherit" },
   )
   if (proc.status !== 0) process.exit(proc.status ?? 1)

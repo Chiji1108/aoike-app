@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { todayIso } from "../../period"
 import { acceptedOnOf, bookNumber, looksLikeCommonId, procedureStatus, type StatusInput } from "../procedure"
 import { DEFAULT_SETTINGS, feeFor as feeIn, fiscalYearOf, withDefaults } from "../settings"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS } from "../../spec/koji-keireki"
 import { primarySheet, sheetByNames } from "../heuristic-plan"
 import type { SheetGrid } from "../plan"

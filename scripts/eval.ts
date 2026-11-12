@@ -1,7 +1,7 @@
 /**
  * 実例での照合: 顧客の実データを、今の変換（チャットなし）→ チャットの指示 で CSV にし、職員が作った CSV と列ごとに比べる。
  *
- *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<結果を書くフォルダ> bun scripts/eval.ts <case> <variant>
+ *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<結果を書くフォルダ> pnpm exec tsx scripts/eval.ts <case> <variant>
  *   variant: baseline（チャットなし）| edit（案件定義の指示を順に）| rules（edit で承認した顧客ルールを入れて「顧客ルールどおりに表を直して」の1回）
  *            | nextyear（翌年分: rules に加えて、edit の会話で書いたコードを去年のコードとして添え、去年の Excel との違いを文脈に入れる。画面の「去年のやり方で直す」と同じ）
  *            | plan（列の対応を直す指示: 案件定義の planInstructions を順に。set_plan の変更案は画面と同じく今の計画に重ねて変換し直し、ほかの変更案はその上に重ねる）

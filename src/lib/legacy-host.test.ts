@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { legacyRedirectUrl } from "./legacy-host"
 
 const to = (href: string) => legacyRedirectUrl(new URL(href))

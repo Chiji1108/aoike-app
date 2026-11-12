@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { caseTableWireSchema } from "../wire"
 
 describe("チャットに送る表の形", () => {

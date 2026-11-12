@@ -1,7 +1,7 @@
 /**
  * アプリのアイコン（public/ の favicon.svg・icon-*.png・apple-touch-icon.png）を作る
  *
- *   bun run icons
+ *   pnpm run icons
  *
  * 「青池」の文字を Noto Serif JP（Black）の図形（パス）にして描く。パソコンの書体に左右されないよう、
  * 文字はフォントではなく図形で持つ。フォントは Google Fonts から「青池」の2文字分だけ取ってくる。
@@ -13,7 +13,7 @@ import opentype from "opentype.js"
 
 const TEXT = "青池"
 const NAVY = "#2b3a55"
-const OUT = join(import.meta.dir, "../../public")
+const OUT = join(import.meta.dirname, "../../public")
 
 async function loadFont() {
   // User-Agent を付けないと、Google Fonts は TrueType（opentype.js で読める形）で返す

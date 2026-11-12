@@ -1,5 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { kojiRow } from "../../convert/__tests__/helpers"
 import { fileAddressLookup } from "../../convert/address-file"

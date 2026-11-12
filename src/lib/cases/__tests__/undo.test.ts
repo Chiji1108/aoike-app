@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { applyChanges, type ChatChange } from "../../chat/proposals"
 import { editKey, type CellEdit } from "../../convert/convert"
 import { fromSaved, newWork, type SavedPlan, savedWorkSchema, toSavedWork, toSavedAiCache, type CaseWork } from "../state"

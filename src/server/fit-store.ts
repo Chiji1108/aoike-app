@@ -13,7 +13,7 @@ import type { WeeklySource, WeeklyValues } from "@/lib/fit/weekly"
 
 /**
  * FIT 申請の案件・手続・不備・週次の案件表の記録の読み書き（D1）。サーバー関数から呼ぶ。
- * D1 でも bun:sqlite でも動くよう、drizzle の sqlite の型で受ける（テストは bun:sqlite で回す）
+ * D1 でも better-sqlite3 でも動くよう、drizzle の sqlite の型で受ける（テストは better-sqlite3 で回す）
  */
 export type Db = BaseSQLiteDatabase<"sync" | "async", unknown, typeof schema> & {
   batch<U extends BatchItem<"sqlite">, T extends Readonly<[U, ...U[]]>>(batch: T): Promise<BatchResponse<T>>

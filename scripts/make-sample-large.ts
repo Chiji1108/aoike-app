@@ -1,7 +1,7 @@
 /**
  * 表の仮想スクロールを確かめる、行の多い合成の工事経歴 Excel を作る（値はすべて作り物）
  *
- *   bun scripts/make-sample-large.ts   # fixtures/sample-large.xlsx
+ *   pnpm exec tsx scripts/make-sample-large.ts   # fixtures/sample-large.xlsx
  *
  * 注文者は法人、工事名に個人名を含めないので、変換はルールだけで決まる（AI は列の対応の計画だけ）。
  * 30行ごとに契約金額を「見積中」にしてエラーの行を、一部の現場代理人を空白なしにして変換した行を混ぜる。

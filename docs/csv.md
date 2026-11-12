@@ -11,7 +11,7 @@ URL：https://app.aoike.jp/csv（旧 https://csv.aoike.jp は転送だけ）
 
 SheetJS / ExcelJS（印付きの Excel・記入用Excel・最後の Excel） / encoding-japanese / @geolonia/normalize-japanese-addresses（住所の分割） / jsdiff（変更案の文字の差分） / Claude API（`@anthropic-ai/sdk`・AI SDK、モデル `claude-opus-5-5`） / Streamdown
 
-住所データ：`public/japanese-addresses/api/ja.json` は [Geolonia 住所データ](https://github.com/geolonia/japanese-addresses-v2)（CC BY 4.0、出典: デジタル庁 アドレス・ベース・レジストリ ほか）の市区町村の一覧です。`bun scripts/update-addresses.ts` で最新にします（町字のデータは使わないので同梱しない）。
+住所データ：`public/japanese-addresses/api/ja.json` は [Geolonia 住所データ](https://github.com/geolonia/japanese-addresses-v2)（CC BY 4.0、出典: デジタル庁 アドレス・ベース・レジストリ ほか）の市区町村の一覧です。`pnpm exec tsx scripts/update-addresses.ts` で最新にします（町字のデータは使わないので同梱しない）。更新したら `pnpm exec vitest run -u src/lib/convert/__tests__/address-split.test.ts` で分け方の記録（`src/lib/convert/__tests__/__snapshots__/address-split.json`）を作り直し、変わったところ（市町村の合併など）が正しいか確かめてから入れます。Worker と同じ版で分けるテスト（`address-bundled.test.ts`）も同じ記録と比べます。
 
 ## 使い方
 
@@ -86,12 +86,12 @@ SheetJS / ExcelJS（印付きの Excel・記入用Excel・最後の Excel） / e
 ## ブラウザでの確認（e2e）
 
 Playwright で、合成のサンプル（`fixtures/`）を読み込み、変換・表の絞り込み・並べ替え・列の表示・手直し・行の入れ外し・CSV の書き出しまでを通します。
-ブラウザは Playwright の chromium（`bunx playwright install chromium` で入る）を使います。入っているブラウザを使うときは `E2E_CHROME` に実行ファイルのパスを入れます（こちらが優先）。dev サーバーが動いていなければ自動で起動します。
+ブラウザは Playwright の chromium（`pnpm exec playwright install chromium` で入る）を使います。入っているブラウザを使うときは `E2E_CHROME` に実行ファイルのパスを入れます（こちらが優先）。dev サーバーが動いていなければ自動で起動します。
 
 ```bash
-E2E_PASSWORD='<ローカルで set-password に入れたパスワード>' bun run e2e
+E2E_PASSWORD='<ローカルで set-password に入れたパスワード>' pnpm run e2e
 # macOS の Google Chrome を使う
-E2E_CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' E2E_PASSWORD='…' bun run e2e
+E2E_CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' E2E_PASSWORD='…' pnpm run e2e
 ```
 
 ほかの worktree の dev サーバーとポートがぶつかるときは `E2E_PORT=3217` のように変える（ログインの戻り先が合うよう、`.dev.vars` の `BETTER_AUTH_URL` も同じポートにする）。
@@ -106,19 +106,19 @@ React がつながる前の入力や押下は効かないので、ページを�
 案件定義（実データのパス・顧客名・職員の誤り・指示）と結果は顧客の情報を含むので、リポジトリの外に置きます。1回の照合の費用が5ドルを超えたら止めます。
 
 ```bash
-EVAL_CASES=/path/to/cases.json EVAL_OUT=/path/to/out bun scripts/eval.ts <case> baseline   # チャットなし
-EVAL_CASES=... EVAL_OUT=... bun scripts/eval.ts <case> edit    # 案件定義の指示を順に（変更案はすべて承認したものとして重ねる）
-EVAL_CASES=... EVAL_OUT=... bun scripts/eval.ts <case> rules   # edit で出た顧客ルールを入れて「顧客ルールどおりに表を直して」の1回
-EVAL_LOCATION_LIMIT=50 EVAL_CASES=... EVAL_OUT=... bun scripts/eval.ts <case> location   # 工事場所の調査（覚えた結果は EVAL_OUT に残り、2回目は使う）
-EVAL_CASES=fixtures/eval/cases.json EVAL_OUT=... bun scripts/eval.ts synth-answers-mail answers   # 顧客の回答（聞いたセルの答えが正しいか・抜け・余計を数える）
-EVAL_CASES=... EVAL_OUT=... bun scripts/eval.ts <case> inquiry   # 問い合わせのメールの下書き（件名・前置きが出たか、個人名・工事名・ほかの顧客名・決まった言葉が文に入っていないか）
-EVAL_CASES=... EVAL_OUT=/path/to/run1 bun scripts/eval-run.ts      # 案件定義の variants をまとめて1回分（回ごとに新しい EVAL_OUT。1回の費用が EVAL_RUN_BUDGET_USD〔既定12〕を超えたら止める）
-bun scripts/eval-report.ts --cases <cases.json> --out /path/to/report /path/to/run1 /path/to/run2   # 回を並べた表（report.md・report.json。平均・最小〜最大・揺れの幅）
+EVAL_CASES=/path/to/cases.json EVAL_OUT=/path/to/out pnpm exec tsx scripts/eval.ts <case> baseline   # チャットなし
+EVAL_CASES=... EVAL_OUT=... pnpm exec tsx scripts/eval.ts <case> edit    # 案件定義の指示を順に（変更案はすべて承認したものとして重ねる）
+EVAL_CASES=... EVAL_OUT=... pnpm exec tsx scripts/eval.ts <case> rules   # edit で出た顧客ルールを入れて「顧客ルールどおりに表を直して」の1回
+EVAL_LOCATION_LIMIT=50 EVAL_CASES=... EVAL_OUT=... pnpm exec tsx scripts/eval.ts <case> location   # 工事場所の調査（覚えた結果は EVAL_OUT に残り、2回目は使う）
+EVAL_CASES=fixtures/eval/cases.json EVAL_OUT=... pnpm exec tsx scripts/eval.ts synth-answers-mail answers   # 顧客の回答（聞いたセルの答えが正しいか・抜け・余計を数える）
+EVAL_CASES=... EVAL_OUT=... pnpm exec tsx scripts/eval.ts <case> inquiry   # 問い合わせのメールの下書き（件名・前置きが出たか、個人名・工事名・ほかの顧客名・決まった言葉が文に入っていないか）
+EVAL_CASES=... EVAL_OUT=/path/to/run1 pnpm exec tsx scripts/eval-run.ts      # 案件定義の variants をまとめて1回分（回ごとに新しい EVAL_OUT。1回の費用が EVAL_RUN_BUDGET_USD〔既定12〕を超えたら止める）
+pnpm exec tsx scripts/eval-report.ts --cases <cases.json> --out /path/to/report /path/to/run1 /path/to/run2   # 回を並べた表（report.md・report.json。平均・最小〜最大・揺れの幅）
 ```
 
 回のフォルダには、回ごとの要約（`summary-*.json`。終わったか・落ちた理由を持つ）と、使った時点で足す費用（`costs.jsonl`。落ちた照合の分も残る）が入ります。表の値は終わった回だけで出し、落ちた・止めた回は数と理由を出します。まとめ流しは、前の variant が落ちたらその案件の残りを流さず、落ちたら 1 で終わります。
-文字の層の無い PDF・手書きの写真だけの案件は `EVAL_OUT=... bun scripts/eval-scan.ts`（合成の例 `fixtures/eval/synth-scan/` を `bun scripts/make-sample-scan.ts` で作る。1回の指示で足した行を期待の値と比べる）。
-案件定義は `variants`（流す順）と `files`（変換の元のほかに AI に渡すファイル）も書けます。合成の例（技術者一覧が別ファイル・PDF で届いた数件、顧客の回答をメールの本文・記入用Excelの別の列・一部だけで受け取る `synth-answers-*`）は `fixtures/eval/cases.json` にあり（`bun scripts/make-sample-eval.ts`・`bun scripts/make-sample-answers.ts` で作り直す）、実データの案件定義と1つのファイルにまとめて使います。
+文字の層の無い PDF・手書きの写真だけの案件は `EVAL_OUT=... pnpm exec tsx scripts/eval-scan.ts`（合成の例 `fixtures/eval/synth-scan/` を `pnpm exec tsx scripts/make-sample-scan.ts` で作る。1回の指示で足した行を期待の値と比べる）。
+案件定義は `variants`（流す順）と `files`（変換の元のほかに AI に渡すファイル）も書けます。合成の例（技術者一覧が別ファイル・PDF で届いた数件、顧客の回答をメールの本文・記入用Excelの別の列・一部だけで受け取る `synth-answers-*`）は `fixtures/eval/cases.json` にあり（`pnpm exec tsx scripts/make-sample-eval.ts`・`pnpm exec tsx scripts/make-sample-answers.ts` で作り直す）、実データの案件定義と1つのファイルにまとめて使います。
 照合は一致率を上げる目標ではなく安全網です。コードを簡単にしたときは、案件ごとのセルの一致率の下がり幅が2ポイント以内なら簡単な方を選びます（同じ条件で2回流した揺れは案件ごとに最大0.5ポイント。列ごとの一致率は揺れが大きいので比べに使わない。1.5〜2ポイントの境目なら両方を2回ずつ流して平均で比べる）。
 
 ### 要望を読む（開発者）
@@ -126,7 +126,7 @@ bun scripts/eval-report.ts --cases <cases.json> --out /path/to/report /path/to/r
 チャットの AI と職員が残した要望は本番の D1 の `csv_feedback` にあります。未対応のものを件数の多い順に読むには:
 
 ```bash
-bunx wrangler d1 execute CSV_DB --remote --command "select id, kind, count, want, did, idea, source, datetime(created_at / 1000, 'unixepoch') as created from csv_feedback where status = 'open' order by count desc, created_at desc"
+pnpm exec wrangler d1 execute CSV_DB --remote --command "select id, kind, count, want, did, idea, source, datetime(created_at / 1000, 'unixepoch') as created from csv_feedback where status = 'open' order by count desc, created_at desc"
 ```
 
 `kind` は missing（今の道具ではできない）・detour（コード実行で遠回り）・repeat（同じ手直しの繰り返し）・other。機能を足したら画面の要望で「対応済み」にします（`update csv_feedback set status = 'done' where id = '…'` でもよい）。
@@ -138,11 +138,11 @@ AI が同じ要望かを見分けるため、要望を残すときは未対応�
 業種コード1〜30（`src/lib/spec/code-sets.ts` の `GYOSHU`）は、2026-10-29 に最新の建設業.NET で `docs/業種コード確認.csv` を取り込んで確認済みです（1〜28 は表どおり、29＝解体、30＝その他）。
 建設業.NET の更新で割り当てが変わっていないか確かめるときは、次の手順で取り込み直します。
 
-1. `docs/業種コード確認.csv` を用意する（`bun scripts/make-gyoshu-check-csv.ts` で作り直せる）。
+1. `docs/業種コード確認.csv` を用意する（`pnpm exec tsx scripts/make-gyoshu-check-csv.ts` で作り直せる）。
    業種コード1〜30を1行ずつ、工事名「業種コード確認n」、注文者「確認用」、民間元請、JVなし、東京都千代田区、請負代金1千円、着工・完成 2025年9月、主任技術者 1・監理技術者 0。完成年月が無い工事は工事経歴書の画面でどの決算期にも出ないので、確認するときは完成年月を含む決算期を開く
 2. **テスト用の申請者**を作り、「CSV形式データインポート → 工事経歴データ」で取り込む（「1行目が項目行」のチェックは外す）
 3. 工事経歴の一覧で、工事名「業種コード確認n」がどの業種になったかを確認する
-4. 違っていれば `src/lib/spec/code-sets.ts` の `GYOSHU` を直し、`bun test` を通す
+4. 違っていれば `src/lib/spec/code-sets.ts` の `GYOSHU` を直し、`pnpm test` を通す
 5. テスト用の申請者を削除する（取込は追加なので、本物の申請者に取り込まないこと）
 
 ## 建設業.NET 工事経歴データCSVの仕様
@@ -218,7 +218,7 @@ src/
     convert/                  結果の表・業種ごとの合計・問い合わせのパネル
     cases/                    削除の確認・案件の状態の自動保存
     chat/                     チャット欄・変更案（承認の一覧・聞き返し）・返事の Markdown（Streamdown）
-    ui/                       shadcn/ui（`bunx shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
+    ui/                       shadcn/ui（`pnpm exec shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
   server/
     ai.ts                     Claude を呼ぶサーバー関数（列の計画・値の判断）
     cases.ts                  顧客・案件・削除のサーバー関数

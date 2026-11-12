@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { closeTurn, finishTurn, watchStop } from "../turn-close"
 
 describe("指示の後始末", () => {

@@ -1,7 +1,7 @@
 /**
  * 検証用の「わざと崩れた」工事経歴 Excel を作る
  *
- *   bun scripts/make-sample-messy.ts   # fixtures/sample-messy.xlsx
+ *   pnpm exec tsx scripts/make-sample-messy.ts   # fixtures/sample-messy.xlsx
  *
  * 表題行と空行のあとに見出し、顧客ごとの列名、和暦・Excel日付・工期の範囲表記の混在、
  * 空白なしの氏名、都道府県を省いた住所、個人の注文者、合計行、JV列なし、業種名の表記ゆれを含む。

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "vitest"
 import { fetchUsdJpy, FX_URL, yenOf, type FxCache } from "../fx"
 
 /** Workers の Cache API の代わり（URL ごとに1つ持つ） */

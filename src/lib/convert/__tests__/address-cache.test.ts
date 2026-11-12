@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, test } from "vitest"
 import { addressCache, type AddressLookup } from "../address"
 
 test("引いた住所は持ち続け、持っていない値だけを引く。読めなければ空の結果で持って知らせる", async () => {
@@ -36,18 +36,14 @@ test("住所データを読めなかった値は、その間だけ空の結果�
 test("住所データは api ごとに1回だけ読む", async () => {
   const { lookupAddresses } = await import("../address")
   const { pathToFileURL, fileURLToPath } = await import("node:url")
+  const { readFile } = await import("node:fs/promises")
   const api = pathToFileURL(fileURLToPath(new URL("../../../../public/japanese-addresses/api/ja", import.meta.url))).href
-  const real = globalThis.fetch
   let reads = 0
-  globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    if (String(input) === `${api}.json`) reads++
-    return real(input, init)
-  }) as typeof fetch
-  try {
-    await lookupAddresses(["東京都港区"], api)
-    await lookupAddresses(["東京都品川区"], api)
-  } finally {
-    globalThis.fetch = real
+  const readJson = async (url: string) => {
+    if (url === `${api}.json`) reads++
+    return JSON.parse(await readFile(fileURLToPath(url), "utf8"))
   }
+  await lookupAddresses(["東京都港区"], api, readJson)
+  await lookupAddresses(["東京都品川区"], api, readJson)
   expect(reads).toBeLessThanOrEqual(1)
 })

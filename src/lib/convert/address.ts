@@ -124,17 +124,21 @@ async function splitOne(reader: Reader, key: string): Promise<AddressSplit> {
   return found.size === 1 ? [...found.values()][0]! : {}
 }
 
+/** 住所データの JSON を読む（画面・Worker は fetch。Node の照合スクリプト・テストは file: の URL をファイルで読む） */
+export type ReadJson = (url: string) => Promise<unknown>
+
+const fetchJson: ReadJson = (url) => fetch(url).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+
 /** 住所データを読み、索引を作ったもの（api ごとに1回。読めなかったら持たずに、次に呼ばれたとき読み直す） */
 const readers = new Map<string, Promise<Reader>>()
 
-function readerFor(api: string): Promise<Reader> {
+function readerFor(api: string, readJson: ReadJson): Promise<Reader> {
   const known = readers.get(api)
   if (known) return known
   const loading = (async () => {
     const { normalize, config } = await import("@geolonia/normalize-japanese-addresses")
     config.japaneseAddressesApi = api
-    const ja = await fetch(`${api}.json`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+    const ja = await readJson(`${api}.json`)
       .then((j: unknown) => jaSchema.parse(j))
       .catch((e: unknown) => {
         throw new Error("住所データを読めませんでした", { cause: e })
@@ -150,10 +154,10 @@ function readerFor(api: string): Promise<Reader> {
  * 住所の値をまとめて引く。api は住所データの URL（`${api}.json` を読む）。
  * 都道府県・市区町村が決まらない値は空の結果にする（変換は AI に回す）。住所データを読めなければ投げる（すべての住所を黙って AI に回さない）
  */
-export async function lookupAddresses(raws: Iterable<string>, api: string): Promise<AddressBook> {
+export async function lookupAddresses(raws: Iterable<string>, api: string, readJson: ReadJson = fetchJson): Promise<AddressBook> {
   const keys = [...new Set([...raws].map(addressKey))].filter(Boolean)
   if (!keys.length) return NO_ADDRESSES
-  const reader = await readerFor(api)
+  const reader = await readerFor(api, readJson)
   return new Map(await Promise.all(keys.map(async (key) => [key, await splitOne(reader, key)] as const)))
 }
 
