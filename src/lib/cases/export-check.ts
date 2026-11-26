@@ -4,8 +4,8 @@ import { nonCp932Chars } from "../convert/text"
 import { fieldLabel, KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
 
 /**
- * 書き出す前の確認（CSV・最後の Excel）。決まった検査の残り（エラー・要確認）と、Excel の「CSV で保存」で「?」になる文字、
- * 決算書の業種ごとの完成工事高（基準額）と表の合計の食い違いをまとめる。止めずに知らせる（書き出すかは職員が決める）
+ * ダウンロードの前の確認（CSV・最後の Excel）。決まった検査の残り（エラー・要確認）と、Excel の「CSV で保存」で「?」になる文字、
+ * 決算書の業種ごとの完成工事高（基準額）と表の合計の食い違いをまとめる。止めずに知らせる（ダウンロードするかは職員が決める）
  */
 
 type Row = RowResult<KojiFieldId>
@@ -79,7 +79,7 @@ export function exportCheck(output: readonly Row[], summary: readonly GyoshuSumm
 
 export const issueLabel = (i: ExportIssue) => `${fieldLabel(i.field)}: ${i.message}`
 
-/** 決算書の額を使った側の数（業種ごと）。7割と金額のタブの基準の1行と、書き出すの確認で同じ数 */
+/** 決算書の額を使った側の数（業種ごと）。7割と金額のタブの基準の1行と、ダウンロードの前の確認で同じ数 */
 export const fromBookCount = (summary: readonly GyoshuSummary[]) => ({
   total: summary.filter((g) => g.fromBook.total).length,
   motouke: summary.filter((g) => g.fromBook.motouke).length,

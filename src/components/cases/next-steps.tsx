@@ -1,12 +1,12 @@
-import { Check, ChevronRight, FileSpreadsheet, TriangleAlert } from "lucide-react"
+import { Check, ChevronRight, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FIX_KINDS, FIX_LABELS, fixActionText, type FixActionGroup, type FixCounts } from "@/components/convert/status"
 import { cn } from "@/lib/utils"
 
 /**
  * 次にやること: 答える（報告の聞き返し・承認待ちの変更案）→ 業種を決める（7割で載りうる行の業種。決めるたびに載せる行が入れ替わるので直すより先）
- * → 直す（職員が直すセルのある載せる行）→ 問い合わせ（顧客に聞くこと）→ 書き出す。
- * 数は表の絞り込み・問い合わせのタブ・書き出すの確認と同じもの（案件の画面が1回だけ数えて渡す）。済んだ段は済みと出して押せなくし、
+ * → 直す（職員が直すセルのある載せる行）→ 問い合わせ（顧客に聞くこと）→ ダウンロード。
+ * 数は表の絞り込み・問い合わせのタブ・ダウンロードの前の確認と同じもの（案件の画面が1回だけ数えて渡す）。済んだ段は済みと出して押せなくし、
  * 押すとそこへ移る
  */
 
@@ -30,7 +30,7 @@ export type NextStepsData = {
 
 type Remaining = { id: Exclude<StepId, "export">; text: string }
 
-/** 書き出す前に残っていること（無ければ空）。次にやること・書き出すのツールチップ・書き出すの確認で同じ言葉にする */
+/** ダウンロードの前に残っていること（無ければ空）。次にやること・ダウンロードのツールチップ・ダウンロードの前の確認で同じ言葉にする */
 export function remainingSteps(s: NextStepsData): Remaining[] {
   const out: Remaining[] = []
   if (s.answer > 0) out.push({ id: "answer", text: `答える ${s.answer}` })
@@ -46,7 +46,7 @@ export const fixBreakdown = (f: FixCounts) =>
     .map((k) => `${FIX_LABELS[k]} ${f.byKind[k]}`)
     .join("・")
 
-/** 書き出すボタンのツールチップ（⚠ の意味） */
+/** ダウンロードのボタンのツールチップ（右上の点の意味） */
 export const exportTitle = (s: NextStepsData) => {
   const left = remainingSteps(s)
   return left.length ? `残り: ${left.map((r) => r.text).join(" → ")}` : "残りはありません"
@@ -95,9 +95,20 @@ export function NextSteps({ steps, onGo, exportDisabled, className }: { steps: N
           <ChevronRight className="size-3 text-muted-foreground/60" aria-hidden />
         </span>
       ))}
-      <Button size="sm" onClick={() => onGo("export")} disabled={exportDisabled} title={exportTitle(steps)} aria-current={current === "export" ? "step" : undefined} data-testid="export-button" data-left={left ? "1" : "0"}>
-        {left ? <TriangleAlert className="text-amber-200" /> : <FileSpreadsheet />}
-        書き出す（{steps.exportRows}件）
+      <Button
+        size="sm"
+        className="relative"
+        onClick={() => onGo("export")}
+        disabled={exportDisabled}
+        title={exportTitle(steps)}
+        aria-current={current === "export" ? "step" : undefined}
+        data-testid="export-button"
+        data-left={left ? "1" : "0"}
+      >
+        <Download />
+        ダウンロード（{steps.exportRows}件）
+        {/* 残りがあることは右上の点で（意味はツールチップ。残っていてもダウンロードできる） */}
+        {left && <span className="absolute -top-1 -right-1 size-2.5 rounded-full bg-amber-500 ring-2 ring-background" data-testid="export-badge" aria-hidden />}
       </Button>
     </nav>
   )

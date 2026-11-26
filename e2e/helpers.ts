@@ -83,10 +83,10 @@ export async function openTab(page: Page, tab: "table" | "gyoshu" | "selection" 
   await expect(page.getByTestId(`tab-${tab}`)).toHaveAttribute("aria-selected", "true")
 }
 
-/** 書き出すボタンの件数（CSV に載せる行） */
+/** ダウンロードのボタンの件数（CSV に載せる行） */
 export const csvCount = async (page: Page) => Number(/（(\d+)件/.exec((await page.getByTestId("export-button").textContent()) ?? "")![1])
 
-/** 書き出す前の確認を開いて CSV（控え）をダウンロードし、中身（CP932）を返す。確認は閉じる */
+/** ダウンロードの前の確認を開いて CSV（控え）をダウンロードし、中身（CP932）を返す。確認は閉じる */
 export async function downloadCsv(page: Page) {
   await page.getByTestId("export-button").click()
   const dialog = page.getByTestId("export-dialog")

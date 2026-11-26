@@ -347,7 +347,7 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
       if (state.locationOffer) writer.write({ type: "data-location-offer", data: state.locationOffer })
       // 要望を残した印（止めた・失敗した回でも、残したものは残っているので出す）
       if (state.feedbackRecorded.length) writer.write({ type: "data-feedback", data: { count: state.feedbackRecorded.length } })
-      // 画面の決まった処理を始めるボタン（書き出す前の確認・問い合わせの Excel）。止めた・失敗した回は出さない
+      // 画面の決まった処理を始めるボタン（ダウンロードの前の確認・問い合わせの Excel）。止めた・失敗した回は出さない
       if (!failure) for (const action of state.actions) writer.write({ type: "data-action", data: { action } })
       // 置いた変更案は、後始末のほかの失敗があっても画面に出す（開き直したときと同じに見せる）
       if (proposal && shown) {

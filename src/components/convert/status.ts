@@ -138,7 +138,7 @@ export function inFilter<F extends string>(filter: TableFilter, fix: RowFix<F>, 
   return included && (filter.reason ? fix.fixes.some((f) => f.kind === filter.reason) : fix.fixes.length > 0)
 }
 
-/** 直す行の数と、理由ごとの行の数（1行に理由が複数あれば、それぞれに数える）。表・次にやること・書き出すの確認で同じ数を使う */
+/** 直す行の数と、理由ごとの行の数（1行に理由が複数あれば、それぞれに数える）。表・次にやること・ダウンロードの前の確認で同じ数を使う */
 export type FixCounts = { rows: number; byKind: Record<FixKind, number>; all: number }
 
 export function countFixes<F extends string>(rows: readonly RowResult<F>[], inclusion: ReadonlyMap<string, { included: boolean }>, fixes: ReadonlyMap<string, RowFix<F>>): FixCounts {
@@ -156,7 +156,7 @@ export function countFixes<F extends string>(rows: readonly RowResult<F>[], incl
 /** 項目の短い名前（「請負代金（千円）」→「請負代金」） */
 export const shortLabel = (field: string) => fieldLabel(field as KojiFieldId).replace(/（.*）$/, "")
 
-/** 行の理由の1つ（例:「業種が空」「工事名: AI の推定」）。表の行・次にやること・書き出すの確認で同じ言葉 */
+/** 行の理由の1つ（例:「業種が空」「工事名: AI の推定」）。表の行・次にやること・ダウンロードの前の確認で同じ言葉 */
 export const fixText = (f: { field: string; kind: FixKind }) => (f.kind === "empty" ? `${shortLabel(f.field)}が空` : `${shortLabel(f.field)}: ${FIX_LABELS[f.kind]}`)
 
 /**
@@ -223,7 +223,7 @@ export function fixActionGroups(
   return [...groups.values()].map((g) => ({ action: g.action, field: g.field, kinds: [...g.kinds], keys: [...g.keys] }))
 }
 
-/** まとめて頼む操作の言葉（例「工事場所が空の 3 行に AI で案を出す」「注文者が空の 2 行を顧客に聞く」）。表の上・次にやること・書き出すの確認で同じ言葉 */
+/** まとめて頼む操作の言葉（例「工事場所が空の 3 行に AI で案を出す」「注文者が空の 2 行を顧客に聞く」）。表の上・次にやること・ダウンロードの前の確認で同じ言葉 */
 export function fixActionText(g: FixActionGroup) {
   const what = g.action === "findLocation" ? "工事場所" : shortLabel(g.field)
   const reasons = FIX_KINDS.filter((k) => g.kinds.includes(k)).map((k) => (k === "empty" ? "空" : FIX_LABELS[k]))

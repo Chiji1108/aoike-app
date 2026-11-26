@@ -51,7 +51,7 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
-test("プレビューの表で絞り込み・並べ替え・列の表示・手直し・行の入れ外しをして CSV を書き出す", async ({ page }) => {
+test("プレビューの表で絞り込み・並べ替え・列の表示・手直し・行の入れ外しをして CSV をダウンロードする", async ({ page }) => {
   created.push((await convertFixture(page, FIXTURE)).customer)
   await test.step("はじめは直す（CSV に載せる行のうち、職員が直すセル: 必須が空・エラー・要確認・AI の推定のある行）だけを出し、行に理由を出す。載せない行は出さない", async () => {
     await expect(filterButton(page, "fix")).toHaveAttribute("aria-pressed", "true")
@@ -182,7 +182,7 @@ test("プレビューの表で絞り込み・並べ替え・列の表示・手�
     expect(await countOf()).toBe(before)
   })
 
-  await test.step("CSV（控え）: 書き出す前の確認にエラーの残りが出て、止めずに書ける。CP932・CRLF・14列で、手直しが入っている", async () => {
+  await test.step("CSV（控え）: ダウンロードの前の確認にエラーの残りが出て、止めずに書ける。CP932・CRLF・14列で、手直しが入っている", async () => {
     await page.getByTestId("export-button").click()
     const dialog = page.getByTestId("export-dialog")
     await expect(dialog.getByTestId("export-rows")).toHaveText(String(before))

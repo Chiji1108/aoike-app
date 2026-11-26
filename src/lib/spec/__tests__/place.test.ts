@@ -70,14 +70,14 @@ describe("場所名の決まり（市・区・町・村で終わる）", () => {
   })
 })
 
-describe("検証と書き出す前の確認", () => {
+describe("検証とダウンロードの前の確認", () => {
   test("場所名の検証は決まりを守らない値をエラーにする", () => {
     expect(checkValue(placeField, "米軍厚木")).toEqual({ severity: "error", message: PLACE_RULE })
     expect(checkValue(placeField, "愛甲郡")?.severity).toBe("error")
     expect(checkValue(placeField, "愛川町")).toBeUndefined()
   })
 
-  test("書き出す前の確認にも同じ理由で出る", () => {
+  test("ダウンロードの前の確認にも同じ理由で出る", () => {
     const { rows } = finalizeAll([kojiRow({ prefecture: "神奈川県", place: "米軍厚木" }, 1), kojiRow({ prefecture: "神奈川県", place: "厚木市" }, 2)])
     const c = exportCheck(rows, [])
     expect(c.issues.find((i) => i.field === "place")).toEqual({ status: "error", field: "place", message: PLACE_RULE, count: 1 })

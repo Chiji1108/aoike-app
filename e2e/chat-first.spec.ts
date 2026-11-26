@@ -7,7 +7,7 @@ import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab, reload, 
 
 /**
  * チャット中心の流れ: ファイルをアップロードする → 自動で変換 → 変換の報告（知らせ・聞き返し）と次にやること → チャットで列の対応を直す変更案 →
- * 承認で変換し直す → 承認を取り消すと元に戻る（開き直しても） → 書き出す前の確認で決算書の額と照らす → 最後の Excel と CSV。
+ * 承認で変換し直す → 承認を取り消すと元に戻る（開き直しても） → ダウンロードの前の確認で決算書の額と照らす → 最後の Excel と CSV。
  * 列の対応は見出しからの推定にし（計画の AI を断る）、チャットは決まった返事にする（AI なしで同じ結果になる）
  */
 
@@ -68,7 +68,7 @@ async function rowWithPeriod(page: Page) {
   return row!
 }
 
-test("ファイルをアップロードすると自動で変換して報告で聞き返し、チャットで列の対応を直す変更案の承認で変換し直す。取り消すと戻り（開き直しても）、書き出す前に決算書の額と照らす", async ({ page }) => {
+test("ファイルをアップロードすると自動で変換して報告で聞き返し、チャットで列の対応を直す変更案の承認で変換し直す。取り消すと戻り（開き直しても）、ダウンロードの前に決算書の額と照らす", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
@@ -81,7 +81,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     await expect(report).toHaveAttribute("data-phase", "done")
     await expect(report.getByTestId("report-notes")).toContainText("見出しから列を推定しました")
     await expect(page.getByTestId("row-filters-fix")).toHaveAttribute("aria-pressed", "true")
-    // 件数・問い合わせ・書き出すは表と見出しにあるので、報告には出さない
+    // 件数・問い合わせ・ダウンロードは表と見出しにあるので、報告には出さない
     await expect(report.getByTestId("report-count")).toHaveCount(0)
     await expect(report.getByTestId("report-export")).toHaveCount(0)
     await expect(report.getByTestId("report-inquiry")).toHaveCount(0)
@@ -120,7 +120,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     await proposal.getByTestId("proposal-apply-all").click()
     await expect(page.getByTestId("proposal-closed")).toHaveText("変更案: 反映 1 件・却下 0 件")
     await expect(startYm(page)).toHaveText(row.end, { timeout: 60_000 })
-    // 返事のボタン（「CSV を出して」の offer_action）で書き出す前の確認が開く
+    // 返事のボタン（「CSV を出して」の offer_action）でダウンロードの前の確認が開く
     await expect(page.getByTestId("chat-action")).toHaveAttribute("data-action", "export")
     await page.getByTestId("chat-action").click()
     await expect(page.getByTestId("export-dialog")).toBeVisible()
@@ -140,7 +140,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     await expect(startYm(page)).toHaveText(row.start)
   })
 
-  await test.step("書き出す前の確認: 決算書の額が表の合計と合わなければ知らせ（止めない）、最後の Excel と CSV を出す", async () => {
+  await test.step("ダウンロードの前の確認: 決算書の額が表の合計と合わなければ知らせ（止めない）、最後の Excel と CSV を出す", async () => {
     const n = await csvCount(page)
     await page.getByTestId("export-button").click()
     const dialog = page.getByTestId("export-dialog")

@@ -13,7 +13,7 @@ import { leadingPrefecture, PREFECTURES, type Prefecture } from "./prefectures"
 /** 郡部の町村に郡を付けるか（false: 「愛川町」、true: 「愛甲郡愛川町」）。住所の分割・工事場所の検算・AI への指示がこれに従う */
 export const PLACE_WITH_GUN = true
 
-/** 決まりを守っていない値のエラーの文（画面・チャット・書き出す前の確認で同じ言葉） */
+/** 決まりを守っていない値のエラーの文（画面・チャット・ダウンロードの前の確認で同じ言葉） */
 export const PLACE_RULE = "場所名は市区町村で終わる名前にします（例: 〇〇市・〇〇町）"
 
 /** AI に場所名の形を伝える文（変換・チャット・工事場所の調査の指示で同じ文。固定の文なのでプロンプトのキャッシュを崩さない） */

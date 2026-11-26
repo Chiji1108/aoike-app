@@ -44,7 +44,7 @@ async function noMotoukeWorkbook() {
   return { name: "下請だけ.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) }
 }
 
-test("表は見るだけ。「決算書の額を入れる」で開いて入れると割合が変わり、閉じても印が残る。書き出すの確認は届かない業種だけ。空にすると戻る", async ({ page }) => {
+test("表は見るだけ。「決算書の額を入れる」で開いて入れると割合が変わり、閉じても印が残る。ダウンロードの前の確認は届かない業種だけ。空にすると戻る", async ({ page }) => {
   await convert(page, FIXTURE)
   const panel = page.getByTestId("selection-section")
   const note = panel.getByTestId("basis-note")
@@ -89,7 +89,7 @@ test("表は見るだけ。「決算書の額を入れる」で開いて入れ�
     await expect(table.getByTestId("from-book")).toHaveCount(1)
   })
 
-  await test.step("書き出すの確認: 届かない業種だけを表で出す", async () => {
+  await test.step("ダウンロードの前の確認: 届かない業種だけを表で出す", async () => {
     await page.getByTestId("export-button").click()
     const dialog = page.getByTestId("export-dialog")
     await expect(dialog.getByTestId("export-rule7")).toHaveAttribute("data-ok", "0")
@@ -115,7 +115,7 @@ test("表は見るだけ。「決算書の額を入れる」で開いて入れ�
     await page.keyboard.press("Escape")
   })
 
-  await test.step("書き出すの確認で打った額は Escape で閉じても確定する。読めない字なら閉じずに知らせる", async () => {
+  await test.step("ダウンロードの前の確認で打った額は Escape で閉じても確定する。読めない字なら閉じずに知らせる", async () => {
     await page.getByTestId("export-button").click()
     const dialog = page.getByTestId("export-dialog")
     await dialog.getByTestId("basis-open").click()

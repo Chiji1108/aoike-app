@@ -295,7 +295,7 @@ describe("最後の Excel の上げ直し（取り違え・二重・重さ）", 
 
   test("照合用の鍵の印が違う Excel は読まない", async () => {
     const sheets = await roundTrip(table, () => {})
-    expect(await readFinalSheet(sheets, deriveTable(table), { ...id, excelKey: "2".repeat(64) }, ai)).toEqual({ error: "この Excel の記録と合いません。書き出し直してから直してください" })
+    expect(await readFinalSheet(sheets, deriveTable(table), { ...id, excelKey: "2".repeat(64) }, ai)).toEqual({ error: "この Excel の記録と合いません。ダウンロードし直してから直してください" })
   })
 
   test("足した行・直したセルの記号は、Excel に書いた記号の人に戻す。戻せない記号は読めない値。ダウンロードしたときの人でない記号の形の文字はそのまま", async () => {
