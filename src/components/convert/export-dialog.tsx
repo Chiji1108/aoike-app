@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 const SIDE = { total: "完成工事高", motouke: "うち元請" } as const
 
 /** ダウンロードの前の確認で答える1つ。go は画面を閉じて移る操作（「AI に聞く」・チャットで承認するなど。無ければ出さない） */
-export type ExportQuestion = { question: ReportQuestion; go: { label: string; run: () => void } | null }
+export type ExportQuestion = { question: ReportQuestion; go: { label: string; disabled?: boolean; run: () => void } | null }
 
 /**
  * ダウンロードの前の確認（1枚）。載せる件数・7割に届いたか（届かない業種だけ表で出す）・エラーと要確認の残り・Shift_JIS で書けない文字を出し、
@@ -40,6 +40,8 @@ export function ExportDialog({
   questions,
   chatAsks,
   onAnswer,
+  amountsUnsettled,
+  finalFocus,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -60,6 +62,10 @@ export function ExportDialog({
   /** チャットで答えを待つもの（AI の聞き返し・承認待ちの変更案）。answered が null なら「答える」に数えるもの */
   chatAsks: readonly ExportQuestion[]
   onAnswer: (id: string, value: string) => void
+  /** 金額の税込・税抜が決まっていない（「分からない（顧客に聞く）」と答えたときも。金額と7割が決まらないので、答えたあとも控えめのまま） */
+  amountsUnsettled: boolean
+  /** 閉じたあとのフォーカス（チャットへ移るときはその先。無ければ開いたボタンに戻す） */
+  finalFocus: () => HTMLElement | true
 }) {
   const check = useMemo(() => (open ? exportCheck(output, summary) : null), [open, output, summary])
   // 開いたときに答えを待っていたもの。この画面で答えても消さず、答えと取り消しを出す（次に開くまで）
@@ -68,11 +74,11 @@ export function ExportDialog({
   const answers = [...questions, ...chatAsks].filter(({ question: q }) => q.answered === null || kept.ids.has(q.id))
   const answersLeft = answers.filter((q) => q.question.answered === null).length
   // 金額・7割・載せる行に関わる聞き返しが残っている間は、ダウンロードのボタンを控えめに（止めはしない）
-  const unsettled = questions.some((q) => q.question.answered === null)
+  const unsettled = amountsUnsettled || questions.some((q) => q.question.answered === null)
   const label = (kind: string) => (unsettled ? `このままダウンロード（${kind}）` : kind)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl" data-testid="export-dialog">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl" finalFocus={finalFocus} data-testid="export-dialog">
         <DialogHeader>
           <DialogTitle>
             ダウンロード（<span className="num" data-testid="export-rows">{output.length}</span> 件）
@@ -146,7 +152,7 @@ function Answers({ answers, left, onAnswer }: { answers: readonly ExportQuestion
     <section className="grid gap-1.5" aria-label="答える" data-testid="export-answers" data-left={left}>
       <h3 className="font-medium">{left ? `答える（あと ${left}）` : "答えました"}</h3>
       {answers.map(({ question, go }) => (
-        <QuestionItem key={question.id} question={question} onAnswer={onAnswer} ask={go && question.answered === null ? { ...go, disabled: false } : null} />
+        <QuestionItem key={question.id} question={question} onAnswer={onAnswer} ask={go && question.answered === null ? { ...go, disabled: go.disabled ?? false } : null} />
       ))}
     </section>
   )

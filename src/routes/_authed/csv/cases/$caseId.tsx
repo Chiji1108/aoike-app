@@ -50,7 +50,7 @@ import { carryoverReady } from "@/lib/chat/carryover"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
 import { viewKindOf } from "@/lib/chat/view-kind"
 import type { ChatAction } from "@/lib/chat/messages"
-import { addedCountAfter, answer, applyChanges, approvedChange, decide, decisionOf, discard, isAnswered, newProposal, pendingOf, withRecorded, type ChatChange, type Proposal, type ProposalOrigin, type ProposalRecord } from "@/lib/chat/proposals"
+import { addedCountAfter, answer, applyChanges, approvedChange, decide, decisionOf, discard, isAnswered, newProposal, pendingOf, withRecorded, type ChatChange, type OpenProposal, type Proposal, type ProposalOrigin, type ProposalRecord } from "@/lib/chat/proposals"
 import { toWire } from "@/lib/chat/wire"
 import { ADDRESS_API_PATH, addressCache, addressKey, lookupAddresses, NO_ADDRESSES, type AddressBook, type AddressLookup } from "@/lib/convert/address"
 import { convertRows, editKey, editSession, resolveRows, staffEdit, type CellEdit, type RowResult } from "@/lib/convert/convert"
@@ -670,12 +670,12 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
   const locationProposals = work.proposals.filter((p) => p.origin.kind === "location" && shownInPanel(p))
   const fixProposals = work.proposals.filter((p) => p.origin.kind === "fix" && shownInPanel(p))
   /**
-   * 行の片付けること（職員が直すセルと、顧客に聞くセル）。表の絞り込み・行の理由・次にやること・書き出すの確認で同じものを使う
+   * 行の片付けること（職員が直すセルと、顧客に聞くセル）。表の絞り込み・行の理由・次にやること・ダウンロードの前の確認で同じものを使う
    * （行か外した問い合わせが変わったときだけ1回数える）
    */
   const rowFixes = useMemo(() => new Map((shown ?? []).map((r) => [r.key, rowFix(r, (f) => !dismissed.has(editKey(r.key, f)))])), [shown, dismissed])
   const fixCounts = useMemo(() => (shown ? countFixes(shown, inclusion, rowFixes) : null), [shown, inclusion, rowFixes])
-  /** まとめて頼める直し方（「業種が空の N 行を一覧で決める」など。表の上・次にやること・書き出すの確認で同じもの） */
+  /** まとめて頼める直し方（「業種が空の N 行を一覧で決める」など。表の上・次にやること・ダウンロードの前の確認で同じもの） */
   const fixGroups = useMemo(() => (shown ? fixActionGroups(shown, inclusion, rowFixes) : []), [shown, inclusion, rowFixes])
   /** 業種を決める行（載せる行と、7割の選び直しで載りうる行）。業種のタブ・次にやることで同じもの */
   const gyoshuRows = useMemo(() => (shown ? gyoshuTodo(shown, inclusion, rowFixes) : []), [shown, inclusion, rowFixes])
@@ -715,7 +715,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
     })
   }, [sources, shown, planAsks, plan])
   /**
-   * 聞き返しの「載せない」側の答えで、載せる件数と7割がどう変わるか（今の7割の選び方・入れ外しで選び直す。表・書き出すの確認と同じ計算）と、
+   * 聞き返しの「載せない」側の答えで、載せる件数と7割がどう変わるか（今の7割の選び方・入れ外しで選び直す。表・ダウンロードの前の確認と同じ計算）と、
    * 対象がデータの大半になるときの事実（決まった処理で数える）
    */
   const askEffects = useMemo(
@@ -733,6 +733,8 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
     [askRows, edited, shown, selected, summary, planAsks, manual, tax, basis, rule7Tax, selectionMode],
   )
 
+  /** チャットに指示を送れるか（チャットの欄が知らせる。ダウンロードの前の確認の「AI に聞く」） */
+  const [chatCanSend, setChatCanSend] = useState(false)
   /** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
   const [confirmAsk, setConfirmAsk] = useState<{ id: string; option: string; title: string; lines: string[] } | null>(null)
 
@@ -805,10 +807,13 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
    * 業種の AI の案の変更案のうち、一覧の外の行（表で手で直した・除外した・手動で外した行など）に未決の項目があるもの。
    * 一覧では決められないので「答える」に数え、チャットで承認か却下するまで新しい案を頼ませない（一覧の行の未決は一覧の「案」で決める）
    */
-  const fixOutsideList = useMemo(() => {
-    const inList = new Set(gyoshuItems.map((i) => i.key))
-    return fixProposals.filter((p) => p.state === "open" && [...pendingGyoshu.values()].some((x) => x.proposalId === p.id && !inList.has(x.rowKey)))
-  }, [fixProposals, pendingGyoshu, gyoshuItems])
+  const gyoshuInList = useMemo(() => new Set(gyoshuItems.map((i) => i.key)), [gyoshuItems])
+  /** 業種の AI の案の変更案ごとの、一覧の外の行の未決の項目の数 */
+  const outsideListCount = (proposalId: string) => [...pendingGyoshu.values()].filter((x) => x.proposalId === proposalId && !gyoshuInList.has(x.rowKey)).length
+  const fixOutsideList = useMemo(
+    () => fixProposals.filter((p) => p.state === "open" && [...pendingGyoshu.values()].some((x) => x.proposalId === p.id && !gyoshuInList.has(x.rowKey))),
+    [fixProposals, pendingGyoshu, gyoshuInList],
+  )
 
   /** 作業を変え、取り消しの記録が積めたかを返す（積めたときだけ「取り消す」を出す） */
   function commitWithUndo(id: string, next: (w: CaseWork) => CaseWork) {
@@ -1561,6 +1566,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
           update("proposals", (ps) => [...ps.filter((x) => x.id !== proposal.id), proposal])
         }}
         onCaseCost={setCostUsd}
+        onCanSendChange={setChatCanSend}
         location={locationSearch}
         suggestions={[
           ...(leftInquiries > 0
@@ -1661,7 +1667,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
       : status === "inquiring" || files.some((f) => f.kind === "inquiry_sheet") || work.inquiryText.subject !== null
         ? ("waiting" as const)
         : ("todo" as const)
-  /** 次にやること（作業の画面の上と書き出すの確認）。数は表・問い合わせのタブと同じもの */
+  /** 次にやること（作業の画面の上とダウンロードの前の確認）。数は表・問い合わせのタブと同じもの */
   const nextSteps: NextStepsData | null = fixCounts && output ? { answer: chatPending, gyoshu: gyoshuItems.length, fix: fixCounts, fixActions: fixGroups, inquiry: { count: activeInquiries, state: inquiryState }, exportRows: output.length } : null
 
   /** 次にやることの段へ移る。答えるはチャットの最初の答えを待つものへ（狭い画面では作業の画面を閉じる） */
@@ -1679,20 +1685,33 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
    * チャットの欄の target（無ければ最初の答えを待つもの）へ移り、その中の focus のボタンに合わせる（狭い画面では作業の画面を閉じる）。
    * 閉じた作業の画面・ダウンロードの前の確認がフォーカスを戻したあとに移る
    */
-  function goChat(target: string, focus = "button:not([disabled])") {
+  function goChat(target: string, focus?: string) {
     if (!wide) setWorkChoice(false)
     requestAnimationFrame(() => {
-      const chat = '[data-testid="chat-column"]'
-      const el = document.querySelector<HTMLElement>(`${chat} ${target}`) ?? document.querySelector<HTMLElement>(`${chat} [data-pending]`)
-      if (!el) return
-      el.scrollIntoView({ block: "center", behavior: "smooth" })
-      ;(el.querySelector<HTMLElement>(focus) ?? el.querySelector<HTMLElement>("button:not([disabled])"))?.focus({ preventScroll: true })
+      const t = chatTarget(target, focus)
+      if (!t) return
+      t.el.scrollIntoView({ block: "center", behavior: "smooth" })
+      t.button?.focus({ preventScroll: true })
     })
+  }
+  /** チャットの欄の target（無ければ最初の答えを待つもの）と、その中の focus のボタン（決めたボタンが無ければ無し。ほかのボタン〔答え〕に合わせて Enter で答えないように） */
+  function chatTarget(target: string, focus?: string) {
+    const chat = '[data-testid="chat-column"]'
+    const el = document.querySelector<HTMLElement>(`${chat} ${target}`) ?? document.querySelector<HTMLElement>(`${chat} [data-pending]`)
+    return el && { el, button: el.querySelector<HTMLElement>(focus ?? "button:not([disabled])") }
   }
   /** ダウンロードの前の確認を閉じてから移る */
   const fromExport = (run: () => void) => () => {
     setExportOpen(false)
     run()
+  }
+  /** 閉じたあとにフォーカスを合わせる先（チャットへ移るとき。確認は閉じると開いたボタンにフォーカスを戻すので、その代わりに） */
+  const exportFinalFocus = useRef<(() => HTMLElement | null) | null>(null)
+  /** ダウンロードの前の確認を閉じてチャットの target へ移る */
+  const exportToChat = (target: string, focus?: string) => () => {
+    exportFinalFocus.current = () => chatTarget(target, focus)?.button ?? null
+    setExportOpen(false)
+    goChat(target, focus)
   }
 
   /**
@@ -1701,24 +1720,35 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
    */
   const exportQuestions: ExportQuestion[] = questions.map((q) => ({
     question: { ...q, view: q.view && fromExport(q.view), prompt: undefined },
-    go: q.prompt ? { label: "AI に聞く", run: fromExport(() => goChat(`[data-testid="case-report"] [data-question="${q.id}"]`, '[data-testid="report-question-ask"]')) } : null,
+    // 報告と同じ条件（チャットが使え、返事の途中でない）で押せる
+    go:
+      q.prompt && chatEnabled
+        ? { label: "AI に聞く", disabled: !chatCanSend, run: exportToChat(`[data-testid="case-report"] [data-question="${q.id}"]`, '[data-testid="report-question-ask"]:not([disabled])') }
+        : null,
   }))
+  const ANSWER_LABELS = { yes: "はい", no: "いいえ" } as const
   const exportChatAsks: ExportQuestion[] = [
-    ...work.proposals.filter((p) => (p.origin.kind === "chat" || p.origin.kind === "excel" || p.origin.kind === "answer") && (p.state === "open" || p.question?.answer != null)),
-    ...fixOutsideList,
-  ].map(exportChatAsk)
-  function exportChatAsk(p: Proposal): ExportQuestion {
+    ...work.proposals
+      .filter((p) => p.origin.kind === "chat" || p.origin.kind === "excel" || p.origin.kind === "answer")
+      .flatMap((p) => (p.state === "open" ? [exportChatAsk(p)] : p.question?.answer ? [exportAnswered(p, p.question.text, p.question.answer)] : [])),
+    ...fixOutsideList.flatMap((p) => (p.state === "open" ? [exportChatAsk(p)] : [])),
+  ]
+  /** この確認で答えて閉じたもの（いいえで全部を却下）。チャットのカードと同じく、取り消せる記録があれば取り消せる */
+  function exportAnswered(p: Proposal, text: string, a: "yes" | "no"): ExportQuestion {
+    return { question: { id: `${EXPORT_PROPOSAL}${p.id}`, text, options: [], answered: ANSWER_LABELS[a], undo: undoState(p.id)?.can ? () => undoProposal(p.id) : null }, go: null }
+  }
+  function exportChatAsk(p: OpenProposal): ExportQuestion {
     const id = `${EXPORT_PROPOSAL}${p.id}`
-    const go = (label: string) => ({ label, run: fromExport(() => goChat(`[data-proposal="${p.id}"]`)) })
+    const go = (label: string) => ({ label, run: exportToChat(`[data-proposal="${p.id}"]`) })
     const q = p.question
-    const ANSWER = { yes: "はい", no: "いいえ" } as const
-    if (p.state === "closed") return { question: { id, text: q?.text ?? PROPOSAL_ORIGIN[p.origin.kind], options: [], answered: q?.answer ? ANSWER[q.answer] : "決めました" }, go: null }
     // 変更案の付いた聞き返しはここで答える（はいで承認できるようになり、いいえで全部を却下）。変更案の無い聞き返しは答えを AI に送るのでチャットで
     if (q && q.answer === null)
       return p.count > 0
         ? { question: { id, text: q.text, detail: `${PROPOSAL_ORIGIN[p.origin.kind]}（${p.count} 件）は、答えてからチャットで承認します`, options: [{ value: "no", label: "いいえ" }, { value: "yes", label: "はい" }], answered: null }, go: go("チャットで見る") }
         : { question: { id, text: q.text, detail: "答えると AI が続けます", options: [], answered: null }, go: go("チャットで答える") }
-    return { question: { id, text: `${PROPOSAL_ORIGIN[p.origin.kind]}の承認待ち ${pendingOf(p).length} 件`, detail: "中身をチャットで確かめて、承認か却下します", options: [], answered: null }, go: go("チャットで確かめる") }
+    // 業種の AI の案は、一覧で決める行を除いた一覧の外の行だけ（一覧の行は「業種を決める」に数える）
+    const waiting = p.origin.kind === "fix" ? outsideListCount(p.id) : pendingOf(p).length
+    return { question: { id, text: `${PROPOSAL_ORIGIN[p.origin.kind]}の承認待ち ${waiting} 件`, detail: "中身をチャットで確かめて、承認か却下します", options: [], answered: null }, go: go("チャットで確かめる") }
   }
   function answerFromExport(id: string, value: string) {
     if (!id.startsWith(EXPORT_PROPOSAL)) return answerReport(id, value)
@@ -1958,15 +1988,18 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
           onExcel={() => void downloadFinalExcel()}
           onCsv={downloadCsv}
           steps={nextSteps}
-          onGo={(id) => {
-            setExportOpen(false)
-            goStep(id)
+          onGo={(id) => (id === "answer" ? exportToChat("[data-pending]") : fromExport(() => goStep(id)))()}
+          finalFocus={() => {
+            const f = exportFinalFocus.current
+            exportFinalFocus.current = null
+            return f?.() ?? true
           }}
           onFixAction={(action, keys) => {
             setExportOpen(false)
             runFixAction(action, keys)
           }}
           questions={exportQuestions}
+          amountsUnsettled={tax === "unknown"}
           chatAsks={exportChatAsks}
           onAnswer={answerFromExport}
         />

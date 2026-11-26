@@ -155,7 +155,7 @@ test("計画の聞き返しに答えると表と載せる件数が変わり、�
     await expect(page.getByRole("button", { name: /^答える/ })).toHaveCount(0)
   })
 
-  await test.step("ダウンロードの ⚠ の意味（残り）は、ツールチップとダウンロードの前の確認で同じ言葉。残りを押すとそこへ移る", async () => {
+  await test.step("ダウンロードの右上の点の意味（残り）は、ツールチップとダウンロードの前の確認で同じ言葉。残りを押すとそこへ移る", async () => {
     const button = page.getByTestId("export-button")
     const title = (await button.getAttribute("title")) ?? ""
     await button.click()

@@ -148,8 +148,31 @@ test("ダウンロードの前の確認で聞き返しに答えると、件数�
     await button.click()
     await expect(ask(page, "plan-ask-0")).toHaveCount(0)
     await expect(ask(page, "tax")).toHaveAttribute("data-pending", "1")
+  })
+
+  await test.step("税込・税抜を「分からない（顧客に聞く）」と答えても、金額と7割が決まらないので控えめのまま", async () => {
+    await ask(page, "tax").locator('[data-value="ask"]').click()
+    await expect(ask(page, "tax")).toHaveAttribute("data-answered", "分からない（顧客に聞く）")
+    await expect(dialog.getByTestId("export-answers")).toHaveAttribute("data-left", "0")
+    await expect(footer).toHaveAttribute("data-unsettled", "1")
+    await expect(dialog.getByTestId("export-excel")).toHaveText("このままダウンロード（Excel）")
+    await ask(page, "tax").getByTestId("report-question-undo").click()
+    await expect(ask(page, "tax")).toHaveAttribute("data-pending", "1")
     await page.keyboard.press("Escape")
     await expect(dialog).toBeHidden()
+  })
+
+  await test.step("「AI に聞く」は確認を閉じ、チャットのその聞き返しの「AI に聞く」に合わせる（答えのボタンには合わせない）", async () => {
+    // 答えた聞き返しには「AI に聞く」が出ないので、チャットの報告で答えを取り消して開き直す
+    const inChat = page.locator('[data-testid="case-report"] [data-question="plan-ask-0"]')
+    await inChat.getByTestId("report-question-undo").click()
+    await expect(inChat).toHaveAttribute("data-pending", "1")
+    await button.click()
+    const go = ask(page, "plan-ask-0").getByTestId("report-question-ask")
+    await expect(go).toBeEnabled()
+    await go.click()
+    await expect(dialog).toBeHidden()
+    await expect(page.locator('[data-testid="case-report"] [data-question="plan-ask-0"] [data-testid="report-question-ask"]')).toBeFocused()
   })
 })
 
