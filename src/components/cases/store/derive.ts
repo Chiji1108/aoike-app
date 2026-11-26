@@ -18,13 +18,20 @@ export type Derived = {
   undecidedLocation: boolean
 }
 
-let last: { proposals: CaseState["work"]["proposals"]; undo: CaseState["work"]["undo"]; contents: CaseState["contents"]; out: Derived } | null = null
+/**
+ * 入力ごとの memo（変更案 → 取り消しの記録 → 中身の参照で引く）。ストアに依らない（ストアが2つあっても取り合わない）。
+ * 古い入力は参照が無くなれば消える
+ */
+const memo = new WeakMap<CaseState["work"]["proposals"], WeakMap<CaseState["work"]["undo"], WeakMap<CaseState["contents"], Derived>>>()
 
 export function derive(s: CaseState): Derived {
   const { proposals, undo } = s.work
-  if (last && last.proposals === proposals && last.undo === undo && last.contents === s.contents) return last.out
-  const out = deriveFrom(proposals, undo, s.contents)
-  last = { proposals, undo, contents: s.contents, out }
+  let byUndo = memo.get(proposals)
+  if (!byUndo) memo.set(proposals, (byUndo = new WeakMap()))
+  let byContents = byUndo.get(undo)
+  if (!byContents) byUndo.set(undo, (byContents = new WeakMap()))
+  let out = byContents.get(s.contents)
+  if (!out) byContents.set(s.contents, (out = deriveFrom(proposals, undo, s.contents)))
   return out
 }
 

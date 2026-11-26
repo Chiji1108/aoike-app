@@ -1,6 +1,7 @@
 import { countFixes, fixActionGroups, gyoshuTodo, type FixActionGroup, type FixCounts, type FixKind, type RowFix } from "@/components/convert/status"
 import type { RowResult, CellEdit } from "@/lib/convert/convert"
-import type { Inclusion } from "@/lib/convert/koji-selection"
+import type { Inclusion, TaxMode } from "@/lib/convert/koji-selection"
+import type { TaxBy } from "@/lib/cases/tax"
 import { decisionOf, pendingOf, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
 import { codeLabel } from "@/lib/spec/code-sets"
@@ -73,8 +74,22 @@ export type CaseTodo = {
   badges: { gyoshu: number; inquiry: number; location: number }
 }
 
+/**
+ * 報告の聞き返し（税込・税抜と、計画の聞き返し）と答えたか。表ができてから聞く。報告・ダウンロードの前の確認・「答える」で同じものを使う。
+ * 税は、まだ誰も決めていなければ聞き（計画・職員が決めたら聞かない。答えたものは答えを出す）、金額が決まったか「分からない」と答えたら答えた。
+ * 計画の聞き返しは、聞き返しの答えとして記録したもの（exclude・keep）だけを答えと見なす（チャットなどで入れた除外は答えではない）
+ */
+export function reportQuestionStates(input: { hasTable: boolean; tax: TaxMode; taxBy: TaxBy | null; reportAnswers: Readonly<Record<string, string>>; askIds: readonly string[] }) {
+  if (!input.hasTable) return []
+  const { tax, taxBy, reportAnswers } = input
+  const out: { id: string; answered: boolean }[] = []
+  if ((tax === "unknown" && taxBy === null) || reportAnswers.tax) out.push({ id: "tax", answered: tax !== "unknown" || reportAnswers.tax === "ask" })
+  for (const id of input.askIds) out.push({ id, answered: reportAnswers[id] === "exclude" || reportAnswers[id] === "keep" })
+  return out
+}
+
 export type TodoInput = {
-  /** 画面の表の行（手直し・選び直しのあと） */
+  /** 画面の表の行（手直し・選び直しのあと。表がまだ無ければ空。表に依る数〔業種・直す〕は 0 で、答える・工事場所は変更案と聞き返しだけで数える） */
   shown: readonly RowResult<KojiFieldId>[]
   inclusion: ReadonlyMap<string, Inclusion>
   /** 行の片付けること（status.ts の rowFix。表の行の理由と同じもの） */
@@ -82,7 +97,7 @@ export type TodoInput = {
   exportRows: number
   proposals: readonly Proposal[]
   contents: ReadonlyMap<string, readonly ChatChange[]>
-  /** 報告の聞き返し（答えたものは answered が true） */
+  /** 報告の聞き返し（reportQuestionStates） */
   questions: readonly { id: string; answered: boolean }[]
   inquiries: readonly Inquiry[]
   dismissed: ReadonlySet<string>

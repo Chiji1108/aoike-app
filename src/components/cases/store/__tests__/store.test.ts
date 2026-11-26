@@ -33,3 +33,16 @@ describe("案件のストア", () => {
     expect(init.contents.get("p1")).toEqual([change])
   })
 })
+
+test("派生の memo はストアごとに取り合わない（2つのストアを交互に読んでも同じ参照）", () => {
+  const a = store()
+  const b = store()
+  const p = newProposal("p1", { kind: "excel", fileId: "f" }, [change], null)
+  putProposal(a, { proposal: p, changes: [change] }, (ps) => [...ps, p])
+  const da = derive(a.getState())
+  const db = derive(b.getState())
+  expect(derive(a.getState())).toBe(da)
+  expect(derive(b.getState())).toBe(db)
+  expect(da.panels.excel.length).toBe(1)
+  expect(db.panels.excel.length).toBe(0)
+})

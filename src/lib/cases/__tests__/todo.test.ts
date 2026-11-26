@@ -5,7 +5,7 @@ import type { Inclusion } from "@/lib/convert/koji-selection"
 import { answer, decide, discard, newProposal, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
-import { awaitsAnswer, caseTodo, tabBadge, type TodoInput } from "../todo"
+import { awaitsAnswer, caseTodo, reportQuestionStates, tabBadge, type TodoInput } from "../todo"
 
 // 4行: r0・r1 は業種が空（r0 は載せる、r1 は7割の選び直しで載りうる）、r2 は業種を職員が決めた（一覧の外）、r3 は工事名がエラーで載せる
 const shown = [0, 1, 2, 3].map((i) => kojiRow({ workName: `工事${i}`, amount: String((i + 1) * 100) }, i))
@@ -125,4 +125,33 @@ describe("直す・問い合わせ・タブの数", () => {
     expect(caseTodo(input([{ ...ans, p: discard(ans.p) }], { inquiries, answersRead: true })).inquiry.state).toBe("done")
     expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)) })).inquiry).toEqual({ active: 0, left: 0, state: "done" })
   })
+})
+
+test("表がまだ無くても、答える（変更案）とチャットの答えを待つ印は数える。表に依る数は 0", () => {
+  const chat = proposal("c1", { kind: "chat", messageId: "m" }, [cellChange(r3)])
+  const fix = proposal("f1", { kind: "fix", runId: "x", field: "gyoshu" }, [gyoshuChange(r0, "01")])
+  const todo = caseTodo(input([chat, fix], { shown: [], inclusion: new Map(), rowFixes: new Map(), exportRows: 0 }))
+  expect(todo.answer.map((a) => a.kind === "proposal" && a.proposalId)).toEqual(["c1", "f1"])
+  expect(awaitsAnswer(todo, "c1")).toBe(true)
+  expect(todo.fix.rows).toBe(0)
+  expect(todo.gyoshu.rows).toEqual([])
+})
+
+test("報告の聞き返し: 表ができてから。税は誰も決めていなければ聞き、決まるか「分からない」で答えた。計画の聞き返しは exclude・keep だけを答えと見なす", () => {
+  const base = { hasTable: true, tax: "unknown" as const, taxBy: null, reportAnswers: {}, askIds: ["plan-ask-0"] }
+  expect(reportQuestionStates({ ...base, hasTable: false })).toEqual([])
+  expect(reportQuestionStates(base)).toEqual([
+    { id: "tax", answered: false },
+    { id: "plan-ask-0", answered: false },
+  ])
+  // 計画が決めた税は聞かない
+  expect(reportQuestionStates({ ...base, tax: "included", taxBy: "plan" }).map((q) => q.id)).toEqual(["plan-ask-0"])
+  expect(reportQuestionStates({ ...base, tax: "excluded", taxBy: "staff", reportAnswers: { tax: "excluded", "plan-ask-0": "keep" } })).toEqual([
+    { id: "tax", answered: true },
+    { id: "plan-ask-0", answered: true },
+  ])
+  expect(reportQuestionStates({ ...base, taxBy: "staff", reportAnswers: { tax: "ask", "plan-ask-0": "other" } })).toEqual([
+    { id: "tax", answered: true },
+    { id: "plan-ask-0", answered: false },
+  ])
 })
