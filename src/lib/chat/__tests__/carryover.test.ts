@@ -31,6 +31,17 @@ describe("去年のコード", () => {
     expect([...approvedChatProposals(proposals, [{ proposalId: "p1", undone: true }, { proposalId: "p3", undone: true }, { proposalId: "p3" }])].sort()).toEqual(["p3"])
   })
 
+  test("変更案に書いた取り消した項目（Proposal.undone）で見る（取り消しの記録が上限で捨てられても同じ）", () => {
+    const all: Proposal = { ...closed("p1", 2), undone: [0, 1] }
+    const part: Proposal = { ...closed("p2", 2), undone: [1] }
+    for (const undo of [[{ proposalId: "p1", undone: true as const, items: [0, 1] }, { proposalId: "p2", undone: true as const, items: [1] }], []]) {
+      expect([...approvedChatProposals([all, part], undo)]).toEqual(["p2"])
+    }
+    // 開いている変更案の一部だけを取り消したものは残す
+    const reapproved: Proposal = { id: "p3", origin: { kind: "chat", messageId: "u3" }, question: null, state: "open", count: 3, applied: [0, 1], rejected: [], undone: [0] }
+    expect([...approvedChatProposals([reapproved], [{ proposalId: "p3", undone: true, items: [0] }, { proposalId: "p3", items: [1] }])]).toEqual(["p3"])
+  })
+
   test("承認した変更案の付いた返事の、表を変える道具を呼ぶコードだけを会話の順に（読むだけ・bash・重なりは除く）", () => {
     const ui: ChatMessage[] = [
       { id: "u1", role: "user", parts: [{ type: "text", text: "注文者を直して" }] },

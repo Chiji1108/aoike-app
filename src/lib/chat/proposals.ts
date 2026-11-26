@@ -71,7 +71,16 @@ export type ProposalQuestion = { text: string; answer: "yes" | "no" | null }
  * cases/<caseId>/proposals/<id>.json に置く（proposalKey）。開いている変更案は中身の件数と、決めた項目の番号だけを持つ
  * （まとめて承認・却下すると閉じるので、作業の大きさは変更の件数に比例しない）。決め終わった変更案は件数だけを残す
  */
-export type Proposal = { id: string; origin: ProposalOrigin; question: ProposalQuestion | null } & (
+export type Proposal = {
+  id: string
+  origin: ProposalOrigin
+  question: ProposalQuestion | null
+  /**
+   * 承認を取り消した項目の番号（取り消しの記録 cases/undo.ts と同じ事実。記録は上限で捨てられるので、振り返り・去年のやり方はまずこれを読む。
+   * この項目より前の変更案には無い）
+   */
+  undone?: number[]
+} & (
   | { state: "open"; count: number; applied: number[]; rejected: number[] }
   | { state: "closed"; applied: number; rejected: number }
 )
@@ -109,9 +118,17 @@ export function approvedChange(p: Pick<Proposal, "origin">, c: ChatChange): Chat
   return { ...c, edit }
 }
 
+/** 閉じた形に残す項目（id・出どころ・聞き返し・取り消した項目） */
+const closedBase = (p: Proposal) => ({ id: p.id, origin: p.origin, question: p.question, ...(p.undone ? { undone: p.undone } : {}) })
+
 /** 決める前に要らなくなった変更案（変換の元を変えたなど）を閉じる。未決は却下にする */
-export const discard = (p: Proposal): Proposal =>
-  p.state === "open" ? { id: p.id, origin: p.origin, question: p.question, state: "closed", applied: p.applied.length, rejected: p.count - p.applied.length } : p
+export const discard = (p: Proposal): Proposal => (p.state === "open" ? { ...closedBase(p), state: "closed", applied: p.applied.length, rejected: p.count - p.applied.length } : p)
+
+/** 承認を取り消した項目を書き足す（開いていても閉じていても。もう書いた番号は重ねない） */
+export function withUndone(p: Proposal, items: readonly number[]): Proposal {
+  const undone = [...new Set([...(p.undone ?? []), ...items])].sort((a, b) => a - b)
+  return undone.length === (p.undone?.length ?? 0) ? p : { ...p, undone }
+}
 
 export function newProposal(id: string, origin: ProposalOrigin, changes: readonly ChatChange[], question: string | null): Proposal {
   return { id, origin, question: question ? { text: question, answer: null } : null, state: "open", count: changes.length, applied: [], rejected: [] }
@@ -131,7 +148,7 @@ export function decide(p: Proposal, indices: readonly number[], decision: "appli
   const chosen = [...new Set(indices)].filter((i) => i >= 0 && i < p.count && decisionOf(p, i) === "pending")
   const next = { ...p, [decision]: [...p[decision], ...chosen].sort((a, b) => a - b) }
   if (next.applied.length + next.rejected.length < next.count) return next
-  return { id: p.id, origin: p.origin, question: p.question, state: "closed", applied: next.applied.length, rejected: next.rejected.length }
+  return { ...closedBase(p), state: "closed", applied: next.applied.length, rejected: next.rejected.length }
 }
 
 /** 聞き返しに答える。no なら残りを全部却下する。未決が無くなれば閉じる */
@@ -278,6 +295,7 @@ export const proposalSchema: z.ZodType<Proposal> = (() => {
       z.object({ kind: z.literal("fix"), runId: z.string(), field: z.literal("gyoshu") }),
     ]),
     question: z.object({ text: z.string(), answer: z.enum(["yes", "no"]).nullable() }).nullable(),
+    undone: z.array(z.number().int().min(0)).optional(),
   }
   return z.discriminatedUnion("state", [
     z.object({ ...base, state: z.literal("open"), count: z.number().int().min(0), applied: z.array(z.number().int()), rejected: z.array(z.number().int()) }),

@@ -94,6 +94,21 @@ describe("案件の状態の保存と読み出し", () => {
     expect(savedWorkSchema.parse(toSavedWork(newWork(null, "included"))).rule7Tax).toBe("included")
   })
 
+  test("取り消した項目（Proposal.undone）・記録の枠（UndoEntry.kind）の無い前の保存も読め、ある保存はそのまま読み直せる", () => {
+    const old = {
+      ...toSavedWork(newWork("f")),
+      proposals: [{ id: "p", origin: { kind: "chat", messageId: "m" }, question: null, state: "closed", applied: 1, rejected: 0 }],
+      undo: [{ id: "u", proposalId: "p", items: [0], label: "p", at: 0, edits: [], manual: [], added: [], external: [], undone: true }],
+    }
+    const read = savedWorkSchema.parse(JSON.parse(JSON.stringify(old)))
+    expect(read.proposals[0]!.undone).toBeUndefined()
+    expect(read.undo[0]!.kind).toBeUndefined()
+    const next = { ...read, proposals: [{ ...read.proposals[0]!, undone: [0] }], undo: [{ ...read.undo[0]!, kind: "approval" as const }] }
+    const again = savedWorkSchema.parse(JSON.parse(JSON.stringify(next)))
+    expect(again.proposals[0]!.undone).toEqual([0])
+    expect(again.undo[0]!.kind).toBe("approval")
+  })
+
   test("形の違う保存は読まない", () => {
     const saved = toSavedWork(newWork())
     expect(savedWorkSchema.safeParse({ ...saved, tax: "both" }).success).toBe(false)

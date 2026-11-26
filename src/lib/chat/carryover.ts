@@ -34,7 +34,7 @@ const changeCode = (input: unknown) => {
 
 const unique = (codes: readonly string[]) => [...new Set(codes)]
 
-/** 承認を取り消した変更案（その変更案の承認の記録がすべて取り消し済み） */
+/** 承認を取り消した変更案（取り消しの記録だけで見る前の読み方: その変更案の承認の記録がすべて取り消し済み） */
 export function undoneProposals(undo: readonly Pick<UndoEntry, "proposalId" | "undone">[]): Set<string> {
   const undone = new Set(undo.filter((e) => e.undone).map((e) => e.proposalId))
   for (const e of undo) if (!e.undone) undone.delete(e.proposalId)
@@ -44,11 +44,24 @@ export function undoneProposals(undo: readonly Pick<UndoEntry, "proposalId" | "u
 /** 変更案の項目のうち承認した数 */
 export const appliedCount = (p: Proposal) => (p.state === "closed" ? p.applied : p.applied.length)
 
-/** 職員が1項目でも承認したチャットの変更案 */
-export function approvedChatProposals(proposals: readonly Proposal[], undo: readonly Pick<UndoEntry, "proposalId" | "undone">[] = []): Set<string> {
-  // 承認を取り消した変更案は、承認につながらなかったものとして扱う
-  const undone = undoneProposals(undo)
-  return new Set(proposals.filter((p) => p.origin.kind === "chat" && appliedCount(p) > 0 && !undone.has(p.id)).map((p) => p.id))
+/**
+ * 承認を取り消した項目の番号: 変更案に書いた番号（Proposal.undone）と、取り消した記録の番号を合わせる
+ * （記録は上限で捨てられても変更案の番号は残る。変更案に書く前に取り消した記録は記録の番号だけ）
+ */
+export function undoneItems(p: Proposal, undo: readonly Pick<UndoEntry, "proposalId" | "undone" | "items">[]): Set<number> {
+  const items = new Set(p.undone ?? [])
+  for (const e of undo) if (e.proposalId === p.id && e.undone) for (const i of e.items ?? []) items.add(i)
+  return items
+}
+
+/**
+ * 職員が1項目でも承認したチャットの変更案（承認を取り消した変更案は、承認につながらなかったものとして扱う）。
+ * 変更案に取り消した番号があれば、承認した項目をすべて取り消したかをそれで見る。無ければ（前の変更案）取り消しの記録で見る
+ */
+export function approvedChatProposals(proposals: readonly Proposal[], undo: readonly Pick<UndoEntry, "proposalId" | "undone" | "items">[] = []): Set<string> {
+  const byRecord = undoneProposals(undo)
+  const undone = (p: Proposal) => (p.undone ? undoneItems(p, undo).size >= appliedCount(p) : byRecord.has(p.id))
+  return new Set(proposals.filter((p) => p.origin.kind === "chat" && appliedCount(p) > 0 && !undone(p)).map((p) => p.id))
 }
 
 /** 画面の会話から、承認した変更案の付いた返事のコード（表を変える道具を呼ぶもの）を、会話の順に */
