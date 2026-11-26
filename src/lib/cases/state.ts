@@ -63,6 +63,8 @@ export type CaseWork = {
    * 同じ元・同じ場所なら記入用Excelにし、メールの本文も合わせる。問い合わせや列の対応が変わって場所が変われば判定し直す。前の作業には無いので、読むときは null
    */
   markFailure: { fileId: string; key: string; reason: string } | null
+  /** 表の上の「全件にしますか？」（7割ルールのまま手で載せた行が多いとき）を閉じた。前の作業には無いので、読むときは false */
+  allHintClosed: boolean
 }
 
 export type SavedPlan = { plan: MappingPlan<KojiFieldId>; source: "ai" | "rule"; notice?: string }
@@ -91,6 +93,7 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   inquiryText: EMPTY_INQUIRY_TEXT,
   rejectedExcel: [],
   markFailure: null,
+  allHintClosed: false,
 })
 
 // ---- 保存する形（D1 の csv_case_states.json）。Map・Set は組の配列にする ----
@@ -156,6 +159,7 @@ export const savedWorkSchema = z
   inquiryText: inquiryTextSchema.default(EMPTY_INQUIRY_TEXT),
   rejectedExcel: z.array(z.string().max(4000)).max(MAX_REJECTED_EXCEL).default([]),
   markFailure: z.object({ fileId: z.string().max(64), key: z.string().max(64), reason: z.string().max(200) }).nullable().default(null),
+  allHintClosed: z.boolean().default(false),
   })
   .transform(({ alreadyApplied, selection, ...w }) => ({ ...w, selection: legacySelection(selection, alreadyApplied) ?? "rule7" }))
 export type SavedWork = z.infer<typeof savedWorkSchema>

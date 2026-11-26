@@ -227,3 +227,46 @@ export function summarizeKoji(rows: readonly KojiRow[], inclusion: ReadonlyMap<s
       }
     })
 }
+
+/**
+ * 表の Shift＋クリック（範囲の入れ外し）で手動の入れ外しにする行。表で見えている行の並び（order）の、前に押した行（from）から今押した行（to）までを
+ * 今押した方向（included）にそろえる。もうその向きの行は手動にしない（7割・全件の選び直しに任せたまま）。
+ * 載せる向きでは除外した行を入れない（除外は計画の決まりで外した行なので、範囲に入っただけで載せない。1行ずつなら載せられる）。
+ * from が今の並びに無ければ null（ふつうの1行の入れ外し）
+ */
+export function rangeToggle(
+  order: readonly string[],
+  from: string,
+  to: string,
+  included: boolean,
+  inclusion: ReadonlyMap<string, Inclusion>,
+): { keys: string[]; skippedExcluded: number } | null {
+  const a = order.indexOf(from)
+  const b = order.indexOf(to)
+  if (a < 0 || b < 0) return null
+  const keys: string[] = []
+  let skippedExcluded = 0
+  for (const key of order.slice(Math.min(a, b), Math.max(a, b) + 1)) {
+    const inc = inclusion.get(key)
+    if (!inc || inc.included === included) continue
+    if (included && inc.reason === "excluded") {
+      skippedExcluded++
+      continue
+    }
+    keys.push(key)
+  }
+  return { keys, skippedExcluded }
+}
+
+/**
+ * 7割ルールのまま手で載せた行がこの数以上になったら、表の上で「全件にしますか？」と1行で案内する。
+ * 7割の選び直しに漏れた数行を足すのはよくあるが、10行は1業種の7割の行より多いことが多く、全件のつもりで1行ずつ付けている見込みが高い
+ */
+export const ALL_HINT_MANUAL = 10
+
+/** 手で載せた行の数（7割・全件で載らないのに職員がチェックで載せた行） */
+export const manualIncludedCount = (inclusion: ReadonlyMap<string, Inclusion>) => {
+  let n = 0
+  for (const inc of inclusion.values()) if (inc.included && inc.reason === "manual") n++
+  return n
+}
