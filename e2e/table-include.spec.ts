@@ -39,6 +39,8 @@ const undoToast = (page: Page, text: string) => page.locator("[data-sonner-toast
 /** 今描いている行のうち、載せる（"1"）か載せない（"0"）行の data-index */
 const renderedIndices = (page: Page, included: "0" | "1") =>
   page.locator(ROWS).evaluateAll((trs, v) => trs.flatMap((tr) => ((tr as HTMLElement).dataset.included === v ? [Number((tr as HTMLElement).dataset.index)] : [])), included)
+/** 今描いている行の [key, data-included]（並びのまま） */
+const rowStates = (page: Page) => page.locator(ROWS).evaluateAll((trs) => trs.map((tr) => [(tr as HTMLElement).dataset.rowKey!, (tr as HTMLElement).dataset.included!] as [string, string]))
 const scrollTable = (page: Page, to: "top" | number) =>
   page.getByTestId("preview-table").evaluate((table, to) => {
     table.parentElement!.scrollTop = to === "top" ? 0 : to
@@ -102,22 +104,47 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     await scrollTable(page, "top")
     await rowBox(page, 2).focus()
     await page.keyboard.press("Space")
-    const target = (await row(page, 2).getAttribute("data-included")) === "1"
+    const target = (await row(page, 5).getAttribute("data-included")) === "0"
     await rowBox(page, 5).focus()
     await page.keyboard.press("Shift+Space")
     for (let i = 2; i <= 5; i++) await expect(row(page, i)).toHaveAttribute("data-included", target ? "1" : "0")
   })
 
-  await test.step("絞り込み（検索）中は、見えている行だけが範囲になる", async () => {
-    await page.getByLabel("表の中を検索").fill("管工事")
+  await test.step("絞り込み（検索）中は、見えている行だけが範囲になり、検索で隠れた間の行は変えない", async () => {
+    await scrollTable(page, "top")
+    const before = await rowStates(page)
+    const search = page.getByLabel("表の中を検索")
+    await search.fill("東京都")
     const keys = await page.locator(ROWS).evaluateAll((trs) => trs.slice(0, 4).map((tr) => (tr as HTMLElement).dataset.rowKey!))
     expect(keys).toHaveLength(4)
+    // 検索を外した並びで、見えている4行の間にあって検索で隠れた行
+    const order = before.map(([k]) => k)
+    const [lo, hi] = [order.indexOf(keys[0]!), order.indexOf(keys[3]!)]
+    expect(lo).toBeGreaterThanOrEqual(0)
+    expect(hi).toBeGreaterThan(lo)
+    const hidden = before.slice(lo, hi + 1).filter(([k]) => !keys.includes(k))
+    expect(hidden.length).toBeGreaterThan(0)
     await rowBox(page, 0).click()
-    const target = (await row(page, 0).getAttribute("data-included")) === "1"
+    // 向きは Shift＋クリックした行を押した向き
+    const target = (await row(page, 3).getAttribute("data-included")) === "0"
     await rowBox(page, 3).click({ modifiers: ["Shift"] })
     for (const k of keys) await expect(page.locator(`${ROWS}[data-row-key="${k}"]`)).toHaveAttribute("data-included", target ? "1" : "0")
-    // 間に入った（検索で隠れた）行は変えない: 検索を外すと、4行の間の行のうち管工事でない行はそのまま
-    await page.getByLabel("表の中を検索").fill("")
+    await search.fill("")
+    await scrollTable(page, "top")
+    for (const [k, v] of hidden) await expect(page.locator(`${ROWS}[data-row-key="${k}"]`)).toHaveAttribute("data-included", v)
+  })
+
+  await test.step("検索・絞り込みを変えたら起点を捨てる: 変えたあとの Shift＋クリックは1行だけ", async () => {
+    const search = page.getByLabel("表の中を検索")
+    await search.fill("東京都")
+    await rowBox(page, 0).click()
+    await search.fill("")
+    await scrollTable(page, "top")
+    const was = await Promise.all([1, 2, 3, 4].map((i) => row(page, i).getAttribute("data-included")))
+    const last = await row(page, 5).getAttribute("data-included")
+    await rowBox(page, 5).click({ modifiers: ["Shift"] })
+    await expect(row(page, 5)).toHaveAttribute("data-included", last === "1" ? "0" : "1")
+    for (const [j, i] of [1, 2, 3, 4].entries()) await expect(row(page, i)).toHaveAttribute("data-included", was[j]!)
   })
 
   await test.step("7割ルールのまま手で載せた行が10行以上になると「全件にしますか？」。「全件にする」で全件になり、案内は消える", async () => {

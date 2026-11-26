@@ -20,6 +20,10 @@ describe("rangeToggle（Shift＋クリックの範囲）", () => {
   test("前に押した行から今の行までを今の向きにそろえる。もうその向きの行は手動にしない", () => {
     expect(rangeToggle(order, "a", "d", true, inclusion)).toEqual({ keys: ["b", "d"], skippedExcluded: 1 })
   })
+  test("今押した行は、除外の行でも1行ずつ押したのと同じに入れる（間の除外の行は入れない）", () => {
+    expect(rangeToggle(order, "a", "c", true, inclusion)).toEqual({ keys: ["b", "c"], skippedExcluded: 0 })
+    expect(rangeToggle(["c", "x", "e"], "e", "c", true, inc([["c", EXCLUDED], ["x", EXCLUDED], ["e", OFF]]))).toEqual({ keys: ["c", "e"], skippedExcluded: 1 })
+  })
   test("下から上へ押しても同じ範囲", () => {
     expect(rangeToggle(order, "e", "b", false, inclusion)).toEqual({ keys: ["e"], skippedExcluded: 0 })
   })

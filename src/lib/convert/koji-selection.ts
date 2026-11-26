@@ -231,8 +231,9 @@ export function summarizeKoji(rows: readonly KojiRow[], inclusion: ReadonlyMap<s
 /**
  * 表の Shift＋クリック（範囲の入れ外し）で手動の入れ外しにする行。表で見えている行の並び（order）の、前に押した行（from）から今押した行（to）までを
  * 今押した方向（included）にそろえる。もうその向きの行は手動にしない（7割・全件の選び直しに任せたまま）。
- * 載せる向きでは除外した行を入れない（除外は計画の決まりで外した行なので、範囲に入っただけで載せない。1行ずつなら載せられる）。
- * from が今の並びに無ければ null（ふつうの1行の入れ外し）
+ * 載せる向きでは除外した行を入れない（除外は計画の決まりで外した行なので、範囲に入っただけで載せない）。
+ * ただし今押した行（to）は、1行ずつ押したのと同じに除外の行でも入れる。
+ * from か to が並び（前に押したときに見えていた行）に無ければ null（ふつうの1行の入れ外し）
  */
 export function rangeToggle(
   order: readonly string[],
@@ -249,7 +250,7 @@ export function rangeToggle(
   for (const key of order.slice(Math.min(a, b), Math.max(a, b) + 1)) {
     const inc = inclusion.get(key)
     if (!inc || inc.included === included) continue
-    if (included && inc.reason === "excluded") {
+    if (included && inc.reason === "excluded" && key !== to) {
       skippedExcluded++
       continue
     }

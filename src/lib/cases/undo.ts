@@ -124,14 +124,30 @@ export function undoEntry(
 const sizeOf = (e: UndoEntry) => new TextEncoder().encode(JSON.stringify(e)).byteLength
 
 /**
- * 記録を足す。数と大きさの上限を超えたら古いものから捨てる。1件だけで上限を超える記録は中身を捨て、取り消せない印だけを残す
+ * 表の操作（載せる工事の選び方の切り替え・範囲の入れ外し）の記録の印。押すだけで何度も積めるので、承認の記録とは別に数える
+ */
+export const SELECTION_UNDO = "selection:"
+export const RANGE_UNDO = "include:"
+const isTableOp = (e: UndoEntry) => e.proposalId.startsWith(SELECTION_UNDO) || e.proposalId.startsWith(RANGE_UNDO)
+/** 表の操作の記録を残す数（直前の数回を戻せれば足りる） */
+export const MAX_TABLE_OP_ENTRIES = 10
+
+/**
+ * 記録を足す。数と大きさの上限を超えたら古いものから捨てる。1件だけで上限を超える記録は中身を捨て、取り消せない印だけを残す。
+ * 表の操作の記録は MAX_TABLE_OP_ENTRIES 件までにし、上限を超えたときは表の操作の記録から先に捨てる
+ * （見出しを何度か押す・大きな範囲を入れ外しするだけで、チャットの承認の記録が押し出されて取り消せなくならないように）
  */
 export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntry[] {
   const kept: UndoEntry =
     sizeOf(entry) > MAX_UNDO_BYTES ? { id: entry.id, proposalId: entry.proposalId, ...(entry.items ? { items: entry.items } : {}), label: entry.label, at: entry.at, edits: [], manual: [], added: [], external: entry.external, tooLarge: true } : entry
   const next = [...list, kept]
   let bytes = next.reduce((n, e) => n + sizeOf(e), 0)
-  while (next.length > MAX_UNDO_ENTRIES || (bytes > MAX_UNDO_BYTES && next.length > 1)) bytes -= sizeOf(next.shift()!)
+  const drop = (i: number) => (bytes -= sizeOf(next.splice(i, 1)[0]!))
+  while (next.filter(isTableOp).length > MAX_TABLE_OP_ENTRIES) drop(next.findIndex(isTableOp))
+  while (next.length > MAX_UNDO_ENTRIES || (bytes > MAX_UNDO_BYTES && next.length > 1)) {
+    const op = next.findIndex(isTableOp)
+    drop(op >= 0 ? op : 0)
+  }
   return next
 }
 

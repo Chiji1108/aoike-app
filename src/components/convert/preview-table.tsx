@@ -274,16 +274,27 @@ export function PreviewTable({
     if (restoreFocus) requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`tr[data-row-key="${CSS.escape(row)}"] td[data-field="${field}"] button`)?.focus())
   }
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
-  /** 前に「載せる」を押した行（Shift＋クリックの範囲の起点。描き直さなくてよいので ref） */
-  const lastToggled = useRef<string | null>(null)
   /**
-   * 行の「載せる」を押した。Shift を押しながらなら、前に押した行から今の行まで（今の絞り込み・並び順で見えている行）を今の向きにそろえる
-   * （キーボードの Shift＋Space も同じ。Base UI は押したときのキーの状態を event に載せる）
+   * Shift＋クリックの範囲の起点: 前に「載せる」を押した行と、そのとき見えていた行の並び。並びを覚えるのは、「直す」の絞り込みなどで
+   * 押した行が入れ外しで表から消えても、続けて Shift＋クリックした範囲がその行から始まるように
+   */
+  const [rangeAnchor, setRangeAnchor] = useState<{ key: string; included: boolean; order: readonly string[] } | null>(null)
+  // 絞り込み・検索・並べ替え・選び方が変わったら起点を捨てる（思わぬ広い範囲にしない。描くときに1か所で）
+  const anchorView = `${filterKey(filter)}|${needle}|${JSON.stringify(sorting)}|${selection}`
+  const [anchorViewSeen, setAnchorViewSeen] = useState(anchorView)
+  if (anchorViewSeen !== anchorView) {
+    setAnchorViewSeen(anchorView)
+    setRangeAnchor(null)
+  }
+  /**
+   * 行の「載せる」を押した。Shift を押しながらなら、前に押した行から今の行まで（前に押したときに見えていた行）を今の向きにそろえる
+   * （キーボードの Shift＋Space も同じ。Base UI は押したときのキーの状態を event に載せる）。
+   * 起点の行が押したときの向きでなくなっていれば（取り消しで戻ったなど）起点にしない
    */
   function toggleRow(key: string, included: boolean, event: Event) {
-    const from = lastToggled.current
-    lastToggled.current = key
-    const range = from && from !== key && "shiftKey" in event && event.shiftKey ? rangeToggle(shown.map((r) => r.key), from, key, included, inclusion) : null
+    const from = rangeAnchor && rangeAnchor.key !== key && inclusion.get(rangeAnchor.key)?.included === rangeAnchor.included ? rangeAnchor : null
+    const range = from && "shiftKey" in event && event.shiftKey ? rangeToggle(from.order, from.key, key, included, inclusion) : null
+    setRangeAnchor({ key, included, order: range ? from!.order : shown.map((r) => r.key) })
     if (range) onToggleRange(range.keys, included, range.skippedExcluded)
     else onToggle(key, included)
   }

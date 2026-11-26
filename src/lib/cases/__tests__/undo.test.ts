@@ -3,7 +3,7 @@ import { applyChanges, type ChatChange } from "../../chat/proposals"
 import { editKey, type CellEdit } from "../../convert/convert"
 import { fromSaved, newWork, type SavedPlan, savedWorkSchema, toSavedWork, toSavedAiCache, type CaseWork } from "../state"
 import { applyInquiryChange, EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
-import { canUndo, MAX_UNDO_BYTES, MAX_UNDO_ENTRIES, pushUndo, undo, undoEntry } from "../undo"
+import { canUndo, MAX_TABLE_OP_ENTRIES, MAX_UNDO_BYTES, MAX_UNDO_ENTRIES, pushUndo, RANGE_UNDO, SELECTION_UNDO, undo, undoEntry } from "../undo"
 
 const chat = (value: string): CellEdit => ({ value, by: "chat" })
 const staff = (value: string): CellEdit => ({ value, by: "staff" })
@@ -133,6 +133,22 @@ describe("承認の取り消し", () => {
     const pushed = pushUndo(list, huge).at(-1)!
     expect(pushed.tooLarge).toBe(true)
     expect(canUndo(pushed)).toBe(false)
+  })
+
+  test("表の操作（選び方の切り替え・範囲の入れ外し）の記録は別に数え、承認の記録を押し出さない", () => {
+    const entryOf = (proposalId: string, i: number) => undoEntry(base, approve(base, proposalId, [{ kind: "include", rowKey: `r${i}`, include: true }]), { id: `${proposalId}#${i}`, proposalId, label: "", at: i })!
+    let list = [] as ReturnType<typeof pushUndo>
+    for (let i = 0; i < MAX_UNDO_ENTRIES - 2; i++) list = pushUndo(list, entryOf(`p${i}`, i))
+    for (let i = 0; i < 25; i++) list = pushUndo(list, entryOf(i % 2 ? `${SELECTION_UNDO}${i}` : `${RANGE_UNDO}${i}`, i))
+    const ops = list.filter((e) => e.proposalId.startsWith(SELECTION_UNDO) || e.proposalId.startsWith(RANGE_UNDO))
+    // 承認の記録は全部残り、表の操作は新しいものから残る
+    expect(list.filter((e) => e.proposalId.startsWith("p"))).toHaveLength(MAX_UNDO_ENTRIES - 2)
+    expect(ops.length).toBeLessThanOrEqual(MAX_TABLE_OP_ENTRIES)
+    expect(list).toHaveLength(MAX_UNDO_ENTRIES)
+    expect(ops.at(-1)!.at).toBe(24)
+    // 承認が増えて上限を超えても、捨てるのは表の操作の記録から
+    list = pushUndo(list, entryOf("p-new", 99))
+    expect(list.filter((e) => e.proposalId.startsWith("p"))).toHaveLength(MAX_UNDO_ENTRIES - 1)
   })
 
   test("前の版で保存した作業（取り消しの記録が無い）も読める", () => {

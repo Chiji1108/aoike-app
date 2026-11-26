@@ -42,7 +42,7 @@ import { fetchCaseFile, uploadCaseFile } from "@/lib/cases/files-client"
 import { fromSaved, MAX_REJECTED_EXCEL, newWork, type CaseWork, type SavedPlan } from "@/lib/cases/state"
 import { setTax, withPlanTax } from "@/lib/cases/tax"
 import { ATTACH_ACCEPT, CASE_STATUSES, CASE_STATUS_LABELS, contentTypeOf, FILE_KIND_LABELS, fileUrl, isSheetFile, onlyNonSheetSources, type CaseFile, type CaseStatus, type FileKind } from "@/lib/cases/types"
-import { canUndo, pushUndo, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
+import { canUndo, pushUndo, RANGE_UNDO, SELECTION_UNDO, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
 import { uploadKind, warnsUnlinked } from "@/lib/cases/upload-kind"
 import { baseRows, editRows, orderAndFinalize, selectRows } from "@/lib/cases/view"
 import { askFacts, askImpact, askPrompt, askWording, needsConfirm } from "@/lib/cases/ask-impact"
@@ -118,9 +118,6 @@ const reportUndoId = (questionId: string) => `report:${questionId}`
 /** 業種の一覧で決めたもの・「これでよい」の取り消しの記録（cases/undo.ts）の印。1回の操作ごとに1つ */
 const GYOSHU_UNDO = "gyoshu:"
 const CONFIRM_UNDO = "confirm:"
-/** 載せる工事の選び方の切り替え・表の範囲の入れ外しの取り消しの記録の印。1回の操作ごとに1つ */
-const SELECTION_UNDO = "selection:"
-const RANGE_UNDO = "include:"
 /** 業種の AI の案（出どころ fix）の開いている変更案の、未決の業種の項目（行 → 変更案と項目の番号・案） */
 function pendingGyoshuItems(proposals: readonly Proposal[], changes: ReadonlyMap<string, readonly ChatChange[]>) {
   const out = new Map<string, { proposalId: string; index: number; rowKey: string; edit: CellEdit }>()
