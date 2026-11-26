@@ -3,12 +3,11 @@ import { Link, createFileRoute, notFound, useRouter } from "@tanstack/react-rout
 import { Ellipsis, FileText, FileUp, Loader2, PanelRightClose, Paperclip, Trash2, TriangleAlert, X } from "lucide-react"
 import { toast } from "sonner"
 import { AppShell, CSV } from "@/components/app-shell"
-import { CaseReport, type ReportChat, type ReportProps, type ReportQuestion, type UploadNote } from "@/components/cases/case-report"
+import { CaseReport, type ReportChat, type ReportProps, type ReportQuestion } from "@/components/cases/case-report"
 import { reportPhase } from "@/lib/cases/phase"
 import { WORK_TABS, type WorkTab } from "@/components/cases/work-tabs"
 import { DeleteDialog } from "@/components/cases/delete-dialog"
-import { useCaseAutosave, type SaveStatus } from "@/components/cases/use-case-autosave"
-import { AnswerImportPanel, FinalImportPanel, type FinalImport } from "@/components/convert/final-import-panel"
+import { AnswerImportPanel, FinalImportPanel } from "@/components/convert/final-import-panel"
 import { ExportDialog, type ExportQuestion } from "@/components/convert/export-dialog"
 import { InquiryPanel } from "@/components/convert/inquiry-panel"
 import { LocationPanel, useLocationSearch } from "@/components/convert/location-panel"
@@ -19,10 +18,15 @@ import { GyoshuPanel, type GyoshuDecision } from "@/components/convert/gyoshu-pa
 import { choicesOf } from "@/lib/spec/choices"
 import { FixSuggestionPanel, useGyoshuSuggestion } from "@/components/convert/fix-suggestion"
 import { NextSteps, type StepId } from "@/components/cases/next-steps"
-import { CaseStoreContext, useCase, useCaseStore } from "@/components/cases/store/context"
-import { createCaseStore, initialCaseState, setWork as setStoreWork } from "@/components/cases/store/create-case-store"
-import { commit, receiveProposal, undoGroup, type Committed } from "@/components/cases/store/actions/proposals"
+import { CaseSessionContext, useCase, useCaseSession } from "@/components/cases/store/context"
+import { setWork as setStoreWork, type PeerState } from "@/components/cases/store/create-case-store"
+import { commit, receiveProposal, type Committed } from "@/components/cases/store/actions/proposals"
+import { previousSideOf } from "@/components/cases/store/actions/source"
 import { derive } from "@/components/cases/store/derive"
+import { serverDeps } from "@/components/cases/store/deps"
+import type { CaseLoaderData } from "@/components/cases/store/env"
+import { createCaseSession } from "@/components/cases/store/session"
+import { broadcastChannel, savesSettled } from "@/components/cases/store/sync"
 import { GyoshuSummaryTable, RoundingNote } from "@/components/convert/summary-panel"
 import type { ProposalActions, UndoState } from "@/components/chat/proposal-card"
 import {
@@ -40,60 +44,55 @@ import { NativeSelect } from "@/components/ui/native-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Segmented } from "@/components/segmented"
-import { MAX_ADDED_ROWS } from "@/lib/cases/added"
-import { fetchCaseFile, uploadCaseFile } from "@/lib/cases/files-client"
-import { MAX_REJECTED_EXCEL, newWork, type CaseWork, type SavedPlan } from "@/lib/cases/state"
+import type { SaveStatus } from "@/lib/cases/autosave"
+import type { CaseWork } from "@/lib/cases/state"
 import { awaitsAnswer, caseTodo, pendingGyoshuItems, reportQuestionStates, tabBadge } from "@/lib/cases/todo"
-import { setTax, withPlanTax } from "@/lib/cases/tax"
-import { ATTACH_ACCEPT, CASE_STATUSES, CASE_STATUS_LABELS, contentTypeOf, FILE_KIND_LABELS, fileUrl, isSheetFile, onlyNonSheetSources, type CaseFile, type CaseStatus, type FileKind } from "@/lib/cases/types"
-import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO, type UndoEntry } from "@/lib/cases/undo"
+import { setTax } from "@/lib/cases/tax"
+import { ATTACH_ACCEPT, CASE_STATUSES, CASE_STATUS_LABELS, contentTypeOf, FILE_KIND_LABELS, fileUrl, isSheetFile, onlyNonSheetSources, type CaseFile } from "@/lib/cases/types"
+import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO } from "@/lib/cases/undo"
 import { uploadKind, warnsUnlinked } from "@/lib/cases/upload-kind"
-import { baseRows, editRows, orderAndFinalize, selectRows } from "@/lib/cases/view"
 import { askFacts, askImpact, askPrompt, askWording, needsConfirm } from "@/lib/cases/ask-impact"
 import { carryoverReady } from "@/lib/chat/carryover"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
 import { viewKindOf } from "@/lib/chat/view-kind"
 import type { ChatAction } from "@/lib/chat/messages"
-import { addedCountAfter, answer, applyChanges, approvedChange, decide, decisionOf, discard, isAnswered, newProposal, type ChatChange, type OpenProposal, type Proposal, type ProposalOrigin, type ProposalRecord } from "@/lib/chat/proposals"
+import { answer, approvedChange, decide, type OpenProposal, type Proposal, type ProposalOrigin, type ProposalRecord } from "@/lib/chat/proposals"
 import { toWire } from "@/lib/chat/wire"
-import { ADDRESS_API_PATH, addressCache, addressKey, lookupAddresses, NO_ADDRESSES, type AddressBook, type AddressLookup } from "@/lib/convert/address"
-import { convertRows, editKey, editSession, resolveRows, staffEdit, type CellEdit, type RowResult } from "@/lib/convert/convert"
+import { editKey, editSession, staffEdit, type CellEdit, type RowResult } from "@/lib/convert/convert"
 import { csvFileName, datedFileName, toCsvBytes } from "@/lib/convert/csv"
 import { compareFormats, describeFormatDiff } from "@/lib/convert/format-diff"
-import { heuristicPlan, planSheets, primarySheet, sheetByNames } from "@/lib/convert/heuristic-plan"
-import { ALL_HINT_MANUAL, manualIncludedCount, RULE7_TAX_LABELS, SELECTION_LABELS, SELECTION_MODES, summarizeKoji, TAX_LABELS, type Inclusion, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
-import { personLetters } from "@/lib/convert/persons"
-import { addressInputs, fillAiCache, type AiCache, type AiCaller } from "@/lib/convert/pipeline"
-import { acceptAiPlan, hasExclusion, type MappingPlan, type PlanAsk, type PlanAskKind, type SheetGrid, type ValueFilter } from "@/lib/convert/plan"
+import { ALL_HINT_MANUAL, manualIncludedCount, RULE7_TAX_LABELS, SELECTION_LABELS, SELECTION_MODES, summarizeKoji, TAX_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
+import { hasExclusion, type MappingPlan, type PlanAsk, type PlanAskKind, type SheetGrid, type ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
-import { planExcerpt, previousPlanContext } from "@/lib/convert/prompt"
-import { askTargets, collectSourceRows, sameHeader, sourceKey } from "@/lib/convert/sources"
+import { askTargets, sameHeader, sourceKey } from "@/lib/convert/sources"
 import { ROUNDING_LABELS, ROUNDINGS, type Rounding } from "@/lib/convert/transforms"
-import { changeSignature, readFinalSheet, recount, withoutKnown, type FinalReport } from "@/lib/excel/final-import"
 import { finalSheet } from "@/lib/excel/final-sheet"
 import { Cost, useUsdJpy } from "@/components/cost"
 import { CASE_COST_NOTICE_USD } from "@/lib/cost"
 import type { UsdJpy } from "@/lib/fx"
 import { errorMessage } from "@/lib/errors"
 import { saveFile } from "@/lib/save-file"
-import { aiAnswerPrompt, collectInquiries, inquiryKey, inquirySheet, mergeAnswers, outsideCells, readAnswers, type AnswerReport, type CellInquiry } from "@/lib/inquiry/inquiry"
-import { chooseAttachment, placeMarks, placementKey, planMarks, readMarked } from "@/lib/inquiry/marked"
-import type { Markability } from "@/lib/inquiry/markable"
+import { aiAnswerPrompt, collectInquiries, inquiryKey, inquirySheet, type CellInquiry } from "@/lib/inquiry/inquiry"
+import { chooseAttachment, placeMarks, placementKey, planMarks } from "@/lib/inquiry/marked"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
 import { REVIEW_PROMPT } from "@/lib/chat/review"
-import { KOJI_KEIREKI, KOJI_PLAN_HINTS, type KojiFieldId } from "@/lib/spec/koji-keireki"
+import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { cn } from "@/lib/utils"
-import { planWithAi, runAiBatch } from "@/server/ai"
-import { getCasePageFn, updateCaseStatusFn } from "@/server/cases"
-import { approveRuleFn, recordProposalFn } from "@/server/chat-fns"
-import { approveLocationsFn } from "@/server/location-fns"
+import { getCasePageFn } from "@/server/cases"
 import { createClientOnlyFn } from "@tanstack/react-start"
 
 export const Route = createFileRoute("/_authed/csv/cases/$caseId")({
-  loader: async ({ params }) => {
-    const page = await getCasePageFn({ data: { id: params.caseId } })
-    if (!page) throw notFound()
-    return page
+  // 前に読んだ案件のデータ（戻る・先読み）で画面を描かず、読み直し終えてから描く（画面の1回分はそのときのデータから1回だけ作るので、
+  // 古いデータで作ると、そのあとに届いた新しいデータを使わない）
+  loader: {
+    staleReloadMode: "blocking",
+    handler: async ({ params }): Promise<CaseLoaderData> => {
+      // 同じ案件の画面から離れてすぐ戻ったときは、前の画面の最後の保存が終わって（あきらめて）から読む（古い版を読んで保存がぶつからない）
+      const saved = await savesSettled(params.caseId)
+      const page = await getCasePageFn({ data: { id: params.caseId } })
+      if (!page) throw notFound()
+      return { ...page, previousUnsaved: !saved }
+    },
   },
   component: CasePage,
 })
@@ -107,8 +106,6 @@ const loadInquiryXlsx = createClientOnlyFn(() => Promise.all([import("@/lib/inqu
 const ChatPanel = lazy(() => import("@/components/chat/chat-panel").then((m) => ({ default: m.ChatPanel })))
 
 const SPEC = KOJI_KEIREKI
-const NO_LETTERS = personLetters([])
-const NO_INCLUSION: ReadonlyMap<string, Inclusion> = new Map()
 const NO_ROWS: RowResult<KojiFieldId>[] = []
 const NO_ASKS: PlanAsk[] = []
 
@@ -127,74 +124,12 @@ const reportUndoId = (questionId: string) => `report:${questionId}`
 const GYOSHU_CHOICES = choicesOf(KOJI_KEIREKI.fields.find((f) => f.id === "gyoshu")!)!
 
 type Plan = MappingPlan<KojiFieldId>
-/** 変換の元。bytes は読んだファイル（印付きの Excel を書くのに使う。取り直さない）、markable は印付きの Excel にできるか（lib/inquiry/markable.ts） */
-type Source = { fileId: string; name: string; bytes: Uint8Array; sheets: SheetGrid[]; markable: Markability }
-
-/** 列の計画の前に、去年の Excel を読み終えるのを待つ長さ */
-const PREVIOUS_WAIT_MS = 3_000
 
 /** 作業の画面をチャットの横に並べる画面の幅（これより狭い画面ではチャットを画面いっぱいにし、作業の画面は上に重ねて開く） */
 const WIDE_QUERY = "(min-width: 1280px)"
 /** チャットの案内のうち、案件を終えるときの振り返り（返ってきた Excel の案内はファイルの id） */
 const REVIEW_SUGGESTION = "review"
 const INQUIRY_SUGGESTION = "inquiry-text"
-
-type PreviousCase = NonNullable<NonNullable<Awaited<ReturnType<typeof getCasePageFn>>>["previous"]>
-
-/** 去年の比べるシートと見出しの行（去年の計画のもの。計画が無い・シートが無ければ見出しから推定する）。比べるシートが無ければ null */
-function previousSideOf(previous: PreviousCase, sheets: SheetGrid[]) {
-  const prevGrid = sheetByNames(SPEC, KOJI_PLAN_HINTS, sheets, previous.sheet)
-  if (!prevGrid) return null
-  const headerRow = prevGrid.name === previous.sheet && previous.headerRow !== null ? previous.headerRow : heuristicPlan(SPEC, KOJI_PLAN_HINTS, prevGrid).headerRow
-  return { sheets, sheet: prevGrid.name, headerRow }
-}
-
-/**
- * 計画をやり直すとき（元のファイルの変更）: 行の作業と AI の結果は捨て、ファイル全体の設定は残す。開いている変更案は閉じる。
- * 計画は考え終わるまで null（この形をすぐ保存するので、考えている途中で閉じても、開き直すと新しい元で考え直す）。
- * 取り消しの記録は前の元の行を指すので捨てる
- */
-const replanWork = (w: CaseWork, sourceFileId: string): CaseWork => ({
-  ...newWork(sourceFileId),
-  tax: w.tax,
-  taxBy: w.taxBy,
-  basis: w.basis,
-  rule7Tax: w.rule7Tax,
-  selection: w.selection,
-  rounding: w.rounding,
-  // 税込・税抜の答えは元に依らないので引き継ぐ。計画の聞き返しの答えは前の計画のもの
-  reportAnswers: w.reportAnswers.tax ? { tax: w.reportAnswers.tax } : {},
-  // メールの件名・前置きは行に依らないので引き継ぐ
-  inquiryText: w.inquiryText,
-  // 変更案は前の元の行を指すので閉じる（消さずに残す。消すと、サーバーの記録から開き直したときにまた足される）
-  proposals: w.proposals.map(discard),
-})
-
-/** 変換の結果（手直し・置換の前）。元のファイル・計画・端数・AI の結果・引いた住所から作る（AI は呼ばない） */
-function convertedRows(sheets: SheetGrid[], w: CaseWork, addresses: AddressBook) {
-  if (!w.converted || !w.plan) return null
-  const { plan } = w.plan
-  return resolveRows(convertRows(SPEC, collectSourceRows(sheets, plan).rows, plan, { rounding: w.rounding, addresses }), w.aiCache)
-}
-
-/** 同梱の住所データを読んで住所を引く（lib/convert/address.ts） */
-const lookupAddressesHere: AddressLookup = (raws) => lookupAddresses(raws, new URL(ADDRESS_API_PATH, window.location.origin).href)
-
-/** サーバー関数で AI を呼ぶ（費用は案件の合計に足し、onCost にも渡す）。失敗の理由は failures に集める */
-function serverAi(caseId: string, failures: Set<string>, onCost: (usd: number) => void): AiCaller {
-  return async (req) => {
-    try {
-      const res = await runAiBatch({ data: { caseId, ...req } })
-      onCost(res.usd)
-      if (!res.ok) failures.add(res.message)
-      return res.ok ? { ok: true, json: res.json } : res
-    } catch (e) {
-      const message = errorMessage(e, "AI の呼び出しに失敗しました")
-      failures.add(message)
-      return { ok: false, message }
-    }
-  }
-}
 
 /** 画面の幅がクエリに合うか（サーバーで描くときは false） */
 function useMediaQuery(query: string) {
@@ -217,26 +152,26 @@ function CasePage() {
   return <CaseWorkspace key={page.kase.id} {...page} />
 }
 
-type CasePageData = NonNullable<Awaited<ReturnType<typeof getCasePageFn>>>
-
-/** 案件の画面。ストア（作業と変更案の中身）を案件ごとに1つ作って渡す（key={kase.id} なので案件が変われば作り直す） */
-function CaseWorkspace(page: CasePageData) {
-  const [store] = useState(() => createCaseStore(initialCaseState(page)))
+/** 案件の画面。案件の1回分（ストア・表の派生・action・保存）を案件ごとに1つ作って渡す（key={kase.id} なので案件が変われば作り直す） */
+function CaseWorkspace(page: CaseLoaderData) {
+  const [session] = useState(() => createCaseSession(page, serverDeps(page.kase.id), broadcastChannel(page.kase.id)))
+  // 保存の層と別のタブとの道をつなぐ（初めてつないだときに変換の元・去年の Excel を読み始める）
+  useEffect(() => session.connect(), [session])
   return (
-    <CaseStoreContext.Provider value={store}>
+    <CaseSessionContext.Provider value={session}>
       <CaseWorkspaceBody {...page} />
-    </CaseStoreContext.Provider>
+    </CaseSessionContext.Provider>
   )
 }
 
-function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEnabled, previous, excelKey }: CasePageData) {
+function CaseWorkspaceBody({ kase, customer, chatEnabled, previous, excelKey }: CaseLoaderData) {
   const router = useRouter()
-  const store = useCaseStore()
-  const [files, setFiles] = useState(initialFiles)
-  const [status, setStatus] = useState(kase.status)
-  /** 案件の費用の合計（変換・チャットの AI の分。サーバーの合計に足したものを画面でも足す） */
-  const [costUsd, setCostUsd] = useState(kase.costUsd)
-  const addCost = (usd: number) => setCostUsd((c) => c + usd)
+  const session = useCaseSession()
+  const { store, actions } = session
+  /** 案件のファイル・状態・AI の費用の合計（ストアの runtime。変えるのは action） */
+  const files = useCase((s) => s.runtime.files)
+  const status = useCase((s) => s.runtime.status)
+  const costUsd = useCase((s) => s.runtime.costUsd)
   /** 案件の作業（ストア。保存するもの）と変更案の中身 */
   const work = useCase((s) => s.work)
   const contents = useCase((s) => s.contents)
@@ -245,6 +180,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   /** 開いたときに中身の記録が無く閉じた変更案・記録を読めなかった変更案の数（報告に出す） */
   const closedMissing = useCase((s) => s.runtime.closedMissing)
   const unreadableProposals = useCase((s) => s.runtime.unreadable)
+  const previousUnsaved = useCase((s) => s.runtime.previousUnsaved)
   /** 作業を変える（next はその時点の作業から作る。値をそのまま入れるときも、その時点の作業に重ねない値だけ） */
   const setWork = (next: CaseWork | ((w: CaseWork) => CaseWork)) => setStoreWork(store, typeof next === "function" ? next : () => next)
   /** 最新の作業（待っている間に変わったかを確かめる。前の描画の値を使わない） */
@@ -253,31 +189,22 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const update = <K extends keyof CaseWork>(key: K, next: (prev: CaseWork[K]) => CaseWork[K]) => setWork((w) => ({ ...w, [key]: next(w[key]) }))
   /** 値をその場で読んでから入れる（イベントの値を updater の中で読まない） */
   const set = <K extends keyof CaseWork>(key: K, value: CaseWork[K]) => update(key, () => value)
-  const [source, setSource] = useState<Source | null>(null)
-  const [loadingSource, setLoadingSource] = useState<string | null>(null)
-  /** 変換の元を読めなかった（報告に理由とやり直しを出す） */
-  const [sourceError, setSourceError] = useState<{ file: CaseFile; message: string } | null>(null)
-  /** アップロードしたファイルをどう扱ったか（報告に出す。保存しない） */
-  const [uploadNotes, setUploadNotes] = useState<UploadNote[]>([])
-  const note = (n: UploadNote) => setUploadNotes((ns) => [...ns.slice(-9), n])
-  /** AI が列の対応を考えている間の、見出しからの推定（保存しない） */
-  const [planDraft, setPlanDraft] = useState<SavedPlan | null>(null)
-  const planning = planDraft !== null
-  const [converting, setConverting] = useState(false)
-  /** 自動の変換が失敗したときの理由と、その計画（同じ計画で何度も変換し直さない） */
-  const [convertError, setConvertError] = useState<{ message: string; plan: SavedPlan | null } | null>(null)
+  /** 変換の元・計画・変換の途中（ストアの runtime。待つ処理は actions/source.ts） */
+  const loadingSource = useCase((s) => s.runtime.loading)
+  const sourceError = useCase((s) => s.runtime.sourceError)
+  const uploadNotes = useCase((s) => s.runtime.notes)
+  const planning = useCase((s) => s.runtime.planDraft !== null)
+  const convertError = useCase((s) => s.runtime.convertError)
   const [exportOpen, setExportOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [pendingSource, setPendingSource] = useState<CaseFile | null>(null)
   const [filter, setFilter] = useState<TableFilter | null>(null)
   /** 作業の画面のタブ */
   const [tab, setTab] = useState<WorkTab>("table")
-  /** 最後に上げ直した最後の Excel の結果（チャット欄の報告の下に出す。保存しない） */
-  const [finalResult, setFinalResult] = useState<FinalImport | null>(null)
-  /** 色付きの欄の外の記入・読めなかった記入のある、返ってきた Excel（ファイルごとに AI に読ませるかをチャットに出す。保存しない） */
-  const [answerHints, setAnswerHints] = useState<{ fileId: string; name: string }[]>([])
-  /** 案件を「完了」にしたので、チャットに振り返り（来年のための顧客ルールの案）を出せると案内するか（保存しない。完了から戻すか、送ったら消す） */
-  const [reviewHint, setReviewHint] = useState(false)
+  /** 最後に上げ直した最後の Excel の結果・チャットの案内（ストアの runtime） */
+  const finalResult = useCase((s) => s.runtime.finalResult)
+  const answerHints = useCase((s) => s.runtime.hints.answer)
+  const reviewHint = useCase((s) => s.runtime.hints.review)
   /** 問い合わせの欄を開いた（チャットに「AI で文面を作る」を出す。一度送ったら、この画面では出さない） */
   const [inquiryHint, setInquiryHint] = useState(false)
   const inquiryHintSent = useRef(false)
@@ -287,231 +214,19 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
    * （狭い画面で開くとチャットを覆うので、チャットの「表を開く」で開く）
    */
   const [workChoice, setWorkChoice] = useState<boolean | null>(null)
-  /** 案件の元（ファイルとシートの計画）の世代。待っている間に元が変わった計画・回答の結果は捨てる */
-  const caseGeneration = useRef(0)
-  /** 変換の世代。元・計画が変わったら上げ、待っている間の古い変換の結果を捨てる */
-  const conversionGeneration = useRef(0)
-  function supersedeConversion() {
-    setConverting(false)
-    return ++conversionGeneration.current
-  }
 
-  const { status: saveStatus, settle: settleSave } = useCaseAutosave(kase.id, { version: state?.version ?? 0, saved: state ? work : null }, work)
+  /** 保存の状態と、同じブラウザの別のタブ（sync.ts） */
+  const saveStatus = useCase((s) => s.sync.status)
+  const peer = useCase((s) => s.sync.peer)
 
-  const shownPlan = work.plan ?? planDraft
-  const plan = shownPlan?.plan ?? null
-  const grid = source && plan ? (source.sheets.find((s) => s.name === plan.sheets[0]) ?? null) : null
+  /** 表（変換の鎖。ストアごとの派生 table.ts。action も同じものを読む） */
+  const source = useCase((s) => s.runtime.source)
+  const { plan, grid, sources, rows, reconverting, hasTable, unmarked, roundingTotals, edited, selected, view, shown, inclusion, letters, output, currentSource } = useCase(session.table)
 
   /** 去年の案件の元の Excel（形を比べる・列の計画の参考。読めなければ理由） */
-  const [previousSheets, setPreviousSheets] = useState<SheetGrid[] | { error: string } | null>(null)
-  const previousLoad = useRef<Promise<SheetGrid[] | null> | null>(null)
-  /** 去年の Excel を1回だけ読む（読めなければ null。理由は previousSheets に） */
-  function loadPreviousSheets(): Promise<SheetGrid[] | null> {
-    const file = previous?.source
-    if (!file) return Promise.resolve(null)
-    // 読めた結果だけを持つ（失敗は持たず、次に要るときに読み直す）
-    previousLoad.current ??= (async () => {
-      try {
-        const { readWorkbook } = await import("@/lib/convert/workbook")
-        const sheets = readWorkbook(file.name, await fetchCaseFile(file.id))
-        setPreviousSheets(sheets)
-        return sheets
-      } catch (e) {
-        previousLoad.current = null
-        setPreviousSheets({ error: errorMessage(e, "去年の Excel を読めませんでした") })
-        return null
-      }
-    })()
-    return previousLoad.current
-  }
-
-  /**
-   * 列の計画の AI に渡す去年の文脈: 去年の列の対応と、去年の Excel との違い。計画の前なので、今年のどのシートと比べるかは
-   * 職員が指定したシート → 去年と同じ名前のシート → 見出しから選んだシート（sheetByNames）、見出しの行は見出しからの推定。
-   * 比べたシートは違いの文に出る。去年の計画が無い・去年の Excel を読めなければ無し
-   */
-  async function previousPlanFor(src: Source, requiredSheet: string | undefined) {
-    const prevPlan = previous?.plan
-    if (!previous || !prevPlan) return undefined
-    // 去年の Excel は開いたときから読んでいる。計画をそれ以上待たせない（読み終わらなければ去年の文脈なしで計画する）
-    const sheets = await Promise.race([loadPreviousSheets(), new Promise<null>((resolve) => setTimeout(() => resolve(null), PREVIOUS_WAIT_MS))])
-    const side = sheets && previousSideOf(previous, sheets)
-    const prevGrid = side && sheets.find((s) => s.name === prevPlan.sheets[0])
-    const g = sheetByNames(SPEC, KOJI_PLAN_HINTS, src.sheets, requiredSheet, prevPlan.sheets[0])
-    if (!side || !prevGrid || !g) return undefined
-    const diff = describeFormatDiff(compareFormats(side, { sheets: src.sheets, sheet: g.name, headerRow: heuristicPlan(SPEC, KOJI_PLAN_HINTS, g).headerRow }))
-    return previousPlanContext(SPEC, { fiscalYear: previous.fiscalYear, grid: prevGrid, plan: prevPlan, diff })
-  }
-
-  /**
-   * 列の計画を立てる。どのシートを使うか・見出しの行・列の対応は計画の AI が決める（requiredSheet は職員が指定した計画の元のシート）。
-   * AI を待つ間と AI が使えないときは、見出しから選んだシートの推定を使う。立て終わると自動で変換する（下の useEffect）
-   */
-  async function startPlanning(src: Source, requiredSheet?: string) {
-    const fallbackFor = (g: SheetGrid) => heuristicPlan(SPEC, KOJI_PLAN_HINTS, g)
-    const g = sheetByNames(SPEC, KOJI_PLAN_HINTS, src.sheets, requiredSheet)
-    if (!g) throw new Error("シートが空です")
-    const fallback = fallbackFor(g)
-    const id = ++caseGeneration.current
-    supersedeConversion()
-    setConvertError(null)
-    setPlanDraft({ plan: fallback, source: "rule" })
-    setWork((w) => replanWork(w, src.fileId))
-    // 返ってきた Excel の案内は前の元の行の問い合わせへのもの
-    setAnswerHints([])
-    let next: SavedPlan
-    try {
-      const previousContext = await previousPlanFor(src, requiredSheet)
-      if (id !== caseGeneration.current) return
-      const targets = planSheets(SPEC, KOJI_PLAN_HINTS, src.sheets, requiredSheet)
-      const excerpt = planExcerpt(src.sheets.length, targets.sheets, targets.required)
-      const res = await planWithAi({ data: { caseId: kase.id, ...excerpt, ...(previousContext ? { previous: previousContext } : {}) } })
-      addCost(res.usd)
-      if (res.ok) {
-        const accepted = acceptAiPlan(SPEC, src.sheets, excerpt, res.json, fallbackFor)
-        next = accepted.ok ? { plan: accepted.plan, source: "ai" } : { plan: fallback, source: "rule", notice: `${accepted.message}。見出しから列を推定しました。` }
-      } else {
-        next = {
-          plan: fallback,
-          source: "rule",
-          notice: res.reason === "noKey" ? "APIキー未設定（ANTHROPIC_API_KEY）のため AI は使えません。見出しから列を推定しました。" : `${res.message}。見出しから列を推定しました。`,
-        }
-      }
-    } catch (e) {
-      next = { plan: fallback, source: "rule", notice: `${errorMessage(e, "AI の計画に失敗しました")}。見出しから列を推定しました。` }
-    }
-    if (id !== caseGeneration.current) return
-    // 計画が見出し・注記から税込・税抜を決めたら、案件の税の設定に入れる（職員が決めた値は上書きしない）
-    setWork((w) => withPlanTax({ ...w, plan: next }, next.plan))
-    setPlanDraft(null)
-  }
-
-  /**
-   * 変換の元のファイルを読む。計画がまだ無ければ（初めて選んだ・計画の途中で閉じた）計画を立てる。
-   * AI が使えない（APIキーが無い）ときは計画を立てない（このツールは AI で列の対応を決める。見出しの推定で黙って進めない）
-   */
-  async function openSource(file: CaseFile, replan: boolean) {
-    setLoadingSource(file.name)
-    setSourceError(null)
-    try {
-      const [{ readWorkbook }, { markability }] = await Promise.all([import("@/lib/convert/workbook"), import("@/lib/inquiry/markable")])
-      const bytes = await fetchCaseFile(file.id)
-      const sheets = readWorkbook(file.name, bytes)
-      if (!primarySheet(SPEC, KOJI_PLAN_HINTS, sheets)) throw new Error("シートが空です")
-      const src = { fileId: file.id, name: file.name, bytes, sheets, markable: markability(file.name, bytes) }
-      setSource(src)
-      setLoadingSource(null)
-      if (replan && chatEnabled) await startPlanning(src)
-    } catch (e) {
-      setSourceError({ file, message: errorMessage(e, "ファイルを読み込めませんでした") })
-    } finally {
-      setLoadingSource(null)
-    }
-  }
-
-  useEffect(() => {
-    const file = initialFiles.find((f) => f.id === work.sourceFileId)
-    if (file) void openSource(file, !work.plan)
-  }, [])
-
-  async function keepFile(kind: FileKind, blob: Blob, name: string) {
-    try {
-      const saved = await uploadCaseFile(kase.id, kind, blob, name)
-      setFiles((fs) => [...fs, saved])
-      return saved
-    } catch (e) {
-      toast.error(errorMessage(e, `${name} を案件に保存できませんでした`))
-      return undefined
-    }
-  }
-
-  /**
-   * 届いたファイルを付ける（チャットの📎でアップロードしたファイル、画面にドラッグしたファイル）。種類は決まった印で見分ける（lib/cases/upload-kind.ts）:
-   * この画面でダウンロードした最後の Excel は差分を変更案に、印付きの Excel・記入用Excel は顧客の回答の変更案にし、ほかの表は届いたファイルとして保存する。
-   * 変換の元がまだ無ければ最初の表を変換の元にし、もう元があれば変換の元にするか聞く。照合用のシートの無い最後の Excel の形の表は、
-   * 変換の元があれば直した Excel と取り違えないよう、表に戻せないと伝えて聞く（前の編集用の Excel も同じ。lib/cases/upload-kind.ts の warnsUnlinked）
-   */
-  async function attach(list: readonly File[]) {
-    let hasSource = !!latestWork().sourceFileId
-    for (const f of list) {
-      let sheets: SheetGrid[] | null = null
-      if (isSheetFile(f.name)) {
-        try {
-          const { readWorkbook } = await import("@/lib/convert/workbook")
-          sheets = readWorkbook(f.name, new Uint8Array(await f.arrayBuffer()))
-        } catch (e) {
-          const text = errorMessage(e, "読めませんでした")
-          toast.error(`${f.name}: ${text}`)
-          note({ name: f.name, text, tone: "error" })
-          continue
-        }
-      }
-      const kind = uploadKind(sheets)
-      if (kind === "final" && sheets) {
-        await importFinalFile(f, sheets)
-        continue
-      }
-      if (kind === "answer" || kind === "marked") {
-        setTab("inquiry")
-        await importAnswers(f, kind)
-        continue
-      }
-      const saved = await keepFile("source", f, f.name)
-      if (!saved) continue
-      if (isPdf(saved.name) || !isSheetFile(saved.name)) {
-        // HEIC（iPhone の写真）は Claude が見られない（lib/chat/view-file.ts）。保存はして、JPEG で付け直すよう知らせる
-        if (viewKindOf(saved.name)?.kind === "heic") note({ name: f.name, text: "届いたファイルとして保存しました。HEIC の写真はチャットの AI が見られないので、JPEG で保存し直して付けてください", tone: "error" })
-        else note({ name: f.name, text: "届いたファイルとして保存しました（チャットの AI は読めます）" })
-        continue
-      }
-      if (warnsUnlinked(kind, hasSource)) {
-        note({ name: f.name, text: "ダウンロードした Excel の形ですが照合用のシートが無いので、直した Excel としては表に戻せません。変換の元にするかを選んでください" })
-        hasSource = true
-        setPendingSource(saved)
-        continue
-      }
-      if (!hasSource) {
-        hasSource = true
-        // PDF から足した行があれば、変換の元にすると消えるので確かめる
-        if (latestWork().added.length) setPendingSource(saved)
-        else await openSource(saved, true)
-      } else setPendingSource(saved)
-    }
-  }
-
-  function chooseSource(f: CaseFile) {
-    if (work.converted || work.edits.size || work.added.length) setPendingSource(f)
-    else void openSource(f, true)
-  }
-
-  /** 状態の変更の世代。失敗したら、その後に変えていなければ元に戻す */
-  const statusChange = useRef(0)
-  async function changeStatus(next: CaseStatus) {
-    const previous = status
-    const id = ++statusChange.current
-    setStatus(next)
-    try {
-      await updateCaseStatusFn({ data: { id: kase.id, status: next } })
-      if (id === statusChange.current) setReviewHint(next === "done")
-    } catch (e) {
-      if (id === statusChange.current) setStatus(previous)
-      toast.error(errorMessage(e, "状態を変えられませんでした"))
-    }
-  }
-
-  function changePlan(p: Plan) {
-    supersedeConversion()
-    setWork((w) => ({ ...w, plan: w.plan && { ...w.plan, plan: p }, converted: false }))
-  }
-
-  const sources = useMemo(() => (source && plan ? collectSourceRows(source.sheets, plan) : null), [source, plan])
-
+  const previousSheets = useCase((s) => s.runtime.previous)
   /** 去年の比べるシートと見出しの行。去年の Excel を読んだときに1回だけ決める */
   const previousSide = useMemo(() => (previous && Array.isArray(previousSheets) ? previousSideOf(previous, previousSheets) : null), [previousSheets])
-  // 去年の Excel は開いたときから読み始める（計画の AI に添えるのと、去年との違いに使う）
-  useEffect(() => {
-    void loadPreviousSheets()
-  }, [])
   /** 去年と今年の元の Excel の見出し（「去年のやり方で直す」で、去年のコードの文字列のうち見出しの名前は伏せない） */
   const carryoverHeaders = () => {
     const prevHeader = previousSide?.sheets.find((s) => s.name === previousSide.sheet)?.rows[previousSide.headerRow] ?? []
@@ -534,61 +249,63 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   }, [previousSide, source, currentSheet, currentHeaderRow])
 
   /**
-   * 計画が住所として読む列の値を引いた結果（変換の前に引く）。引いた住所は持ち続け、住所の列の値が変わったときだけ新しい値を引く
-   * （住所と関係ない計画の変更では引き直さない）。今の住所をすべて引き終わるまで表は作らない
+   * 届いたファイルを付ける（チャットの📎でアップロードしたファイル、画面にドラッグしたファイル）。種類は決まった印で見分ける（lib/cases/upload-kind.ts）:
+   * この画面でダウンロードした最後の Excel は差分を変更案に、印付きの Excel・記入用Excel は顧客の回答の変更案にし、ほかの表は届いたファイルとして保存する。
+   * 変換の元がまだ無ければ最初の表を変換の元にし、もう元があれば変換の元にするか聞く。照合用のシートの無い最後の Excel の形の表は、
+   * 変換の元があれば直した Excel と取り違えないよう、表に戻せないと伝えて聞く（前の編集用の Excel も同じ。lib/cases/upload-kind.ts の warnsUnlinked）
    */
-  const addressStore = useRef<ReturnType<typeof addressCache> | null>(null)
-  addressStore.current ??= addressCache(lookupAddressesHere)
-  const addressValues = useMemo(() => (sources && plan ? addressInputs(SPEC, sources.rows, plan) : null), [sources, plan])
-  const addressSig = useMemo(() => (addressValues ? [...new Set(addressValues.map(addressKey))].sort().join("\n") : null), [addressValues])
-  const [addressBook, setAddressBook] = useState<AddressBook>(NO_ADDRESSES)
-  async function ensureAddresses(values: readonly string[]) {
-    try {
-      return await addressStore.current!.ensure(values)
-    } catch (e) {
-      // 住所データを読めなければ、その住所の分割は AI に回す（知らせる）
-      toast.error(`${errorMessage(e, "住所データを読めませんでした")}。住所の分割は AI に回します`)
-      return addressStore.current!.covering(values)!
-    } finally {
-      setAddressBook(addressStore.current!.covering([])!)
+  async function attach(list: readonly File[]) {
+    let hasSource = !!latestWork().sourceFileId
+    for (const f of list) {
+      let sheets: SheetGrid[] | null = null
+      if (isSheetFile(f.name)) {
+        try {
+          const { readWorkbook } = await import("@/lib/convert/workbook")
+          sheets = readWorkbook(f.name, new Uint8Array(await f.arrayBuffer()))
+        } catch (e) {
+          const text = errorMessage(e, "読めませんでした")
+          toast.error(`${f.name}: ${text}`)
+          actions.note({ name: f.name, text, tone: "error" })
+          continue
+        }
+      }
+      const kind = uploadKind(sheets)
+      if (kind === "final" && sheets) {
+        await actions.importFinal(f, sheets)
+        continue
+      }
+      if (kind === "answer" || kind === "marked") {
+        setTab("inquiry")
+        await actions.importAnswers(f, kind)
+        continue
+      }
+      const saved = await actions.keepFile("source", f, f.name)
+      if (!saved) continue
+      if (isPdf(saved.name) || !isSheetFile(saved.name)) {
+        // HEIC（iPhone の写真）は Claude が見られない（lib/chat/view-file.ts）。保存はして、JPEG で付け直すよう知らせる
+        if (viewKindOf(saved.name)?.kind === "heic") actions.note({ name: f.name, text: "届いたファイルとして保存しました。HEIC の写真はチャットの AI が見られないので、JPEG で保存し直して付けてください", tone: "error" })
+        else actions.note({ name: f.name, text: "届いたファイルとして保存しました（チャットの AI は読めます）" })
+        continue
+      }
+      if (warnsUnlinked(kind, hasSource)) {
+        actions.note({ name: f.name, text: "ダウンロードした Excel の形ですが照合用のシートが無いので、直した Excel としては表に戻せません。変換の元にするかを選んでください" })
+        hasSource = true
+        setPendingSource(saved)
+        continue
+      }
+      if (!hasSource) {
+        hasSource = true
+        // PDF から足した行があれば、変換の元にすると消えるので確かめる
+        if (latestWork().added.length) setPendingSource(saved)
+        else await actions.openSource(saved, true)
+      } else setPendingSource(saved)
     }
   }
-  useEffect(() => {
-    if (addressValues) void ensureAddresses(addressValues)
-    // 住所の値の集まり（addressSig）が変わったときだけ引く
-  }, [addressSig])
-  const addresses = useMemo(() => (addressValues ? (addressStore.current!.covering(addressValues) ?? null) : null), [addressSig, addressBook])
-  /** 変換の決まり（端数・引いた住所）。住所を引き終わるまで null */
-  const ctx = useMemo(() => (addresses ? { rounding, addresses } : null), [addresses, rounding])
 
-  /** 変換する（ルール → AI の値の判断）。計画を立て終えたとき・計画を変えたときに自動で呼ぶ */
-  async function convert() {
-    if (!sources || !plan || !addressValues || !work.plan) return
-    const planAtStart = work.plan
-    const generation = supersedeConversion()
-    setConverting(true)
-    setConvertError(null)
-    const failures = new Set<string>()
-    const cache: AiCache = new Map(work.aiCache)
-    try {
-      // 住所をまだ引き終わっていなければ待つ（黙って何もしないことはしない）
-      const book = await ensureAddresses(addressValues)
-      if (generation !== conversionGeneration.current) return
-      await fillAiCache(convertRows(SPEC, sources.rows, plan, { rounding, addresses: book }), cache, serverAi(kase.id, failures, addCost))
-      if (generation !== conversionGeneration.current) return
-      // 変換している間に計画が変わっていたら、その計画で変換し直す（この結果は使わない。AI の結果だけ残す）
-      setWork((w) => (w.plan === planAtStart ? { ...w, aiCache: cache, converted: true, aiNotice: failures.size ? [...failures].join(" / ") : null } : { ...w, aiCache: new Map([...cache, ...w.aiCache]) }))
-    } catch (e) {
-      if (generation === conversionGeneration.current) setConvertError({ message: errorMessage(e, "変換に失敗しました"), plan: planAtStart })
-    } finally {
-      if (generation === conversionGeneration.current) setConverting(false)
-    }
+  function chooseSource(f: CaseFile) {
+    if (work.converted || work.edits.size || work.added.length) setPendingSource(f)
+    else void actions.openSource(f, true)
   }
-  // 計画が決まって変換していなければ、自動で変換する（「変換する」のボタンは無い）。失敗した計画では繰り返さない（報告の「もう一度変換する」で）
-  const needsConversion = !!work.plan && !work.converted && !!sources && !!addressValues && !converting && convertError?.plan !== work.plan
-  useEffect(() => {
-    if (needsConversion) void convert()
-  }, [needsConversion, work.plan])
 
   /** 表の手直し（1回の手直しで決める項目をまとめて。主任技術者・監理技術者は2列を一緒に） */
   function edit(rowKey: string, changes: readonly [KojiFieldId, CellEdit][]) {
@@ -607,55 +324,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     })
   }
 
-  const drafts = useMemo(() => (sources && plan && ctx ? convertRows(SPEC, sources.rows, plan, ctx) : []), [sources, plan, ctx])
-  /**
-   * 変換した行（手直し・置換の前）。変換の元の表が無い案件（PDF だけ）は空の表にして、足した行（work.added）だけで表を作る
-   */
-  const freshRows = useMemo(() => {
-    if (!work.sourceFileId) return NO_ROWS
-    return work.converted && sources && ctx ? resolveRows(drafts, work.aiCache) : null
-  }, [work.sourceFileId, work.converted, sources, ctx, drafts, work.aiCache])
-  /** 変換し直している間は、前の変換の行を見せたままにする（表が消えない。触れないように覆う） */
-  const lastRows = useRef<RowResult<KojiFieldId>[] | null>(null)
-  if (freshRows) lastRows.current = freshRows
-  else if (!work.plan || !work.sourceFileId) lastRows.current = null
-  const rows = freshRows ?? lastRows.current
-  const reconverting = !freshRows && !!rows
   const added = work.added
-  /** 表を見せるか（変換した、または足した行がある） */
-  const hasTable = (work.converted || added.length > 0 || reconverting) && !!rows
-  /** ○ の列で業種を決める計画のとき、どの列にも記号が無く出力しない元の行の数 */
-  // 住所を引いている間（drafts がまだ無い）は数えない（全行を「記号が無い」と出さない）
-  const unmarked = useMemo(() => (sources && ctx ? sources.rows.length - new Set(drafts.map((d) => sourceKey(d))).size : 0), [sources, ctx, drafts])
-
-  const roundingTotals = useMemo(() => {
-    if (!sources || !plan || !addresses) return null
-    const total = (r: Rounding) =>
-      convertRows(SPEC, sources.rows, plan, { rounding: r, addresses }).reduce((s, d) => {
-        const c = d.cells.amount
-        return s + (!d.excluded && c.kind === "done" && /^\d+$/.test(c.cell.value) ? Number(c.cell.value) : 0)
-      }, 0)
-    return { floor: total("floor"), round: total("round") }
-  }, [sources, plan, addresses])
-
-  /** 画面と CSV の表。個人名の記号（letters）は CSV に書く行からこの順に付け、手直し・置換先の「〔Ａ〕」をその人に戻すのにも使う */
-  const edited = useMemo(() => (rows ? editRows({ rows, added, edits, replacements, rounding }) : null), [rows, added, edits, replacements, rounding])
-  /** 選び直しは入れ外し・7割の設定が変わったときだけ（並べ替えでは選び直さない） */
-  const selected = useMemo(
-    () => (edited ? selectRows({ manual, tax, basis, rule7Tax, selection: selectionMode }, edited) : null),
-    [edited, manual, tax, basis, rule7Tax, selectionMode],
-  )
-  const view = useMemo(
-    () => (rows && edited && selected ? orderAndFinalize({ rows, added, replacements }, edited, selected) : null),
-    [rows, added, edited, selected, replacements],
-  )
-  const shown = view?.shown ?? null
-  const inclusion = view?.inclusion ?? NO_INCLUSION
-  const letters = view?.letters ?? NO_LETTERS
-  const output = view?.output ?? null
-  /** 待っている間・続けて処理するファイルの間で読む、最新の表と元（古い描画の値で取り込まない） */
-  const live = useRef({ view, shown, source, addresses, plan, hasTable })
-  live.current = { view, shown, source, addresses, plan, hasTable }
   /** 欄に出す変更案（開いているものと、承認を取り消せるもの） */
   const { excel: excelProposals, answer: answerProposals, location: locationProposals, fix: fixProposals } = derived.panels
   /**
@@ -666,8 +335,6 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const inquiries = useMemo(() => (output ? collectInquiries(output, { tax }) : []), [output, tax])
   /** 外していないセルの問い合わせ（添付の Excel に色を付けるもの） */
   const activeCells = useMemo(() => inquiries.filter((q): q is CellInquiry => q.kind === "cell" && !dismissed.has(inquiryKey(q))), [inquiries, dismissed])
-  /** 今の変換の元（読み終えたもの） */
-  const currentSource = source && plan && source.fileId === work.sourceFileId ? source : null
   /** 印を付ける場所（印付きにできる元のときだけ。添付の判定とダウンロードで同じものを使う） */
   const placement = useMemo(
     () => (currentSource?.markable.ok && plan && output ? placeMarks(currentSource.sheets, plan, output, activeCells) : null),
@@ -718,17 +385,16 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   /** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
   const [confirmAsk, setConfirmAsk] = useState<{ id: string; option: string; title: string; lines: string[] } | null>(null)
 
-
   const fx = useUsdJpy()
   /** ルールの追記・工事場所を保存している間（変更案の承認を止める） */
-  const [savingRule, setSavingRule] = useState(false)
+  const savingRule = useCase((s) => s.runtime.busy.rule)
 
   /** サーバーが置いた変更案の記録を足す（もう作業にあれば足さない。決め終わったものを開き直さない） */
   const addRecorded = (r: ProposalRecord) => receiveProposal(store, r, "ifUnknown")
   const { pendingReview, pendingInquiryText, undecidedLocation } = derived
   // 未決の工事場所の項目がある変更案（一括調査のものも、チャットの「この現場ってどこ？」のものも）を決めるまで、次の一括調査を始めさせない
-  const locationSearch = useLocationSearch({ caseId: kase.id, view, table: tableWire, undecided: undecidedLocation, onRecord: addRecorded, onCaseCost: setCostUsd })
-  const gyoshuSuggestion = useGyoshuSuggestion({ caseId: kase.id, onRecord: addRecorded, onCaseCost: addCost })
+  const locationSearch = useLocationSearch({ caseId: kase.id, view, table: tableWire, undecided: undecidedLocation, onRecord: addRecorded, onCaseCost: actions.setCost })
+  const gyoshuSuggestion = useGyoshuSuggestion({ caseId: kase.id, onRecord: addRecorded, onCaseCost: actions.addCost })
 
   /** 取り消せる操作をした通知（取り消せるときだけ「取り消す」を出す。記録が大きすぎて取り消せないときはそう伝える） */
   function notifyCommitted(text: string, committed: Committed, onUndo: () => void) {
@@ -839,277 +505,23 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const updateProposal = (id: string, next: (p: Proposal) => Proposal) => update("proposals", (ps) => ps.map((p) => (p.id === id ? next(p) : p)))
 
   /**
-   * 変更案を承認・却下する。承認した表の変更は手直し・入れ外し・設定に重ね、列の対応の変更は今の計画に重ねて変換し直す。
-   * 承認するたびに取り消しの記録を残す。ルールの追記は1件ずつ保存し、保存できたものから承認の印を付ける
-   * （途中で失敗しても、保存した追記は承認済みになり、もう一度承認しても二重に足さない）
-   */
-  async function decideProposal(id: string, indices: number[], decision: "applied" | "rejected") {
-    const { work, contents } = store.getState()
-    const p = work.proposals.find((x) => x.id === id)
-    const changes = contents.get(id)
-    if (!p || p.state !== "open" || !changes) return
-    const chosen = indices.filter((i) => decisionOf(p, i) === "pending")
-    if (decision === "rejected") {
-      // 直した Excel・顧客の回答の却下した項目は覚え、同じ Excel を上げ直しても出し直さない
-      if ((p.origin.kind === "excel" || p.origin.kind === "answer") && chosen.length)
-        setWork((w) => ({ ...w, rejectedExcel: [...w.rejectedExcel, ...chosen.map((i) => changeSignature(changes[i]!))].slice(-MAX_REJECTED_EXCEL) }))
-      return updateProposal(id, (x) => decide(x, chosen, "rejected"))
-    }
-    if (!isAnswered(p)) return
-    // 工事場所は、サーバーが顧客の覚えた結果に書けてから承認する（ルールの追記と同じく、承認と覚えることを食い違わせない）
-    const located = chosen.filter((i) => changes[i]!.kind === "location")
-    const planned = chosen.filter((i) => changes[i]!.kind === "plan")
-    const table = chosen.filter((i) => changes[i]!.kind !== "rule" && changes[i]!.kind !== "location" && changes[i]!.kind !== "plan")
-    // 足した行の上限を超える承認はしない（超えるとチャットに表を送れなくなる）
-    const after = addedCountAfter(work.added, table.map((i) => changes[i]!))
-    if (after > MAX_ADDED_ROWS) {
-      toast.error(`承認すると足した行が ${after} 行になります。案件に足せる行は ${MAX_ADDED_ROWS} 行までです（承認していません）`)
-      return
-    }
-    // 列の対応の変更は、今の計画と計画の元のシートで確かめ直す（AI の計画の取り込みと同じ決まり）。合わなければ承認しない
-    let nextPlan: Plan | null = null
-    if (planned.length) {
-      if (!work.plan || !grid || !source) {
-        toast.error("変換の元のファイルを読んでいます。読み終えてから承認してください")
-        return
-      }
-      let p0 = work.plan.plan
-      for (const i of planned) {
-        const c = changes[i]!
-        if (c.kind !== "plan") continue
-        const r = applyPlanPatch(SPEC, p0, c.patch, sheetShapeOf(grid), source.sheets)
-        if (!r.ok) {
-          toast.error(`列の対応を変えられません（承認していません）: ${r.problems.join(" / ")}`)
-          return
-        }
-        p0 = r.plan
-      }
-      nextPlan = p0
-    }
-    const apply = (indices: number[], external: UndoEntry["external"] = []) => {
-      if (!indices.length) return
-      const edited = view?.edited ?? []
-      commit(store, { group: id, kind: "approval", items: indices, external }, ({ work: w }) => {
-        const overlaid = applyChanges(w, edited, indices.map((i) => approvedChange(p, changes[i]!)))
-        const replanned = nextPlan && indices.some((i) => changes[i]!.kind === "plan") && w.plan ? { ...overlaid, plan: { ...w.plan, plan: nextPlan }, converted: false } : overlaid
-        return { ...replanned, proposals: w.proposals.map((x) => (x.id === id ? decide(x, indices, "applied") : x)) }
-      })
-    }
-    if (nextPlan) supersedeConversion()
-    apply([...table, ...planned])
-    if (located.length) {
-      setSavingRule(true)
-      try {
-        await approveLocationsFn({ data: { caseId: kase.id, proposalId: id, items: located } })
-        apply(located, ["location"])
-      } catch (e) {
-        toast.error(errorMessage(e, "工事場所を承認できませんでした（顧客の覚えた結果に書けませんでした）"))
-      } finally {
-        setSavingRule(false)
-      }
-    }
-    const rules = chosen.filter((i) => changes[i]!.kind === "rule")
-    if (!rules.length) return
-    setSavingRule(true)
-    try {
-      for (const i of rules) {
-        // サーバーが変更案の記録から追記し、足した印も一緒に書く（開き直して同じ項目をもう一度承認しても二度足さない）
-        await approveRuleFn({ data: { caseId: kase.id, proposalId: id, item: i } })
-        commit(store, { group: id, kind: "approval", items: [i], external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
-      }
-      toast.success("ルールに追記しました")
-    } catch (e) {
-      toast.error(errorMessage(e, "ルールに追記できませんでした（保存できたものは承認済みにしました）"))
-    } finally {
-      setSavingRule(false)
-    }
-  }
-
-  /**
    * 変更案の承認（報告の聞き返しの答えも同じ記録）を取り消す（その変更案の、まだ取り消していない記録を新しい順に）。承認のあとに変えた値は残して知らせる
    */
   function undoProposal(proposalId: string, what = "承認") {
-    const r = undoGroup(store, proposalId)
+    const r = actions.undo(proposalId)
     if (!r) {
       toast.info(`${what}を取り消せません（取り消しの記録がもう無いか、取り消し済みです）`)
       return
     }
     const { reverted, kept } = r
-    if (r.planChanged) supersedeConversion()
     if (kept) toast.warning(`${what}を取り消しました（${reverted} 件を戻し、${what}のあとに変えた ${kept} 件はそのままにしました）`)
     else toast.success(`${what}を取り消しました（${reverted} 件を戻しました）`)
   }
 
   const undoState = (proposalId: string): UndoState | null => derived.undoStates.get(proposalId) ?? null
 
-  /**
-   * 直した最後の Excel を取り込む: 照合用のシートのダウンロードしたときの値との差分を変更案にしてサーバーに置き（チャットの変更案と同じく、開き直しても残る）、
-   * 上げたファイルを案件に残す。差分は取り込み始めたときの表と比べる。待っている間に変換の元が変わったら捨てる
-   */
-  async function readFinalFile(f: File, sheets: readonly SheetGrid[]): Promise<{ report: FinalReport } | { error: string } | undefined> {
-    const against = live.current.hasTable ? live.current.view : null
-    if (!against) return { error: "表がまだありません。変換が済んでからアップロードしてください" }
-    const generation = caseGeneration.current
-    const failures = new Set<string>()
-    const cache: AiCache = new Map(latestWork().aiCache)
-    // 件数の上限は readFinalSheet が AI を呼ぶ前に確かめる。案件のファイルに残すのは読めたあと
-    const result = await readFinalSheet(
-      sheets,
-      against,
-      { caseId: kase.id, sourceFileId: latestWork().sourceFileId, excelKey },
-      { rounding: latestWork().rounding, cache, callAi: serverAi(kase.id, failures, addCost), lookup: (raws) => ensureAddresses([...raws]) },
-    )
-    if (generation !== caseGeneration.current) return undefined
-    if ("error" in result) return result
-    if (failures.size) toast.warning(`AI を使えなかった値があります: ${[...failures].join(" / ")}`)
-    setWork((w) => ({ ...w, aiCache: new Map([...cache, ...w.aiCache]) }))
-    // 開いている（未決の）・却下した直した Excel の変更案と同じ項目は除く（同じ Excel をもう一度上げても二重にせず、却下したものを出し直さない。
-    // 承認した項目は、表がもうその値なので readFinalSheet が出さない）
-    const known = new Set(latestWork().rejectedExcel)
-    for (const p of latestWork().proposals) {
-      if (p.origin.kind !== "excel" || p.state !== "open") continue
-      store.getState().contents.get(p.id)?.forEach((c, i) => {
-        if (decisionOf(p, i) !== "applied") known.add(changeSignature(c))
-      })
-    }
-    const { changes, skipped } = withoutKnown(result.changes, known)
-    const report = recount(result.report, changes, skipped)
-    if (!changes.length) return { report }
-    const saved = await keepFile("edit_sheet", f, f.name)
-    if (!saved) return undefined
-    const proposal = newProposal(crypto.randomUUID(), { kind: "excel", fileId: saved.id }, changes, null)
-    await recordProposalFn({ data: { caseId: kase.id, record: { proposal, changes } } })
-    receiveProposal(store, { proposal, changes }, "replace")
-    return { report }
-  }
-
-  /** チャット欄・画面にアップロードした直した Excel。結果はチャット欄の報告の下と通知に出す */
-  async function importFinalFile(f: File, sheets: readonly SheetGrid[]) {
-    let r: { report: FinalReport } | { error: string } | undefined
-    try {
-      r = await readFinalFile(f, sheets)
-    } catch (e) {
-      r = { error: errorMessage(e, "Excel を取り込めませんでした") }
-    }
-    if (!r) return
-    if ("error" in r) {
-      toast.error(r.error)
-      note({ name: f.name, text: r.error, tone: "error" })
-      return
-    }
-    setFinalResult({ name: f.name, report: r.report })
-    const { report } = r
-    const n = report.cells + report.added + report.excluded
-    const left = report.conflicts.length + report.ambiguous.length + report.invalid.length + report.refused.length + report.extraColumns.length
-    if (!n && report.skipped) toast.info("前に出した・却下した変更と同じなので、変更案にしていません（チャット欄）")
-    else if (n) toast.success(`直した Excel の変更 ${n} 件を変更案にしました${left ? `（取り込めなかったもの ${left} 件はチャット欄）` : ""}`)
-    else if (left) toast.warning(`直した Excel の変更を取り込めませんでした（${left} 件。理由はチャット欄）`)
-    else toast.success("直した Excel に変わったところはありませんでした")
-  }
-
-  /**
-   * 返ってきた Excel（印付きの Excel・記入用Excel）を読み、顧客の回答の変更案にする（チャットの record_answers と同じく、職員が承認すると表に入り、
-   * 承認は取り消せる。注文者・工事名の記入は元データと同じ変換・AI に通す）。読んだ結果は answers に入る。
-   * 読んでいる間に値が変わったセル（手直し・置換・変換のやり直し）の回答は変更案にせず、結果の changed に入る
-   */
-  async function readAnswerFile(f: File, kind: "marked" | "answer", against: RowResult<KojiFieldId>[]) {
-    const generation = caseGeneration.current
-    // 照合に使う計画・元のファイル・引いた住所は、取り込み始めたときのものにそろえる（against と同じ時点）
-    const planAtStart = latestWork().plan
-    const sourceAtStart = live.current.source
-    const sourceFileId = latestWork().sourceFileId
-    const addressesAtStart = live.current.addresses
-    if (latestWork().converted && !addressesAtStart) return { error: "住所を読み込んでいます。少し待ってから取り込んでください" }
-    const { readWorkbook } = await import("@/lib/convert/workbook")
-    const sheets = readWorkbook(f.name, new Uint8Array(await f.arrayBuffer()))
-    const failures = new Set<string>()
-    const cache: AiCache = new Map(latestWork().aiCache)
-    // 住所は変換と同じ仕組みで引く（住所データを読めなければ、その値は読めない記入として出す。取り込み全体は止めない）
-    const ai = { ctx: { rounding: latestWork().rounding }, lookup: (raws: Iterable<string>) => ensureAddresses([...raws]), cache, callAi: serverAi(kase.id, failures, addCost), fields: planAtStart?.plan.fields ?? {} }
-    let report: AnswerReport
-    let outside: number
-    if (kind === "marked") {
-      if (!sourceFileId) return { error: "変換の元がありません。印付きの Excel は変換の元に印を付けたものです" }
-      const read = await readMarked(sheets, against, sourceAtStart?.fileId === sourceFileId ? sourceAtStart.sheets : null, { caseId: kase.id, sourceFileId, excelKey, plan: planAtStart?.plan ?? null }, ai)
-      if ("error" in read) return read
-      report = read.report
-      outside = read.outside
-    } else {
-      const read = await readAnswers(sheets, against, ai)
-      if ("error" in read) return read
-      report = read
-      outside = outsideCells(sheets, against)
-    }
-    if (generation !== caseGeneration.current) return undefined
-    if (latestWork().plan !== planAtStart) return { error: "取り込んでいる間に列の対応が変わりました。もう一度取り込んでください" }
-    // 読んでいる間に値が変わったセルの回答は外す（今の変換の結果・一括置換・手直しと比べる）
-    const w = latestWork()
-    const converted = sourceAtStart && addressesAtStart ? (convertedRows(sourceAtStart.sheets, w, addressesAtStart) ?? []) : []
-    const merged = mergeAnswers(report, against, { rows: baseRows({ rows: converted, added: w.added }), replacements: w.replacements, edits: w.edits }).report
-    // 開いている顧客の回答の変更案・却下した項目と同じものは除く（同じ Excel を2回上げても二重にせず、却下したものを出し直さない）
-    const known = new Set(w.rejectedExcel)
-    for (const p of w.proposals) {
-      if (p.origin.kind !== "answer" || p.state !== "open") continue
-      store.getState().contents.get(p.id)?.forEach((c, i) => {
-        if (decisionOf(p, i) === "pending") known.add(changeSignature(c))
-      })
-    }
-    const { changes } = withoutKnown(
-      merged.edits.map(([key, edit]): ChatChange => {
-        const at = key.lastIndexOf(":")
-        return { kind: "cell", rowKey: key.slice(0, at), field: key.slice(at + 1) as KojiFieldId, edit }
-      }),
-      known,
-    )
-    // 決まった欄で読めなかった記入を AI に読ませるときは、保存したファイルを AI に渡す
-    const saved = await keepFile("answer", f, f.name)
-    // 保存を待っている間に元や列の対応が変わったら、前の元の行への答えなので入れない
-    const stale = () => generation !== caseGeneration.current || latestWork().plan !== planAtStart
-    if (!saved || stale()) return undefined
-    if (changes.length) {
-      const proposal = newProposal(crypto.randomUUID(), { kind: "answer", fileId: saved.id }, changes, null)
-      await recordProposalFn({ data: { caseId: kase.id, record: { proposal, changes } } })
-      // 記録している間に元が変わったら、閉じた変更案として足す（サーバーの記録から開き直しても、また開かない）
-      receiveProposal(store, { proposal: stale() ? discard(proposal) : proposal, changes }, "replace")
-      if (stale()) return undefined
-    }
-    setWork((x) => ({ ...x, aiCache: new Map([...cache, ...x.aiCache]), answers: merged }))
-    // 色付きの欄の外（印の無いセルの書き換え・別の列・メモ・別のシート）に記入があるか、読めなかった記入があれば、このファイルを AI に読ませられる
-    const readable = outside > 0 || merged.invalid.length > 0 || merged.unreadable.length > 0
-    return { aiFailures: [...failures], proposed: changes.length, outside, forAi: readable ? saved : null }
-  }
-
-  /** 返ってきた Excel を取り込む（チャットの📎・画面にドラッグしたファイル）。結果は報告と「問い合わせ」のタブと通知に出す */
-  async function importAnswers(f: File, kind: "marked" | "answer") {
-    const fail = (text: string) => {
-      toast.error(text)
-      note({ name: f.name, text, tone: "error" })
-    }
-    const against = live.current.hasTable ? live.current.shown : null
-    if (!against) return fail("表がまだありません。変換が済んでから取り込んでください")
-    try {
-      const read = await readAnswerFile(f, kind, against)
-      if (!read) return
-      if ("error" in read) return fail(read.error)
-      const forAi = chatEnabled ? read.forAi : null
-      const text = [
-        read.proposed ? `顧客の回答 ${read.proposed} 件を変更案にしました（チャット欄で承認すると表に入ります）` : "表に入れる顧客の回答はありませんでした（結果は「問い合わせ」のタブ）",
-        read.outside ? `色付きの欄の外の記入が ${read.outside} 件あります（入れていません）` : "",
-        forAi ? "チャットの「AI で読む」で読めます" : "",
-      ]
-        .filter(Boolean)
-        .join("。")
-      toast.success(text)
-      note({ name: f.name, text })
-      if (forAi) setAnswerHints((hs) => [...hs.filter((h) => h.fileId !== forAi.id), { fileId: forAi.id, name: forAi.name }])
-      if (read.aiFailures.length) toast.warning(`AI を使えず変更案にしていない記入があります（${read.aiFailures.join(" / ")}）`)
-    } catch (e) {
-      fail(errorMessage(e, "回答のファイルを読み込めませんでした"))
-    }
-  }
-
   const proposalActions: Omit<ProposalActions, "canSend"> = {
-    decide: (id, indices, d) => void decideProposal(id, indices, d),
+    decide: (id, indices, d) => void actions.decideProposal(id, indices, d),
     answer: (id, a) => updateProposal(id, (p) => answer(p, a)),
     undo: undoProposal,
     undoState,
@@ -1124,7 +536,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     saveFile(bytes, name, "text/csv")
     // Excel で開いて保存すると文字コードが変わり、建設業.NET で文字化けする（都道府県も読めず選ぶ欄の先頭になる）
     toast.info("CSV は Excel で開いて保存しないでください（文字化けします）。そのまま建設業.NET に取り込んでください。直すときは Excel をダウンロードして直し、📎でアップロードし直します。", { duration: 10000 })
-    void keepFile("csv", new Blob([bytes as BlobPart], { type: "text/csv" }), name)
+    void actions.keepFile("csv", new Blob([bytes as BlobPart], { type: "text/csv" }), name)
   }
 
   /** 最後の Excel をダウンロードする（lib/excel/final-sheet.ts。値は CSV と同じ。直して上げ直せる照合用の隠しシート付き）。案件のファイルに残す */
@@ -1136,7 +548,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       const bytes = await finalXlsx(await finalSheet(view, { caseId: kase.id, sourceFileId: latestWork().sourceFileId, excelKey }))
       const name = datedFileName(SPEC.fileNamePrefix, customer.name, new Date(), "xlsx")
       saveFile(bytes, name, contentTypeOf(name))
-      void keepFile("final_sheet", new Blob([bytes as BlobPart], { type: contentTypeOf(name) }), name)
+      void actions.keepFile("final_sheet", new Blob([bytes as BlobPart], { type: contentTypeOf(name) }), name)
     } catch (e) {
       toast.error(errorMessage(e, "Excel を作れませんでした"))
     }
@@ -1152,7 +564,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     const type = contentTypeOf("x.xlsx")
     const save = (bytes: Uint8Array, name: string) => {
       saveFile(bytes, name, type)
-      void keepFile("inquiry_sheet", new Blob([bytes as BlobPart], { type }), name)
+      void actions.keepFile("inquiry_sheet", new Blob([bytes as BlobPart], { type }), name)
     }
     if (attachment.kind === "marked" && currentSource && placement && placementId) {
       const marks = await planMarks(currentSource.sheets, placement, { caseId: kase.id, sourceFileId: currentSource.fileId, excelKey })
@@ -1226,6 +638,9 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   })
   const sourceSheets = work.plan?.plan.sheets ?? []
   const reportNotes: ReportProps["notes"] = [
+    ...(previousUnsaved
+      ? [{ text: "前の画面の変更を保存できませんでした（保存した時点の続きから開いています）。要る変更はもう一度してください。", tone: "warning" as const, testId: "previous-unsaved" }]
+      : []),
     ...(closedMissing
       ? [{ text: `中身の記録が無い変更案を ${closedMissing} 件閉じました（未決の項目は却下にしました。要るものはチャットでもう一度頼んでください）。`, tone: "warning" as const, testId: "closed-missing" }]
       : []),
@@ -1383,7 +798,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
         toast.error(`答えを反映できません: ${r.problems.join(" / ")}`)
         return
       }
-      supersedeConversion()
+      actions.supersedeConversion()
     }
     commit(store, { group: reportUndoId(id), kind: "approval", exclusions: added }, ({ work: w }) => {
       if (!w.plan) return w
@@ -1418,11 +833,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
           : null
       }
       location={locationSites > 0 ? { open: () => showTab("location"), sites: locationSites } : null}
-      onRetry={() => {
-        if (phase.kind === "failed" && phase.retry === "source" && sourceError) return void openSource(sourceError.file, !work.plan)
-        setConvertError(null)
-        void convert()
-      }}
+      onRetry={() => actions.retry(phase.kind === "failed" && phase.retry === "source" ? "source" : "convert")}
       uploads={uploadNotes}
       chat={chat}
     />
@@ -1483,7 +894,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
           }
         }
         onProposal={(r) => receiveProposal(store, r, "replace")}
-        onCaseCost={setCostUsd}
+        onCaseCost={actions.setCost}
         onCanSendChange={setChatCanSend}
         location={locationSearch}
         suggestions={[
@@ -1522,13 +933,13 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
               ]
             : []),
         ]}
-        beforeSend={settleSave}
+        beforeSend={session.settle}
         onSuggestionSent={(id) => {
-          if (id === REVIEW_SUGGESTION) setReviewHint(false)
+          if (id === REVIEW_SUGGESTION) actions.dropHint("review")
           else if (id === INQUIRY_SUGGESTION) {
             inquiryHintSent.current = true
             setInquiryHint(false)
-          } else setAnswerHints((hs) => hs.filter((h) => h.fileId !== id))
+          } else actions.dropHint({ fileId: id })
         }}
       />
     </Suspense>
@@ -1668,7 +1079,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2 text-xs" data-testid="case-toolbar">
           <FileChips files={files} sourceFileId={work.sourceFileId} loading={!!loadingSource || planning} onChoose={chooseSource} />
           {source && grid && plan && source.sheets.length > 1 && (
-            <SheetChooser sheets={source.sheets} primary={grid} plan={plan} onPrimary={(name) => void startPlanning(source, name)} onChange={changePlan} />
+            <SheetChooser sheets={source.sheets} primary={grid} plan={plan} onPrimary={(name) => void actions.startPlanning(source, name)} onChange={actions.changePlan} />
           )}
           <div className="ml-auto flex min-w-0 items-center gap-1">
             <NextSteps steps={todo} onGo={goStep} exportDisabled={reconverting} />
@@ -1810,8 +1221,8 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
             <h1 className="truncate text-lg font-semibold tracking-tight">{`${customer.name} ${kase.fiscalYear}年度`}</h1>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <SaveIndicator status={saveStatus} />
-            <Segmented label="案件の状態" value={status} options={CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] }))} onChange={(s) => void changeStatus(s)} testId="case-status" />
+            <SaveIndicator status={saveStatus} peer={peer} />
+            <Segmented label="案件の状態" value={status} options={CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] }))} onChange={(s) => void actions.changeStatus(s)} testId="case-status" />
             <CaseMenu usd={costUsd} fx={fx} onDelete={() => setDeleteOpen(true)} />
           </div>
         </div>
@@ -1946,7 +1357,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
             <AlertDialogCancel data-testid="source-keep">付けるだけ</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                if (pendingSource) void openSource(pendingSource, true)
+                if (pendingSource) void actions.openSource(pendingSource, true)
                 setPendingSource(null)
               }}
               data-testid="source-replace"
@@ -2044,7 +1455,11 @@ function CaseMenu({ usd, fx, onDelete }: { usd: number; fx: UsdJpy | null; onDel
   )
 }
 
-function SaveIndicator({ status }: { status: SaveStatus }) {
+/**
+ * 保存の状態（保存できないときだけ目立たせる）と、同じブラウザの別のタブ（sync.ts）。別のタブで開いている・保存したことは、ぶつかる前に出す
+ * （保存がもう止まっている〔別の画面が先に保存した・削除〕ときは、保存の状態の文だけ）
+ */
+function SaveIndicator({ status, peer }: { status: SaveStatus; peer: PeerState }) {
   const text = {
     saved: "保存しました",
     pending: "保存しています…",
@@ -2055,10 +1470,23 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
   }[status.kind]
   // 保存できているあいだは目立たせない（読み上げには伝える）。保存できないときだけ目立たせる
   const quiet = status.kind === "saved" || status.kind === "pending"
+  const stopped = status.kind === "conflict" || status.kind === "gone"
+  const peerText = {
+    none: null,
+    open: "別のタブでもこの案件を開いています（両方で変えると、あとから保存した方は保存できません）",
+    saved: "別のタブでこの案件が保存されました。再読み込みしてください（この画面で変えても保存できません）",
+  }[peer]
   return (
-    <span role="status" className={quiet ? "sr-only" : "basis-full text-xs font-medium text-red-700"} data-testid="save-status" data-status={status.kind}>
-      {text}
-    </span>
+    <>
+      <span role="status" className={quiet ? "sr-only" : "basis-full text-xs font-medium text-red-700"} data-testid="save-status" data-status={status.kind}>
+        {text}
+      </span>
+      {peerText && !stopped && (
+        <span role="status" className={cn("basis-full text-xs font-medium", peer === "saved" ? "text-red-700" : "text-amber-700")} data-testid="peer-status" data-peer={peer}>
+          {peerText}
+        </span>
+      )}
+    </>
   )
 }
 

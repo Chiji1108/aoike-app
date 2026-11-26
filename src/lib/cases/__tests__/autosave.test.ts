@@ -147,3 +147,50 @@ describe("案件の作業の自動保存", () => {
     expect(autosave.unsaved()).toBe(false)
   })
 })
+
+describe("閉じる（画面を離れる）", () => {
+  test("閉じると待っている変更を最後の1回だけ送り、失敗したら送り直さずにあきらめる（false）。そのあとの変更は受けない", async () => {
+    const s = server([new Error("つながりません"), new Error("つながりません"), new Error("つながりません")])
+    const { autosave } = setup(s)
+    const w = edited(newWork("file-1"), "横浜市")
+    autosave.change(w)
+    await until(() => s.requests.length === 1)
+    expect(await autosave.close()).toBe(false)
+    const sent = s.requests.length
+    await sleep(30)
+    expect(s.requests.length).toBe(sent)
+    autosave.change(edited(w, "川崎市"))
+    await sleep(30)
+    expect(s.requests.length).toBe(sent)
+  })
+
+  test("閉じたときに送れれば true。開き直すと、閉じていた間に受けなかった分ではなく、そのあとの変更を送る", async () => {
+    const s = server()
+    const { autosave, last } = setup(s)
+    const w = edited(newWork("file-1"), "横浜市")
+    autosave.change(w)
+    expect(await autosave.close()).toBe(true)
+    expect(s.requests).toHaveLength(1)
+    autosave.reopen()
+    autosave.change(edited(w, "川崎市"))
+    await until(() => s.requests.length === 2 && last() === "saved")
+  })
+
+  test("保存の要求は上限時間で止まる（固まった要求を待ち続けず、閉じれば必ず終わる）", async () => {
+    const statuses: SaveStatus["kind"][] = []
+    const autosave = createAutosave({
+      // 返事をしない保存先（signal が止まると失敗する）
+      save: (_req, signal) => new Promise<SaveResponse>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason))),
+      version: 0,
+      saved: null,
+      onStatus: (st) => statuses.push(st.kind),
+      errorMessage: () => "時間切れ",
+      debounceMs: 2,
+      retryMs: () => 5,
+      timeoutMs: 20,
+    })
+    autosave.change(edited(newWork("file-1"), "横浜市"))
+    expect(await autosave.close()).toBe(false)
+    expect(statuses.at(-1)).toBe("failed")
+  })
+})

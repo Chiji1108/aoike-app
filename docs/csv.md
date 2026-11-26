@@ -220,8 +220,9 @@ src/
     api/csv/files/$fileId.ts  ファイルのダウンロード（ログイン必須）
   components/
     convert/                  結果の表・業種ごとの合計・問い合わせのパネル
-    cases/                    削除の確認・案件の状態の自動保存・次にやること
-    cases/store/              案件の画面のストア（zustand。案件ごとに1つ。作業と変更案の中身・派生の derive）
+    cases/                    削除の確認・次にやること
+    cases/store/              案件の画面のストア（zustand。案件ごとに1つ。作業と変更案の中身・保存しない状態〔元・計画と変換の途中・世代・費用〕・派生の derive と表の table）。
+                              待つ処理は actions/（偽の deps で単体テストできる）、サーバー関数は deps.ts、自動保存と同じブラウザの別のタブへの知らせ（BroadcastChannel）は sync.ts、まとめて作るのは session.ts
     chat/                     チャット欄・変更案（承認の一覧・聞き返し）・返事の Markdown（Streamdown）
     ui/                       shadcn/ui（`pnpm exec shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
   server/
