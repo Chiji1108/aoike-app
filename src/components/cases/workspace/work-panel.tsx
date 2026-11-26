@@ -22,7 +22,7 @@ type Plan = MappingPlan<KojiFieldId>
 
 /**
  * 作業の画面（表と、業種・7割と金額・問い合わせ・工事場所・一括置換のタブ）。置くかと置き方は case-layout.tsx が layoutOf で決める
- * （広い画面ではチャットの右、狭い画面では上に重ねて開く）。タブはどれも置いたまま（閉じても中の欄の状態を消さない）
+ * （広い画面では横幅いっぱいに置いてチャットは右下の窓、狭い画面では上に重ねて開く）。チャットの窓が隠す分は、枠が渡す CSS の変数だけ下（表は右も）に余白を足す。タブはどれも置いたまま（閉じても中の欄の状態を消さない）
  */
 export function WorkPanel() {
   const actions = useCaseActions()
@@ -39,19 +39,19 @@ export function WorkPanel() {
         <TabsContent value="table" keepMounted className="relative flex min-h-0 flex-col p-4" data-testid="table-section">
           <TableTab />
         </TabsContent>
-        <TabsContent value="gyoshu" keepMounted className="min-h-0 overflow-auto p-4">
+        <TabsContent value="gyoshu" keepMounted className="min-h-0 overflow-auto p-4 pb-[calc(1rem+var(--chat-cover-b,0px))]">
           <GyoshuTab />
         </TabsContent>
-        <TabsContent value="selection" keepMounted className="min-h-0 overflow-auto p-4" data-testid="selection-section">
+        <TabsContent value="selection" keepMounted className="min-h-0 overflow-auto p-4 pb-[calc(1rem+var(--chat-cover-b,0px))]" data-testid="selection-section">
           <SelectionTab />
         </TabsContent>
-        <TabsContent value="inquiry" keepMounted className="min-h-0 overflow-auto px-4 pt-2 pb-4">
+        <TabsContent value="inquiry" keepMounted className="min-h-0 overflow-auto px-4 pt-2 pb-[calc(1rem+var(--chat-cover-b,0px))]">
           <InquiryTab />
         </TabsContent>
-        <TabsContent value="location" keepMounted className="min-h-0 overflow-auto p-4">
+        <TabsContent value="location" keepMounted className="min-h-0 overflow-auto p-4 pb-[calc(1rem+var(--chat-cover-b,0px))]">
           <LocationTab />
         </TabsContent>
-        <TabsContent value="replace" keepMounted className="min-h-0 overflow-auto p-4" data-testid="replace-details">
+        <TabsContent value="replace" keepMounted className="min-h-0 overflow-auto p-4 pb-[calc(1rem+var(--chat-cover-b,0px))]" data-testid="replace-details">
           <ReplaceTab />
         </TabsContent>
       </Tabs>
@@ -81,7 +81,7 @@ function Toolbar() {
   const plan = useTable((t) => t.plan)
   const reconverting = useTable((t) => t.reconverting)
   const todo = useCaseView((v) => v.todo)
-  const side = useCaseView((v) => v.layout.work?.place === "side")
+  const inline = useCaseView((v) => v.layout.work?.place === "inline")
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b px-4 py-2 text-xs" data-testid="case-toolbar">
       <FileChips files={files} sourceFileId={sourceFileId} loading={busy} onChoose={actions.chooseSource} />
@@ -91,7 +91,7 @@ function Toolbar() {
       <div className="ml-auto flex min-w-0 items-center gap-1">
         <NextSteps steps={todo} onGo={actions.goStep} exportDisabled={reconverting} />
         <Button size="icon-sm" variant="ghost" onClick={() => actions.setWorkShown(false)} aria-label="作業の画面を閉じる" title="作業の画面を閉じる（チャットの「表を開く」で開き直せます）" data-testid="work-close">
-          {side ? <PanelRightClose /> : <X />}
+          {inline ? <PanelRightClose /> : <X />}
         </Button>
       </div>
     </div>

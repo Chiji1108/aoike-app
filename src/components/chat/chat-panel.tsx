@@ -143,7 +143,9 @@ export function ChatPanel(props: ChatPanelProps) {
     onData: (part) => {
       if (part.type === "data-proposal-content") actions.receiveChat(part.data)
     },
-    onFinish: ({ message }) => {
+    onFinish: ({ message, isAbort, isError, isDisconnect }) => {
+      // 返事が届いた（たたんだ窓の未読の印。失敗は赤。職員が止めた返事は付けない）
+      if (!isAbort) actions.chatArrived(isError || isDisconnect ? "error" : "new")
       // 案件の費用の合計（D1）。返事のたびに合計で置き換える
       if (message.metadata) actions.setCost(message.metadata.caseUsd)
       // 去年のコードを添えたかはサーバーの会話の記録の印に従う（止めた・失敗した回は添えたことにならない）

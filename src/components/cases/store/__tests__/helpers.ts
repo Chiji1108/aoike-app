@@ -39,6 +39,7 @@ export function fakeDeps(over: Partial<CaseDeps> = {}): CaseDeps {
     uploadFile: async (kind, _f, name) => ({ ...file(crypto.randomUUID()), kind, name }),
     fetchFile: async () => fixture("sample-messy.xlsx"),
     lookupAddresses: async () => new Map(),
+    chatPrefs: { load: () => null, save: () => undefined },
     ...over,
   }
 }

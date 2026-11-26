@@ -2,7 +2,7 @@ import type { StepId } from "@/components/cases/next-steps"
 import type { WorkTab } from "@/components/cases/work-tabs"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { ChatAction } from "@/lib/chat/messages"
-import { setRuntime, setUi, type ChatTarget } from "../create-case-store"
+import { setRuntime, setUi, type ChatPrefs, type ChatSize, type ChatTarget } from "../create-case-store"
 import type { CaseEnv } from "../env"
 
 /** チャットの案内のうち、案件を終えるときの振り返り・問い合わせのメールの下書き（返ってきた Excel の案内はファイルの id） */
@@ -51,11 +51,48 @@ export function viewAsk(env: CaseEnv, askId: string) {
 }
 
 /**
- * チャットの欄の移り先へ移り、その中のボタンに合わせる（狭い画面では作業の画面を閉じる）。
+ * チャットの欄の移り先へ移り、その中のボタンに合わせる（狭い画面では作業の画面を閉じる。チャットの窓をたたんでいれば、覚えた設定は変えずにその場だけ開く）。
  * 動かすのは描いたあと（focus-effects.tsx）なので、閉じた作業の画面・ダウンロードの前の確認がフォーカスを戻したあとに移る
  */
 export function goChat(env: CaseEnv, to: ChatTarget) {
-  setUi(env.store, (u) => ({ ...(u.wide ? {} : { workChoice: false }), focus: { kind: "chat", ...to } }))
+  const collapsed = env.view(env.store.getState()).layout.chatCollapsed
+  setUi(env.store, (u) => ({ ...(u.wide ? {} : { workChoice: false }), ...(collapsed ? { chat: { ...u.chat, collapsed: false } } : {}), focus: { kind: "chat", ...to } }))
+}
+
+/**
+ * チャットの窓を開く・たたむ（職員が右下のボタン・Escape で決めた）。端末に覚え、フォーカスは開いたら窓の入力欄へ、たたんだら右下のボタンへ移す
+ * （職員が開いた・閉じたときだけ。返事が届いても勝手に移さない）
+ */
+export function setChatOpen(env: CaseEnv, open: boolean) {
+  setUi(env.store, (u) => ({ chat: { ...u.chat, collapsed: !open, hint: false }, focus: { kind: open ? "chatWindow" : "chatLauncher" } }))
+  saveChatPrefs(env, { collapsed: !open })
+}
+
+/** チャットの窓の大きさを変える（null は決まった大きさに戻す）。save なら端末に覚える（引いている間は覚えず、離したときに覚える） */
+export function resizeChat(env: CaseEnv, size: ChatSize | null, save: boolean) {
+  setUi(env.store, (u) => ({ chat: { ...u.chat, size } }))
+  if (save) saveChatPrefs(env, { size })
+}
+
+/** 覚えた設定のうち、職員が変えた項目だけを書き換える（「答える」などでその場だけ開いた窓を、たたんだ設定のまま覚えておく） */
+export function saveChatPrefs(env: CaseEnv, change: Partial<ChatPrefs>) {
+  const { chatPrefs } = env.deps
+  chatPrefs.save({ collapsed: false, size: null, hintShown: false, ...chatPrefs.load(), ...change })
+}
+
+/** 「チャットはここにあります（たためます）」を消す（職員が消した・窓を開いた／たたんだ） */
+export function dismissChatHint(env: CaseEnv) {
+  setUi(env.store, (u) => ({ chat: { ...u.chat, hint: false } }))
+}
+
+/**
+ * チャットから届いた（返事・変更案・アップロードの結果。error は失敗した返事・読めなかったファイル）。窓をたたんでいる間だけ、右下のボタンに未読の印を付ける
+ * （職員の表の手直し・止めた返事では呼ばない。失敗の印は開くまで残す）
+ */
+export function chatArrived(env: CaseEnv, tone: "new" | "error") {
+  const s = env.store.getState()
+  if (!env.view(s).layout.chatCollapsed || s.ui.chat.unread === "error" || s.ui.chat.unread === tone) return
+  setUi(env.store, (u) => ({ chat: { ...u.chat, unread: tone } }))
 }
 
 /** 次にやることの段へ移る。答えるはチャットの最初の答えを待つものへ（狭い画面では作業の画面を閉じる） */

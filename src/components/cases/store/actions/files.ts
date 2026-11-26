@@ -20,12 +20,14 @@ import { setRuntime, setUi, setWork } from "../create-case-store"
 import type { CaseEnv } from "../env"
 import { receiveProposal } from "./proposals"
 import { ensureAddresses, mergeAiCache, openSource, serverAi } from "./source"
+import { chatArrived } from "./ui"
 
 const SPEC = KOJI_KEIREKI
 
-/** アップロードしたファイルをどう扱ったかを報告に残す（最後の10件） */
+/** アップロードしたファイルをどう扱ったかを報告に残す（最後の10件）。チャットの窓をたたんでいれば未読の印を付ける */
 export function note(env: CaseEnv, n: UploadNote) {
   setRuntime(env.store, (r) => ({ notes: [...r.notes.slice(-9), n] }))
+  chatArrived(env, n.tone === "error" ? "error" : "new")
 }
 
 /** ファイルを案件に残す（一覧に足す）。残せなければ知らせて undefined */
@@ -116,6 +118,7 @@ export async function importFinal(env: CaseEnv, f: File, sheets: readonly SheetG
   }
   const { report } = r
   setRuntime(env.store, () => ({ finalResult: { name: f.name, report } }))
+  chatArrived(env, "new")
   const n = report.cells + report.added + report.excluded
   const left = report.conflicts.length + report.ambiguous.length + report.invalid.length + report.refused.length + report.extraColumns.length
   if (!n && report.skipped) toast.info("前に出した・却下した変更と同じなので、変更案にしていません（チャット欄）")

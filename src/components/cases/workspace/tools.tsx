@@ -48,7 +48,15 @@ function FxProvider({ children }: { children: React.ReactNode }) {
 
 function GyoshuProvider({ children }: { children: React.ReactNode }) {
   const { actions, config } = useCaseSession()
-  const gyoshu = useGyoshuSuggestion({ caseId: config.caseId, onRecord: actions.receiveRecorded, onCaseCost: actions.addCost })
+  // 業種の AI の案はチャットの流れの最後に出る（たたんだ窓には未読の印）
+  const gyoshu = useGyoshuSuggestion({
+    caseId: config.caseId,
+    onRecord: (r) => {
+      actions.receiveRecorded(r)
+      actions.chatArrived("new")
+    },
+    onCaseCost: actions.addCost,
+  })
   return <GyoshuContext.Provider value={gyoshu}>{children}</GyoshuContext.Provider>
 }
 

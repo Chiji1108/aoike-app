@@ -24,7 +24,7 @@ import * as table from "./actions/table"
 import * as ui from "./actions/ui"
 import { addCost, changePlan, convert, ensureAddresses, loadPreviousSheets, needsConversion, openSource, retry, setCost, startPlanning, supersedeConversion } from "./actions/source"
 import { createCaseView } from "./case-view"
-import { createCaseStore, initialCaseState, setRuntime, type CaseState, type ChatTarget, type Source } from "./create-case-store"
+import { createCaseStore, initialCaseState, setRuntime, setUi, type CaseState, type ChatSize, type ChatTarget, type Source } from "./create-case-store"
 import type { CaseDeps } from "./deps"
 import type { CaseEnv, SessionPage } from "./env"
 import { createCaseSync, type PeerChannel } from "./sync"
@@ -35,7 +35,7 @@ import { createTableDerive } from "./table"
  * 自動の処理（住所の値が変わったら引く・計画が決まって変換していなければ変換する）は、画面の effect ではなくストアの変化を見て始める
  */
 export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: () => PeerChannel | null) {
-  const store = createCaseStore(initialCaseState(page))
+  const store = createCaseStore(initialCaseState(page, deps.chatPrefs.load()))
   const addresses = addressCache(deps.lookupAddresses)
   const config = { chatEnabled: page.chatEnabled, excelKey: page.excelKey, caseId: page.kase.id, customerName: page.customer.name, previous: page.previous }
   const tableOf = createTableDerive(addresses)
@@ -115,6 +115,10 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     setDragging: (dragging: boolean) => ui.setDragging(env, dragging),
     setChatCanSend: (canSend: boolean) => ui.setChatCanSend(env, canSend),
     suggestionSent: (id: string) => ui.suggestionSent(env, id),
+    setChatOpen: (open: boolean) => ui.setChatOpen(env, open),
+    resizeChat: (size: ChatSize | null, save: boolean) => ui.resizeChat(env, size, save),
+    chatArrived: (tone: "new" | "error") => ui.chatArrived(env, tone),
+    dismissChatHint: () => ui.dismissChatHint(env),
   }
 
   /** 今の表（チャットと工事場所の調査に送る。大きいので送るときだけ、その時点の状態から作る） */
@@ -202,7 +206,7 @@ export type CaseActions = CaseSession["actions"]
 /**
  * ストアの変化を見て始める処理（前の画面の effect の代わり。どの action のあとでも漏れない）:
  * 住所の値の集まりが変わったら新しい値を引き、計画が決まって変換していなければ変換する（計画が変わったときも）。
- * 作業の画面で問い合わせのタブを開いたら、問い合わせのメールの下書きの案内を出す。
+ * 作業の画面で問い合わせのタブを開いたら、問い合わせのメールの下書きの案内を出す。チャットが見えたら未読の印を消す。
  * 変化を知らせている最中にストアを変えないよう、次の microtask で今の状態を確かめてから始める
  */
 function watch(env: CaseEnv): () => void {
@@ -211,6 +215,7 @@ function watch(env: CaseEnv): () => void {
   let lastSig: string | null = null
   let lastNeeds = false
   let lastPlan = store.getState().work.plan
+  let hintSaved = false
   const check = (s: CaseState) => {
     const t = env.table(s)
     if (t.addressSig !== lastSig) {
@@ -229,6 +234,19 @@ function watch(env: CaseEnv): () => void {
       })
     lastNeeds = needs
     lastPlan = s.work.plan
+    // チャットが見えている（窓を開いた・中央に大きく出した）なら未読の印を消す（たたんだまま作業の画面を閉じた・狭い画面になったときも）
+    if (s.ui.chat.unread && !env.view(s).layout.chatCollapsed)
+      queueMicrotask(() => {
+        const now = store.getState()
+        if (watching && now.ui.chat.unread && !env.view(now).layout.chatCollapsed) setUi(store, (u) => ({ chat: { ...u.chat, unread: null } }))
+      })
+    // 「チャットはここにあります」を初めて出したら、端末に覚える（次に開いたときは出さない。この画面では消すまで出す）
+    if (!hintSaved && s.ui.chat.hint && env.view(s).layout.chat === "window" && !s.ui.chat.collapsed) {
+      hintSaved = true
+      queueMicrotask(() => {
+        if (watching) ui.saveChatPrefs(env, { hintShown: true })
+      })
+    }
     // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
     if (s.runtime.hints.inquiry === "hidden" && s.ui.tab === "inquiry" && env.view(s).layout.workShown)
       queueMicrotask(() => {

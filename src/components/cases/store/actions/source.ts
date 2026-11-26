@@ -14,6 +14,7 @@ import { errorMessage } from "@/lib/errors"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { setRuntime, setWork, type CaseState, type Source } from "../create-case-store"
 import type { CaseEnv, PreviousCase } from "../env"
+import { chatArrived } from "./ui"
 
 const SPEC = KOJI_KEIREKI
 type Plan = MappingPlan<KojiFieldId>
@@ -199,7 +200,10 @@ export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean) 
     setRuntime(store, () => ({ source: src, loading: null }))
     if (replan && env.config.chatEnabled) await startPlanning(env, src)
   } catch (e) {
-    if (current()) setRuntime(store, () => ({ sourceError: { file, message: errorMessage(e, "ファイルを読み込めませんでした") } }))
+    if (current()) {
+      setRuntime(store, () => ({ sourceError: { file, message: errorMessage(e, "ファイルを読み込めませんでした") } }))
+      chatArrived(env, "error")
+    }
   } finally {
     if (current()) setRuntime(store, () => ({ loading: null }))
   }
@@ -234,6 +238,8 @@ export async function convert(env: CaseEnv) {
   if (!t.sources || !t.plan || !t.addressValues || !s.work.plan) return
   const { sources, plan, addressValues } = t
   const planAtStart = s.work.plan
+  /** 表がまだ無かった（新しい元の変換。変換し直す間は前の表を出したまま） */
+  const fresh = !t.hasTable
   const generation = supersedeConversion(env)
   setRuntime(store, () => ({ converting: true, convertError: null }))
   const current = () => store.getState().runtime.gen.conversion === generation
@@ -246,12 +252,19 @@ export async function convert(env: CaseEnv) {
     await fillAiCache(convertRows(SPEC, sources.rows, plan, { rounding: s.work.rounding, addresses: book }), cache, serverAi(env, failures))
     if (!current()) return
     // 変換している間に計画が変わっていたら、この結果は使わない（AI の結果だけ残す。新しい計画で変換し直す）
+    let used = false
     setWork(store, (w) => {
       const aiCache = mergeAiCache(w.aiCache, s.work.aiCache, cache)
-      return w.plan === planAtStart ? { ...w, aiCache, converted: true, aiNotice: failures.size ? [...failures].join(" / ") : null } : { ...w, aiCache }
+      used = w.plan === planAtStart
+      return used ? { ...w, aiCache, converted: true, aiNotice: failures.size ? [...failures].join(" / ") : null } : { ...w, aiCache }
     })
+    // 新しい元の変換の報告（聞き返し・知らせ）はチャットに出る。この変換の結果を使ったときだけ、窓をたたんでいれば未読の印を付ける（手直し・端数などの変換し直しでは付けない）
+    if (fresh && used) chatArrived(env, "new")
   } catch (e) {
-    if (current()) setRuntime(store, () => ({ convertError: { message: errorMessage(e, "変換に失敗しました"), plan: planAtStart } }))
+    if (current()) {
+      setRuntime(store, () => ({ convertError: { message: errorMessage(e, "変換に失敗しました"), plan: planAtStart } }))
+      chatArrived(env, "error")
+    }
   } finally {
     if (current()) setRuntime(store, () => ({ converting: false }))
   }
