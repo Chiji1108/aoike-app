@@ -118,10 +118,10 @@ describe("並べ方と画面の action（ui）", () => {
     const s = await converted(true)
     const bytes = fixture("sample-messy.xlsx")
     await s.actions.attach([new File([bytes as BlobPart], "合成の追加.xlsx")])
-    const pending = s.store.getState().ui.dialogs.pendingSource
-    expect(pending?.name).toBe("合成の追加.xlsx")
-    s.actions.confirmSource(false)
-    expect(s.store.getState().ui.dialogs.pendingSource).toBeNull()
+    const pending = s.store.getState().ui.dialogs.pendingSources
+    expect(pending.map((f) => f.name)).toEqual(["合成の追加.xlsx"])
+    s.actions.confirmSource(pending[0]!.id, false)
+    expect(s.store.getState().ui.dialogs.pendingSources).toEqual([])
     expect(s.store.getState().work.sourceFileId).toBe("f1")
     expect(s.store.getState().runtime.files.map((f) => f.name)).toContain("合成の追加.xlsx")
   })

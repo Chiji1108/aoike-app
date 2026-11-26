@@ -2,11 +2,12 @@ import { useCase, useTable } from "@/components/cases/store/context"
 import { derive } from "@/components/cases/store/derive"
 import { LocationPanel } from "@/components/convert/location-panel"
 import { useProposalActions } from "../hooks"
-import { useWorkspaceTools } from "../tools"
+import { useFx, useLocationTool } from "../tools"
 
 /** 工事場所のタブ: 一括調査（費用の目安を見てから職員が始める）と、その変更案 */
 export function LocationTab() {
-  const { location, fx } = useWorkspaceTools()
+  const location = useLocationTool()
+  const fx = useFx()
   const proposalActions = useProposalActions()
   const view = useTable((t) => t.view)
   const contents = useCase((s) => s.contents)

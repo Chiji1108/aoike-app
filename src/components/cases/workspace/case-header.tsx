@@ -10,7 +10,7 @@ import type { SaveStatus } from "@/lib/cases/autosave"
 import { CASE_STATUSES, CASE_STATUS_LABELS } from "@/lib/cases/types"
 import { CASE_COST_NOTICE_USD } from "@/lib/cost"
 import { cn } from "@/lib/utils"
-import { useWorkspaceTools } from "./tools"
+import { useFx } from "./tools"
 
 /** 案件の画面の見出し: 顧客への道・案件の名前・保存の状態・案件の状態・「…」（費用と削除） */
 export function CaseHeader({ customer, fiscalYear }: { customer: { id: string; name: string }; fiscalYear: number }) {
@@ -47,7 +47,7 @@ export function CaseHeader({ customer, fiscalYear }: { customer: { id: string; n
 function CaseMenu() {
   const actions = useCaseActions()
   const usd = useCase((s) => s.runtime.costUsd)
-  const { fx } = useWorkspaceTools()
+  const fx = useFx()
   const over = usd > CASE_COST_NOTICE_USD
   return (
     <DropdownMenu>

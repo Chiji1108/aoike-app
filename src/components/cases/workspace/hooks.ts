@@ -14,7 +14,7 @@ import { REVIEW_PROMPT } from "@/lib/chat/review"
 import { TAX_LABELS } from "@/lib/convert/koji-selection"
 import { aiAnswerPrompt } from "@/lib/inquiry/inquiry"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
-import { useWorkspaceTools } from "./tools"
+import { useGyoshuTool } from "./tools"
 
 /**
  * 変更案のカード・欄に渡す操作（承認・却下・答え・取り消し）。取り消せるか・答えを待つかは今の状態から読み、変わったときだけ作り直す
@@ -39,7 +39,7 @@ export function useProposalActions(): Omit<ProposalActions, "canSend"> {
 /** 業種の AI の案を頼めるか（AI が使える・頼んでいる最中でない・一覧の外の行に前の案の未決が無い）と、頼めない理由・頼む */
 export function useGyoshuSuggest() {
   const { config } = useCaseSession()
-  const { gyoshu } = useWorkspaceTools()
+  const gyoshu = useGyoshuTool()
   const shown = useTable((t) => t.shown)
   // 一覧の行の未決は一覧の「案」に出ていて、頼むのは案の無い行だけなので重ならない
   const outsidePending = useCaseView((v) => v.todo.answer.some((a) => a.kind === "proposal" && a.origin === "fix"))
@@ -63,7 +63,8 @@ export function useReportQuestions(): ReportQuestion[] {
   const undoStates = useCase((s) => derive(s).undoStates)
   return useMemo(() => {
     /** 答えを取り消せる聞き返しの、取り消し（答えの記録が戻せるときだけ） */
-    const undoAnswer = (id: string) => (undoStates.get(reportUndoId(id))?.can ? () => actions.undoWithNotice(reportUndoId(id), "答え") : null)
+    /** key は税なら tax、計画の聞き返しなら鍵（askKey） */
+    const undoAnswer = (key: string) => (undoStates.get(reportUndoId(key))?.can ? () => actions.undoWithNotice(reportUndoId(key), "答え") : null)
     return questionStates.map(({ id, answered }): ReportQuestion => {
       if (id === "tax") {
         const label = !answered ? null : tax !== "unknown" ? TAX_LABELS[tax] : "分からない（顧客に聞く）"
@@ -83,7 +84,7 @@ export function useReportQuestions(): ReportQuestion[] {
       const i = askRows.findIndex((r) => r.id === id)
       const r = askRows[i]!
       const kind = ASK_KINDS[planAsks[i]!.kind]
-      const label = answered ? (kind.options.find((o) => o.value === reportAnswers[id])?.label ?? null) : null
+      const label = answered ? (kind.options.find((o) => o.value === reportAnswers[r.key])?.label ?? null) : null
       const { wording, facts, prompt } = askEffects[i]!
       return {
         id,
@@ -96,7 +97,7 @@ export function useReportQuestions(): ReportQuestion[] {
         // まだ答えていない聞き返しだけ、チャットの AI に説明を頼める（決まった質問を職員の発言として送る）
         prompt: label === null ? prompt : undefined,
         view: () => actions.viewAsk(r.id),
-        undo: label !== null ? undoAnswer(id) : null,
+        undo: label !== null ? undoAnswer(r.key) : null,
       }
     })
   }, [actions, questionStates, askRows, askEffects, planAsks, tax, reportAnswers, undoStates])

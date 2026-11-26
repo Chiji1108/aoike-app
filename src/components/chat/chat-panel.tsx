@@ -11,7 +11,7 @@ import { LocationSearchStatus, type LocationSearch } from "@/components/convert/
 import type { ReportChat } from "@/components/cases/case-report"
 import { useCase, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
 import { useCarryover, useChatSuggestions, useProposalActions } from "@/components/cases/workspace/hooks"
-import { useWorkspaceTools } from "@/components/cases/workspace/tools"
+import { useFx, useLocationTool } from "@/components/cases/workspace/tools"
 import { TOOL_TABS, workTabLabel, type WorkTab } from "@/components/cases/work-tabs"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
@@ -108,7 +108,8 @@ export function ChatPanel(props: ChatPanelProps) {
   /** 作業の画面（表ができてから）。閉じているときは見出しに「表を開く」を出す */
   const hasTable = useTable((t) => t.hasTable)
   const workShown = useCaseView((v) => v.layout.workShown)
-  const { fx, location } = useWorkspaceTools()
+  const fx = useFx()
+  const location = useLocationTool()
   const proposalBase = useProposalActions()
   /**
    * 同じ顧客の前の年度の案件があれば「去年のやり方で直す」を出す。ready は去年との違いを文脈に入れられるようになったか

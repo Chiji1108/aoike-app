@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { Loader2, RotateCcw, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ProposalCard, type ProposalActions } from "@/components/chat/proposal-card"
@@ -28,12 +28,16 @@ export function useGyoshuSuggestion({ caseId, onRecord, onCaseCost }: { caseId: 
   const [running, setRunning] = useState<number | null>(null)
   const [last, setLast] = useState<FixRun | null>(null)
   const busy = useRef(false)
+  /** 最新の props の関数（頼んでいる間に変わっても、今のものに渡す） */
+  const live = useRef({ onRecord, onCaseCost })
+  live.current = { onRecord, onCaseCost }
 
   /**
    * keys の行（表の行）に業種の案を出す。rows は今の表（shown。傾向はこの表のほかの行から数える）。
    * 100行ずつの呼び出しは並べて呼び、成功した分は変更案にする（失敗した分の行は failed に残し、もう一度頼める。払った結果を捨てない）
    */
-  async function run(rows: readonly Row[], keys: readonly string[]) {
+  const run = useCallback(async (rows: readonly Row[], keys: readonly string[]) => {
+    const { onRecord, onCaseCost } = live.current
     if (busy.current || !keys.length) return
     busy.current = true
     const targets = new Set(keys)
@@ -86,8 +90,9 @@ export function useGyoshuSuggestion({ caseId, onRecord, onCaseCost }: { caseId: 
       busy.current = false
       setRunning(null)
     }
-  }
-  return { run, running, last }
+  }, [caseId])
+  // 読む部品（業種のタブ・チャットの流れの最後）が、頼んだ状態が変わったときだけ描き直るよう、同じ状態なら同じものを返す
+  return useMemo(() => ({ run, running, last }), [run, running, last])
 }
 export type GyoshuSuggestionState = ReturnType<typeof useGyoshuSuggestion>
 

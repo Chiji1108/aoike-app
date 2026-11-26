@@ -1,3 +1,4 @@
+import { withAskKeys } from "./asks"
 import { z } from "zod"
 import { AI_TASKS, type AiItemResult } from "../convert/ai-tasks"
 import type { CellEdits, Replacements } from "../convert/convert"
@@ -174,8 +175,9 @@ export function toSavedWork({ aiCache: _, ...w }: CaseWork): SavedWork {
 
 export const toSavedAiCache = (cache: AiCache): SavedAiCache => [...cache]
 
+/** 保存した作業を読む（前の形の聞き返しの答えの id は鍵に読み替える。lib/cases/asks.ts） */
 export function fromSaved(w: SavedWork, aiCache: SavedAiCache): CaseWork {
-  return { ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) }
+  return withAskKeys({ ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
 }
 
 /** D1 の1行に入る大きさ（D1 の上限は 2,000,000 バイト。少し余裕を持たせる）。作業と AI の結果はそれぞれ別の行 */

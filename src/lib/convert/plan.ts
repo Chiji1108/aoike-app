@@ -52,6 +52,21 @@ export type PlanAsk = { kind: PlanAskKind; text: string; column: number; values:
 
 const normalizeCell = (v: string) => v.normalize("NFKC").trim()
 
+/**
+ * 計画の聞き返しの、並び順に依らない鍵（種類・列・値の集まりから作る。値の順と、前後の空白・全角半角の違いは見ない）。
+ * 答え（作業の reportAnswers）と取り消しの単位はこの鍵で持つので、計画を立て直して聞き返しの並びが変わっても、別の聞き返しに答えが当たらない
+ */
+export function askKey(a: Pick<PlanAsk, "kind" | "column" | "values">): string {
+  const values = [...new Set(a.values.map(normalizeCell))].sort().join("\n")
+  // FNV-1a（32 bit）。値が長くても鍵は短く（保存する作業の大きさ・取り消しの単位の名前）
+  let h = 0x811c9dc5
+  for (let i = 0; i < values.length; i++) {
+    h ^= values.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return `ask:${a.kind}:${a.column}:${(h >>> 0).toString(16).padStart(8, "0")}`
+}
+
 /** 値の集まりが同じか（順と、前後の空白・全角半角の違いは見ない） */
 const sameValues = (a: readonly string[], b: readonly string[]) => {
   const x = new Set(a.map(normalizeCell))

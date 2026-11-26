@@ -6,7 +6,7 @@ import { onlyNonSheetSources } from "@/lib/cases/types"
 import { editKey, type RowResult } from "@/lib/convert/convert"
 import { compareFormats, describeFormatDiff } from "@/lib/convert/format-diff"
 import { manualIncludedCount, summarizeKoji } from "@/lib/convert/koji-selection"
-import type { PlanAsk, PlanAskKind } from "@/lib/convert/plan"
+import { askKey, type PlanAsk, type PlanAskKind } from "@/lib/convert/plan"
 import { askTargets, sourceKey } from "@/lib/convert/sources"
 import { collectInquiries, inquiryKey, type CellInquiry } from "@/lib/inquiry/inquiry"
 import { chooseAttachment, placeMarks, placementKey } from "@/lib/inquiry/marked"
@@ -61,7 +61,8 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       // 計画の取り込みと同じ数え方（askTargets）。行は元の行の分け方（記号の列で分けた行）ごと
       const targets = new Set(askTargets(a, sources.rows, rf).map(sourceKey))
       const rows = shown.filter((r) => targets.has(sourceKey(r)))
-      return { id: `plan-ask-${i}`, label: ASK_KINDS[a.kind].label, keys: new Set(rows.map((r) => r.key)), rows }
+      // id は画面の並び（表の絞り込み・欄の印）、key は答えと取り消しの単位（並び順に依らない。lib/convert/plan.ts の askKey）
+      return { id: `plan-ask-${i}`, key: askKey(a), label: ASK_KINDS[a.kind].label, keys: new Set(rows.map((r) => r.key)), rows }
     })
   })
   /**
@@ -93,11 +94,11 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
         }
       }),
   )
-  const askIdsOf = memoLast((askRows: ReturnType<typeof askRowsOf>) => askRows.map((r) => r.id))
+  const askIdsOf = memoLast((askRows: ReturnType<typeof askRowsOf>) => askRows.map((r) => ({ id: r.id, key: r.key })))
   /** 報告の聞き返しと答えたか（lib/cases/todo.ts。報告・ダウンロードの前の確認・「答える」で同じもの） */
   const questionStatesOf = memoLast(
-    (hasTable: boolean, tax: CaseState["work"]["tax"], taxBy: CaseState["work"]["taxBy"], reportAnswers: CaseState["work"]["reportAnswers"], askIds: readonly string[]) =>
-      reportQuestionStates({ hasTable, tax, taxBy, reportAnswers, askIds }),
+    (hasTable: boolean, tax: CaseState["work"]["tax"], taxBy: CaseState["work"]["taxBy"], reportAnswers: CaseState["work"]["reportAnswers"], asks: readonly { id: string; key: string }[]) =>
+      reportQuestionStates({ hasTable, tax, taxBy, reportAnswers, asks }),
   )
   /**
    * 残りの件数（lib/cases/todo.ts が1回だけ数える）。次にやること・ダウンロードの前の確認・表の「直す」・業種のタブ・タブの数・
@@ -187,7 +188,7 @@ export type CaseView = {
   attachment: ReturnType<typeof chooseAttachment>
   summary: ReturnType<typeof summarizeKoji>
   planAsks: readonly PlanAsk[]
-  askRows: { id: string; label: string; keys: Set<string>; rows: NonNullable<TableDerived["shown"]> }[]
+  askRows: { id: string; key: string; label: string; keys: Set<string>; rows: NonNullable<TableDerived["shown"]> }[]
   askEffects: { impact: ReturnType<typeof askImpact> | null; facts: string | undefined; wording: ReturnType<typeof askWording>; prompt: ReturnType<typeof askPrompt> }[]
   questionStates: ReturnType<typeof reportQuestionStates>
   todo: ReturnType<typeof caseTodo>

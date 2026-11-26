@@ -11,7 +11,7 @@ import { reportPhase } from "@/lib/cases/phase"
 import { ATTACH_ACCEPT } from "@/lib/cases/types"
 import { TAX_LABELS } from "@/lib/convert/koji-selection"
 import { useGyoshuSuggest, useProposalActions, useReportQuestions } from "./hooks"
-import { useWorkspaceTools } from "./tools"
+import { useLocationTool } from "./tools"
 
 /** チャット（Markdown の描画・AI SDK）は画面を開いたあとに読み込む */
 const ChatPanel = lazy(() => import("@/components/chat/chat-panel").then((m) => ({ default: m.ChatPanel })))
@@ -80,7 +80,7 @@ function ChatReport({ chat }: { chat: ReportChat | null }) {
 /** 変換の報告。進み具合・知らせ・聞き返し・去年との違い・工事場所の調査をストアから作る */
 function ReportBody({ chat, onAnswer, onRetry }: { chat: ReportChat | null; onAnswer: (id: string, value: string) => void; onRetry: (what: "source" | "convert") => void }) {
   const { config, actions } = useCaseSession()
-  const { location } = useWorkspaceTools()
+  const location = useLocationTool()
   const work = useCase(
     useShallow((s) => ({
       plan: s.work.plan,

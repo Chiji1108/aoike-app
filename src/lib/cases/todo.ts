@@ -79,12 +79,13 @@ export type CaseTodo = {
  * 税は、まだ誰も決めていなければ聞き（計画・職員が決めたら聞かない。答えたものは答えを出す）、金額が決まったか「分からない」と答えたら答えた。
  * 計画の聞き返しは、聞き返しの答えとして記録したもの（exclude・keep）だけを答えと見なす（チャットなどで入れた除外は答えではない）
  */
-export function reportQuestionStates(input: { hasTable: boolean; tax: TaxMode; taxBy: TaxBy | null; reportAnswers: Readonly<Record<string, string>>; askIds: readonly string[] }) {
+export function reportQuestionStates(input: { hasTable: boolean; tax: TaxMode; taxBy: TaxBy | null; reportAnswers: Readonly<Record<string, string>>; asks: readonly { id: string; key: string }[] }) {
   if (!input.hasTable) return []
   const { tax, taxBy, reportAnswers } = input
   const out: { id: string; answered: boolean }[] = []
   if ((tax === "unknown" && taxBy === null) || reportAnswers.tax) out.push({ id: "tax", answered: tax !== "unknown" || reportAnswers.tax === "ask" })
-  for (const id of input.askIds) out.push({ id, answered: reportAnswers[id] === "exclude" || reportAnswers[id] === "keep" })
+  // 計画の聞き返しの答えは、並び順の id ではなく聞き返しの鍵（lib/convert/plan.ts の askKey）で持つ
+  for (const { id, key } of input.asks) out.push({ id, answered: reportAnswers[key] === "exclude" || reportAnswers[key] === "keep" })
   return out
 }
 

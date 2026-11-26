@@ -9,7 +9,7 @@ import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO } from "@/lib/cas
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
 import { SELECTION_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
-import { hasExclusion, type ValueFilter } from "@/lib/convert/plan"
+import { askKey, hasExclusion, type ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
 import type { Rounding } from "@/lib/convert/transforms"
 import type { InquiryText } from "@/lib/inquiry/text"
@@ -22,8 +22,10 @@ import { supersedeConversion } from "./source"
 
 const SPEC = KOJI_KEIREKI
 
-/** 報告の聞き返しの答えの取り消しの記録（cases/undo.ts）の印 */
-export const reportUndoId = (questionId: string) => `report:${questionId}`
+/**
+ * 報告の聞き返しの答えの取り消しの記録（cases/undo.ts）の単位。key は税なら tax、計画の聞き返しなら並び順に依らない鍵（lib/convert/plan.ts の askKey）
+ */
+export const reportUndoId = (key: string) => `report:${key}`
 
 /** 作業の1つの項目を、その時点の値から変える */
 const update = <K extends keyof CaseWork>(env: CaseEnv, key: K, next: (prev: CaseWork[K]) => CaseWork[K]) => setWork(env.store, (w) => ({ ...w, [key]: next(w[key]) }))
@@ -195,10 +197,13 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
     commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...setTax(w, next, "staff"), reportAnswers: { ...w.reportAnswers, tax: value === "ask" ? "ask" : next } }))
     return
   }
-  if (value === "keep") return answerAsk(env, id, value)
-  if (value !== "exclude") return
   const { askRows, askEffects, planAsks } = env.view(store.getState())
   const i = askRows.findIndex((r) => r.id === id)
+  // 答えるのは押した聞き返しの鍵（確かめを開いている間に計画が変わっても、別の聞き返しに当てない）
+  const key = askRows[i]?.key
+  if (!key) return
+  if (value === "keep") return answerAsk(env, key, value)
+  if (value !== "exclude") return
   const effect = askEffects[i]
   if (effect?.impact && needsConfirm(effect.impact)) {
     const { before, after, shortBefore, shortAfter } = effect.impact
@@ -207,7 +212,7 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
       dialogs: {
         ...u.dialogs,
         askConfirm: {
-          id,
+          key,
           option: ASK_KINDS[planAsks[i]!.kind].options.find((o) => o.value === "exclude")!.label,
           title: `載せる工事が ${before} 件から ${after} 件に減ります`,
           lines: [
@@ -219,28 +224,30 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
     }))
     return
   }
-  answerAsk(env, id, value)
+  answerAsk(env, key, value)
 }
 
 /** 聞き返しの答えの確かめを閉じる（ok なら「載せない」で答える） */
 export function closeAskConfirm(env: CaseEnv, ok: boolean) {
   const pending = env.store.getState().ui.dialogs.askConfirm
-  if (ok && pending) answerAsk(env, pending.id, "exclude")
+  if (ok && pending) answerAsk(env, pending.key, "exclude")
   setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, askConfirm: null } }))
 }
 
 /**
  * 計画の聞き返しに答える。「載せない」側は対象の行を計画の出さない行に足して変換し直す（チャットの set_plan と同じ差分・確かめ方）。
  * 答えと足した分は取り消しの記録（税の答えと同じ記録）に残し、取り消すと答えと足した分だけを戻す（もう同じ除外があれば足さない）。
- * 計画・元のシートはその時点の状態から読む
+ * 計画・元のシートはその時点の状態から読み、聞き返しは鍵（askKey）で今の計画から探す（計画を立て直して無くなっていれば答えない）
  */
-export function answerAsk(env: CaseEnv, id: string, value: "exclude" | "keep") {
+export function answerAsk(env: CaseEnv, key: string, value: "exclude" | "keep") {
   const { store } = env
   const s0 = store.getState()
-  const { askRows, planAsks } = env.view(s0)
-  const ask = planAsks[askRows.findIndex((r) => r.id === id)]
   const plan0 = s0.work.plan
-  if (!ask || !plan0) return
+  const ask = plan0?.plan.asks?.find((a) => askKey(a) === key)
+  if (!ask || !plan0) {
+    toast.info("計画を立て直したので、この聞き返しはもうありません（答えていません）")
+    return
+  }
   const added: ValueFilter[] = value === "exclude" && !hasExclusion(plan0.plan.rowFilter, ask) ? [{ column: ask.column, values: ask.values }] : []
   const patch = { excludeRows: { add: added, remove: [] }, reason: ASK_KINDS[ask.kind].label }
   if (added.length) {
@@ -258,9 +265,10 @@ export function answerAsk(env: CaseEnv, id: string, value: "exclude" | "keep") {
     }
     supersedeConversion(env)
   }
-  commit(store, { group: reportUndoId(id), kind: "approval", exclusions: added }, (s) => {
+  commit(store, { group: reportUndoId(key), kind: "approval", exclusions: added }, (s) => {
     const w = s.work
-    if (!w.plan) return w
+    // 間に計画が立て直されて聞き返しが無くなっていれば答えない
+    if (!w.plan || !w.plan.plan.asks?.some((a) => askKey(a) === key)) return w
     let plan = w.plan
     if (added.length) {
       const { grid } = env.table(s)
@@ -271,6 +279,6 @@ export function answerAsk(env: CaseEnv, id: string, value: "exclude" | "keep") {
       if (!r.ok) return w
       plan = { ...w.plan, plan: r.plan }
     }
-    return { ...w, ...(added.length ? { plan, converted: false } : {}), reportAnswers: { ...w.reportAnswers, [id]: value } }
+    return { ...w, ...(added.length ? { plan, converted: false } : {}), reportAnswers: { ...w.reportAnswers, [key]: value } }
   })
 }

@@ -74,7 +74,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     // ファイル
     attach: (files: readonly File[]) => attach(env, files),
     chooseSource: (f: CaseFile) => chooseSource(env, f),
-    confirmSource: (yes: boolean) => confirmSource(env, yes),
+    confirmSource: (fileId: string, yes: boolean) => confirmSource(env, fileId, yes),
     downloadCsv: () => downloadCsv(env),
     downloadFinalExcel: () => downloadFinalExcel(env),
     downloadInquiry: () => downloadInquiry(env),

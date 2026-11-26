@@ -23,7 +23,7 @@ export type Source = { fileId: string; name: string; bytes: Uint8Array; sheets: 
 export type PeerState = "none" | "open" | "saved"
 
 /** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
-export type AskConfirm = { id: string; option: string; title: string; lines: string[] }
+export type AskConfirm = { key: string; option: string; title: string; lines: string[] }
 
 /** チャットの欄の中の移り先（target の要素、無ければ最初の答えを待つもの）と、その中でフォーカスを合わせるボタン */
 export type ChatTarget = { target: string; button?: string }
@@ -113,9 +113,9 @@ export type CaseState = {
     filter: TableFilter | null
     /**
      * ダイアログ: export はダウンロードの前の確認（returnTo は閉じたあとにフォーカスを合わせるチャットの欄の移り先。開くたびに外す）、
-     * delete は案件の削除、pendingSource は「変換の元にしますか」の対象、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
+     * delete は案件の削除、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
      */
-    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; pendingSource: CaseFile | null; askConfirm: AskConfirm | null }
+    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
     /** ファイルをドラッグしている */
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
@@ -206,7 +206,7 @@ export function initialCaseState(page: {
       tab: "table",
       workChoice: null,
       filter: null,
-      dialogs: { export: { open: false, returnTo: null }, delete: false, pendingSource: null, askConfirm: null },
+      dialogs: { export: { open: false, returnTo: null }, delete: false, pendingSources: [], askConfirm: null },
       dragging: false,
       focus: null,
       chatCanSend: false,

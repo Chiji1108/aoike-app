@@ -239,8 +239,9 @@ export async function importAnswers(env: CaseEnv, f: File, kind: "marked" | "ans
 /** 変換の元に読み込めるか（PDF などは保存と一覧だけ） */
 const isPdf = (name: string) => /\.pdf$/i.test(name)
 
-/** 「変換の元にしますか」を聞く（今の変換の結果と手直しが消えるので） */
-const askSource = (env: CaseEnv, file: CaseFile) => setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, pendingSource: file } }))
+/** 「変換の元にしますか」を聞く（今の変換の結果と手直しが消えるので）。聞いている間に付けたものは列に足し、1つずつ聞く */
+const askSource = (env: CaseEnv, file: CaseFile) =>
+  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, pendingSources: [...u.dialogs.pendingSources.filter((f) => f.id !== file.id), file] } }))
 
 /**
  * 届いたファイルを付ける（チャットの📎でアップロードしたファイル、画面にドラッグしたファイル）。種類は決まった印で見分ける（lib/cases/upload-kind.ts）:
@@ -304,9 +305,13 @@ export function chooseSource(env: CaseEnv, file: CaseFile) {
   else void openSource(env, file, true)
 }
 
-/** 「変換の元にしますか」に答える（yes なら変換の元にする。いいえは付けるだけ） */
-export function confirmSource(env: CaseEnv, yes: boolean) {
-  const pending = env.store.getState().ui.dialogs.pendingSource
-  if (yes && pending) void openSource(env, pending, true)
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, pendingSource: null } }))
+/**
+ * 「変換の元にしますか」に答える（yes なら変換の元にする。いいえは付けるだけ）。答えたファイルを列から外し、残りがあれば次を聞く。
+ * もう答えたファイル（ボタンを押したあとにダイアログが閉じる知らせ）は何もしない
+ */
+export function confirmSource(env: CaseEnv, fileId: string, yes: boolean) {
+  const file = env.store.getState().ui.dialogs.pendingSources.find((f) => f.id === fileId)
+  if (!file) return
+  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, pendingSources: u.dialogs.pendingSources.filter((f) => f.id !== fileId) } }))
+  if (yes) void openSource(env, file, true)
 }

@@ -32,6 +32,7 @@ export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; 
   const { config, actions } = useCaseSession()
   const deleteOpen = useCase((s) => s.ui.dialogs.delete)
   const hasOutput = useTable((t) => !!t.output)
+  const exportOpen = useCase((s) => s.ui.dialogs.export.open)
   return (
     <>
       <DeleteDialog
@@ -43,7 +44,8 @@ export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; 
         onDeleted={() => router.navigate({ to: "/csv/customers/$customerId", params: { customerId: customer.id } })}
       />
       {hasOutput && <CaseExportDialog />}
-      <AskConfirmDialog />
+      {/* ダウンロードの前の確認を開いている間は、確かめをその中に置いて上に重ねる（Escape・外の押下は上の確かめだけが受ける） */}
+      {!(hasOutput && exportOpen) && <AskConfirmDialog />}
       <SourceConfirmDialog />
     </>
   )
@@ -136,7 +138,9 @@ function CaseExportDialog() {
         if (!id.startsWith(EXPORT_PROPOSAL)) return actions.answerReport(id, value)
         if (value === "yes" || value === "no") actions.answerProposal(id.slice(EXPORT_PROPOSAL.length), value)
       }}
-    />
+    >
+      {open && <AskConfirmDialog />}
+    </ExportDialog>
   )
 }
 
@@ -169,9 +173,10 @@ function AskConfirmDialog() {
 /** 「変換の元にしますか」（今の変換の結果と手直しが消える。付けるだけにもできる） */
 function SourceConfirmDialog() {
   const actions = useCaseActions()
-  const pending = useCase((s) => s.ui.dialogs.pendingSource)
+  // 一度に複数付けたら、先頭から1つずつ聞く
+  const pending = useCase((s) => s.ui.dialogs.pendingSources[0] ?? null)
   return (
-    <AlertDialog open={!!pending} onOpenChange={(open) => !open && actions.confirmSource(false)}>
+    <AlertDialog open={!!pending} onOpenChange={(open) => !open && pending && actions.confirmSource(pending.id, false)}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>変換の元を「{pending?.name}」にしますか</AlertDialogTitle>
@@ -179,7 +184,7 @@ function SourceConfirmDialog() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel data-testid="source-keep">付けるだけ</AlertDialogCancel>
-          <AlertDialogAction onClick={() => actions.confirmSource(true)} data-testid="source-replace">
+          <AlertDialogAction onClick={() => pending && actions.confirmSource(pending.id, true)} data-testid="source-replace">
             変換の元にする
           </AlertDialogAction>
         </AlertDialogFooter>
