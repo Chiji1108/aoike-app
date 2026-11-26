@@ -1,0 +1,37 @@
+import type { addressCache } from "@/lib/convert/address"
+import type { SheetGrid } from "@/lib/convert/plan"
+import type { getCasePageFn } from "@/server/cases"
+import type { CaseState, CaseStore } from "./create-case-store"
+import type { CaseDeps } from "./deps"
+import type { TableDerived } from "./table"
+
+export type CasePageData = NonNullable<Awaited<ReturnType<typeof getCasePageFn>>>
+export type PreviousCase = NonNullable<CasePageData["previous"]>
+/** 案件の画面の1回分を作るのに使う、読み込んだページの部分 */
+export type SessionPage = Pick<CasePageData, "files" | "state" | "proposals" | "unreadableProposals" | "closedMissing" | "settings" | "chatEnabled" | "excelKey" | "previous"> & {
+  kase: Pick<CasePageData["kase"], "id" | "status" | "costUsd">
+}
+
+/** 案件ごとに決まっていて変わらないもの（読み込んだページから） */
+export type CaseConfig = {
+  /** AI が使えるか（APIキーがあるか） */
+  chatEnabled: boolean
+  /** 最後の Excel の照合用の鍵（サーバーが案件ごとに決めたもの） */
+  excelKey: string
+  caseId: string
+  /** 去年の案件 */
+  previous: PreviousCase | null
+}
+
+/**
+ * 待つ処理（action）が使うもの: ストア・外の処理（deps）・案件の決まったもの・表の派生（ストアごと）と、状態ではないもの
+ * （住所のキャッシュ、去年の Excel を1回だけ読む Promise）。ストアを作るときに1つ作る
+ */
+export type CaseEnv = {
+  store: CaseStore
+  deps: CaseDeps
+  config: CaseConfig
+  table: (s: CaseState) => TableDerived
+  addresses: ReturnType<typeof addressCache>
+  previousLoad: { current: Promise<SheetGrid[] | null> | null }
+}

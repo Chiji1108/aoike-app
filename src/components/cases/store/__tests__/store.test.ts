@@ -10,7 +10,7 @@ import { createCaseStore, initialCaseState, setWork, type CaseStore } from "../c
 import { derive } from "../derive"
 
 const change: ChatChange = { kind: "inquiryMail", subject: "確認のお願い", intro: "" }
-const store = () => createCaseStore(initialCaseState({ state: null, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" } }))
+const store = () => createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], state: null, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" } }))
 
 describe("案件のストア", () => {
   test("変更案は中身と一緒に1回で入り、派生は同じ状態なら同じ参照を返す", () => {
@@ -33,7 +33,7 @@ describe("案件のストア", () => {
   })
   test("サーバーが記録した変更案のうち作業に無いものは、中身と一緒に作業に入れる", () => {
     const p = newProposal("p1", { kind: "chat", messageId: "m" }, [change], null)
-    const init = initialCaseState({ state: null, proposals: [{ proposal: p, changes: [change] }], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "included" } })
+    const init = initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], state: null, proposals: [{ proposal: p, changes: [change] }], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "included" } })
     expect(init.work.proposals).toEqual([p])
     expect(init.work.rule7Tax).toBe("included")
     expect(init.contents.get("p1")).toEqual([change])
@@ -59,7 +59,7 @@ const chatRecord = (id: string, changes: ChatChange[]): ProposalRecord => ({ pro
 const reopen = (s: CaseStore, records: ProposalRecord[] = [], unreadable: string[] = []) => {
   const w = s.getState().work
   const work = savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(w))))
-  return createCaseStore(initialCaseState({ state: { work, aiCache: toSavedAiCache(w.aiCache) }, proposals: records, unreadableProposals: unreadable, closedMissing: 0, settings: { rule7Tax: "excluded" } }))
+  return createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], state: { work, aiCache: toSavedAiCache(w.aiCache) }, proposals: records, unreadableProposals: unreadable, closedMissing: 0, settings: { rule7Tax: "excluded" } }))
 }
 /** 画面の承認と同じく、表に重ねる部分を承認の記録にして入れる */
 const approve = (s: CaseStore, id: string, items: number[]) =>
@@ -109,8 +109,8 @@ describe("開いたときの中身の無い変更案", () => {
   })
 
   test("サーバーが閉じた数と読めない記録（作業に無いものも）を報告のために数える", () => {
-    const r = createCaseStore(initialCaseState({ state: null, proposals: [], unreadableProposals: ["in-work", "only-in-r2"], closedMissing: 2, settings: { rule7Tax: "excluded" } }))
-    expect(r.getState().runtime).toEqual({ closedMissing: 2, unreadable: 2 })
+    const r = createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], state: null, proposals: [], unreadableProposals: ["in-work", "only-in-r2"], closedMissing: 2, settings: { rule7Tax: "excluded" } }))
+    expect(r.getState().runtime).toMatchObject({ closedMissing: 2, unreadable: 2 })
   })
 
   test("閉じた変更案の承認は、中身が無くても記録から取り消せる", () => {

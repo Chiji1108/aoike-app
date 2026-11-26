@@ -1,8 +1,16 @@
-import type { ValueFilter } from "@/lib/convert/plan"
-import type { CaseWork } from "@/lib/cases/state"
+import { toast } from "sonner"
+import { MAX_ADDED_ROWS } from "@/lib/cases/added"
+import { MAX_REJECTED_EXCEL, type CaseWork } from "@/lib/cases/state"
 import { canUndo, pushUndo, undo, undoEntry, type UndoEntry, type UndoKind } from "@/lib/cases/undo"
-import { withLogged, withUndone, type ProposalRecord } from "@/lib/chat/proposals"
-import type { CaseState, CaseStore } from "../create-case-store"
+import { addedCountAfter, applyChanges, approvedChange, decide, decisionOf, isAnswered, withLogged, withUndone, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
+import type { MappingPlan, ValueFilter } from "@/lib/convert/plan"
+import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
+import { changeSignature } from "@/lib/excel/final-import"
+import { errorMessage } from "@/lib/errors"
+import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
+import { setRuntime, setWork, type CaseState, type CaseStore } from "../create-case-store"
+import type { CaseEnv } from "../env"
+import { supersedeConversion } from "./source"
 
 /**
  * 変更案を中身と一緒に足す（変更案を足すのはここだけ。状態と中身を1回で入れるので、開いている変更案には必ず中身がある）。
@@ -93,4 +101,104 @@ export function undoGroup(store: CaseStore, group: string): UndoSummary | null {
     return { work }
   })
   return out
+}
+
+const updateProposal = (store: CaseStore, id: string, next: (p: Proposal) => Proposal) =>
+  setWork(store, (w) => ({ ...w, proposals: w.proposals.map((p) => (p.id === id ? next(p) : p)) }))
+
+/** 外に書いている間（ルールの追記・工事場所）の印。書き終えたら（失敗しても）外す */
+async function writingOutside<T>(env: CaseEnv, run: () => Promise<T>) {
+  setRuntime(env.store, (r) => ({ busy: { ...r.busy, rule: true } }))
+  try {
+    return await run()
+  } finally {
+    setRuntime(env.store, (r) => ({ busy: { ...r.busy, rule: false } }))
+  }
+}
+
+/**
+ * 変更案を承認・却下する。承認した表の変更は手直し・入れ外し・設定に重ね、列の対応の変更は今の計画に重ねて変換し直す。
+ * 承認するたびに取り消しの記録を残す。工事場所・ルールの追記は外（顧客の覚えた結果・ルール）に書けてから承認の印を付ける
+ * （ルールは1件ずつ。途中で失敗しても、書けた追記は承認済みになり、もう一度承認しても二重に足さない）
+ */
+export async function decideProposal(env: CaseEnv, id: string, indices: number[], decision: "applied" | "rejected") {
+  const { store, deps } = env
+  const { work, contents } = store.getState()
+  const p = work.proposals.find((x) => x.id === id)
+  const changes = contents.get(id)
+  if (!p || p.state !== "open" || !changes) return
+  const chosen = indices.filter((i) => decisionOf(p, i) === "pending")
+  if (decision === "rejected") {
+    // 直した Excel・顧客の回答の却下した項目は覚え、同じ Excel を上げ直しても出し直さない
+    if ((p.origin.kind === "excel" || p.origin.kind === "answer") && chosen.length)
+      setWork(store, (w) => ({ ...w, rejectedExcel: [...w.rejectedExcel, ...chosen.map((i) => changeSignature(changes[i]!))].slice(-MAX_REJECTED_EXCEL) }))
+    return updateProposal(store, id, (x) => decide(x, chosen, "rejected"))
+  }
+  if (!isAnswered(p)) return
+  // 工事場所は、サーバーが顧客の覚えた結果に書けてから承認する（ルールの追記と同じく、承認と覚えることを食い違わせない）
+  const located = chosen.filter((i) => changes[i]!.kind === "location")
+  const planned = chosen.filter((i) => changes[i]!.kind === "plan")
+  const table = chosen.filter((i) => changes[i]!.kind !== "rule" && changes[i]!.kind !== "location" && changes[i]!.kind !== "plan")
+  // 足した行の上限を超える承認はしない（超えるとチャットに表を送れなくなる）
+  const after = addedCountAfter(work.added, table.map((i) => changes[i]!))
+  if (after > MAX_ADDED_ROWS) {
+    toast.error(`承認すると足した行が ${after} 行になります。案件に足せる行は ${MAX_ADDED_ROWS} 行までです（承認していません）`)
+    return
+  }
+  // 列の対応の変更は、今の計画と計画の元のシートで確かめ直す（AI の計画の取り込みと同じ決まり）。合わなければ承認しない
+  let nextPlan: MappingPlan<KojiFieldId> | null = null
+  if (planned.length) {
+    const { grid } = env.table(store.getState())
+    const { source } = store.getState().runtime
+    if (!work.plan || !grid || !source) {
+      toast.error("変換の元のファイルを読んでいます。読み終えてから承認してください")
+      return
+    }
+    let p0 = work.plan.plan
+    for (const i of planned) {
+      const c = changes[i]!
+      if (c.kind !== "plan") continue
+      const r = applyPlanPatch(KOJI_KEIREKI, p0, c.patch, sheetShapeOf(grid), source.sheets)
+      if (!r.ok) {
+        toast.error(`列の対応を変えられません（承認していません）: ${r.problems.join(" / ")}`)
+        return
+      }
+      p0 = r.plan
+    }
+    nextPlan = p0
+  }
+  const apply = (items: number[], external: UndoEntry["external"] = []) => {
+    if (!items.length) return
+    commit(store, { group: id, kind: "approval", items, external }, (s) => {
+      const w = s.work
+      const edited = env.table(s).view?.edited ?? []
+      const overlaid = applyChanges(w, edited, items.map((i) => approvedChange(p, changes[i]!)))
+      const replanned = nextPlan && items.some((i) => changes[i]!.kind === "plan") && w.plan ? { ...overlaid, plan: { ...w.plan, plan: nextPlan }, converted: false } : overlaid
+      return { ...replanned, proposals: w.proposals.map((x) => (x.id === id ? decide(x, items, "applied") : x)) }
+    })
+  }
+  if (nextPlan) supersedeConversion(env)
+  apply([...table, ...planned])
+  if (located.length) {
+    try {
+      await writingOutside(env, () => deps.approveLocations(id, located))
+      apply(located, ["location"])
+    } catch (e) {
+      toast.error(errorMessage(e, "工事場所を承認できませんでした（顧客の覚えた結果に書けませんでした）"))
+    }
+  }
+  const rules = chosen.filter((i) => changes[i]!.kind === "rule")
+  if (!rules.length) return
+  try {
+    await writingOutside(env, async () => {
+      for (const i of rules) {
+        // サーバーが変更案の記録から追記し、足した印も一緒に書く（開き直して同じ項目をもう一度承認しても二度足さない）
+        await deps.approveRule(id, i)
+        commit(store, { group: id, kind: "approval", items: [i], external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
+      }
+    })
+    toast.success("ルールに追記しました")
+  } catch (e) {
+    toast.error(errorMessage(e, "ルールに追記できませんでした（保存できたものは承認済みにしました）"))
+  }
 }
