@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport, validateUIMessages } from "ai"
 import { z } from "zod"
-import { Brain, Code2, FileSpreadsheet, History, Lightbulb, Loader2, MessageSquare, MessageSquareText, PanelRightOpen, Paperclip, Send, Square, Table2, Trash2 } from "lucide-react"
+import { Brain, Code2, Download, History, Lightbulb, Loader2, MessageSquare, MessageSquareText, PanelRightOpen, Paperclip, Send, Square, Table2, Trash2 } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { Markdown } from "@/components/chat/markdown"
@@ -103,7 +103,7 @@ export type ChatPanelProps = {
   tail?: React.ReactNode
   /** 📎でアップロードしたファイル（種類は案件の画面が見分ける。画面にドラッグしたファイルも案件の画面が受け取る） */
   onFiles: (files: File[]) => void
-  /** 返事のボタン（書き出す前の確認・問い合わせ） */
+  /** 返事のボタン（ダウンロードの前の確認・問い合わせ） */
   onAction: (action: ChatAction) => void
   /**
    * 作業の画面のタブを開く。道具の結果が届いたとき（auto。保存した会話を読んだときは開かない）と、
@@ -566,7 +566,7 @@ function ChatMessageView({
 }
 
 const ACTION_BUTTONS = {
-  export: { label: "書き出す前の確認を開く", icon: <FileSpreadsheet /> },
+  export: { label: "ダウンロードの前の確認を開く", icon: <Download /> },
   inquiry_excel: { label: "顧客への問い合わせを開く", icon: <MessageSquareText /> },
 } satisfies Record<ChatAction, { label: string; icon: React.ReactNode }>
 

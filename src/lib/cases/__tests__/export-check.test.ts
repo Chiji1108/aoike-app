@@ -20,7 +20,7 @@ const g = (over: Partial<GyoshuSummary>): GyoshuSummary => ({
   ...over,
 })
 
-describe("書き出す前の確認の7割と決算書の額", () => {
+describe("ダウンロードの前の確認の7割と決算書の額", () => {
   test("基準額が 0 の業種は確かめられないとして分ける", () => {
     const c = exportCheck([], [g({}), g({ code: "", label: "（業種未確定）", total: 0, basis: { total: 0, motouke: 0 }, selectedTotal: 0, totalRatio: undefined })])
     expect(c.short).toEqual([])

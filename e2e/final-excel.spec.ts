@@ -20,7 +20,7 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
-/** 書き出すの確認から最後の Excel をダウンロードし、ExcelJS で開く（職員が Excel で開いたとき） */
+/** ダウンロードの前の確認から最後の Excel をダウンロードし、ExcelJS で開く（職員が Excel で開いたとき） */
 async function downloadFinal(page: Page) {
   await page.getByTestId("export-button").click()
   const dialog = page.getByTestId("export-dialog")
@@ -47,7 +47,7 @@ const keysOf = (wb: ExcelJS.Workbook) => {
 const upload = async (page: Page, wb: ExcelJS.Workbook, name: string) =>
   page.getByTestId("chat-file-input").setInputFiles({ name, mimeType: XLSX_TYPE, buffer: Buffer.from(await wb.xlsx.writeBuffer()) })
 
-test("書き出した Excel の値を1つ直して行を1つ消し、上げ直すと変更案 → 承認で表と CSV に入る。開き直しても取り消せる。同じ Excel をもう一度上げても（承認の前も後も）二重にならない", async ({ page }) => {
+test("ダウンロードした Excel の値を1つ直して行を1つ消し、上げ直すと変更案 → 承認で表と CSV に入る。開き直しても取り消せる。同じ Excel をもう一度上げても（承認の前も後も）二重にならない", async ({ page }) => {
   const { customer, caseUrl } = await convertFixture(page, FIXTURE)
   created.push(customer)
   const wb = await downloadFinal(page)

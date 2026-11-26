@@ -3,7 +3,7 @@ import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab, reload }
 
 /**
  * 職員が次に何をするか分かる流れ: 計画の AI の聞き返しに答える（答えは計画の行の除外にして変換し直す・取り消すと戻る・開き直しても答えたまま）→
- * 次にやること（答える → 直す → 問い合わせ → 書き出す）を押すとそこへ移り、済むと済みになる → 行に直す理由が出る。
+ * 次にやること（答える → 直す → 問い合わせ → ダウンロード）を押すとそこへ移り、済むと済みになる → 行に直す理由が出る。
  * 計画の AI の応答は決まったもの（合成 fixture の列の対応と、備考の列に値のある行を「載せるか迷う行」として聞く聞き返し）にする
  */
 
@@ -155,7 +155,7 @@ test("計画の聞き返しに答えると表と載せる件数が変わり、�
     await expect(page.getByRole("button", { name: /^答える/ })).toHaveCount(0)
   })
 
-  await test.step("書き出すの ⚠ の意味（残り）は、ツールチップと書き出すの確認で同じ言葉。残りを押すとそこへ移る", async () => {
+  await test.step("ダウンロードの ⚠ の意味（残り）は、ツールチップとダウンロードの前の確認で同じ言葉。残りを押すとそこへ移る", async () => {
     const button = page.getByTestId("export-button")
     const title = (await button.getAttribute("title")) ?? ""
     await button.click()

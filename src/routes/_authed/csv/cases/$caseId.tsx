@@ -9,7 +9,7 @@ import { WORK_TABS, type WorkTab } from "@/components/cases/work-tabs"
 import { DeleteDialog } from "@/components/cases/delete-dialog"
 import { useCaseAutosave, type SaveStatus } from "@/components/cases/use-case-autosave"
 import { AnswerImportPanel, FinalImportPanel, type FinalImport } from "@/components/convert/final-import-panel"
-import { ExportDialog } from "@/components/convert/export-dialog"
+import { ExportDialog, type ExportQuestion } from "@/components/convert/export-dialog"
 import { InquiryPanel } from "@/components/convert/inquiry-panel"
 import { LocationPanel, useLocationSearch } from "@/components/convert/location-panel"
 import { PreviewTable } from "@/components/convert/preview-table"
@@ -50,7 +50,7 @@ import { carryoverReady } from "@/lib/chat/carryover"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
 import { viewKindOf } from "@/lib/chat/view-kind"
 import type { ChatAction } from "@/lib/chat/messages"
-import { addedCountAfter, answer, applyChanges, approvedChange, decide, decisionOf, discard, isAnswered, newProposal, withRecorded, type ChatChange, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
+import { addedCountAfter, answer, applyChanges, approvedChange, decide, decisionOf, discard, isAnswered, newProposal, pendingOf, withRecorded, type ChatChange, type Proposal, type ProposalOrigin, type ProposalRecord } from "@/lib/chat/proposals"
 import { toWire } from "@/lib/chat/wire"
 import { ADDRESS_API_PATH, addressCache, addressKey, lookupAddresses, NO_ADDRESSES, type AddressBook, type AddressLookup } from "@/lib/convert/address"
 import { convertRows, editKey, editSession, resolveRows, staffEdit, type CellEdit, type RowResult } from "@/lib/convert/convert"
@@ -113,6 +113,10 @@ const ASK_KINDS: Record<PlanAskKind, { label: string; options: { value: "exclude
   unfinished: { label: "未成の工事", options: [{ value: "exclude", label: "完成だけ載せる" }, { value: "keep", label: "未成も載せる" }] },
   doubtful: { label: "載せるか迷う行", options: [{ value: "exclude", label: "載せない" }, { value: "keep", label: "載せる" }] },
 }
+/** ダウンロードの前の確認で答える変更案の印（報告の聞き返しの id と分ける） */
+const EXPORT_PROPOSAL = "proposal:"
+/** 変更案の出どころの名前（ダウンロードの前の確認の「答える」） */
+const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", excel: "Excel で直した分", answer: "顧客の回答", location: "工事場所", fix: "業種の AI の案" }
 /** 報告の聞き返しの答えの取り消しの記録（cases/undo.ts）の印 */
 const reportUndoId = (questionId: string) => `report:${questionId}`
 /** 業種の一覧で決めたもの・「これでよい」の取り消しの記録（cases/undo.ts）の印。1回の操作ごとに1つ */
@@ -468,7 +472,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
         continue
       }
       if (warnsUnlinked(kind, hasSource)) {
-        note({ name: f.name, text: "書き出した Excel の形ですが照合用のシートが無いので、直した Excel としては表に戻せません。変換の元にするかを選んでください" })
+        note({ name: f.name, text: "ダウンロードした Excel の形ですが照合用のシートが無いので、直した Excel としては表に戻せません。変換の元にするかを選んでください" })
         hasSource = true
         setPendingSource(saved)
         continue
@@ -1669,14 +1673,56 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
       setFilter({ kind: "fix" })
       return showTab("table")
     }
+    goChat("[data-pending]")
+  }
+  /**
+   * チャットの欄の target（無ければ最初の答えを待つもの）へ移り、その中の focus のボタンに合わせる（狭い画面では作業の画面を閉じる）。
+   * 閉じた作業の画面・ダウンロードの前の確認がフォーカスを戻したあとに移る
+   */
+  function goChat(target: string, focus = "button:not([disabled])") {
     if (!wide) setWorkChoice(false)
-    // 閉じた作業の画面がフォーカスを戻したあとに、答えを待つものへ移る
     requestAnimationFrame(() => {
-      const target = document.querySelector<HTMLElement>('[data-testid="chat-column"] [data-pending]')
-      if (!target) return
-      target.scrollIntoView({ block: "center", behavior: "smooth" })
-      target.querySelector<HTMLElement>("button:not([disabled])")?.focus({ preventScroll: true })
+      const chat = '[data-testid="chat-column"]'
+      const el = document.querySelector<HTMLElement>(`${chat} ${target}`) ?? document.querySelector<HTMLElement>(`${chat} [data-pending]`)
+      if (!el) return
+      el.scrollIntoView({ block: "center", behavior: "smooth" })
+      ;(el.querySelector<HTMLElement>(focus) ?? el.querySelector<HTMLElement>("button:not([disabled])"))?.focus({ preventScroll: true })
     })
+  }
+  /** ダウンロードの前の確認を閉じてから移る */
+  const fromExport = (run: () => void) => () => {
+    setExportOpen(false)
+    run()
+  }
+
+  /**
+   * ダウンロードの前の確認で答えるもの。報告の聞き返しはその場で答える（「表で見る」「AI に聞く」は確認を閉じて移る。AI に聞くはチャットのその聞き返しへ）。
+   * チャットのものは「答える」に数えるもの（承認待ちの変更案・AI の聞き返し・一覧の外の業種の AI の案）と、この確認で答えて閉じたもの
+   */
+  const exportQuestions: ExportQuestion[] = questions.map((q) => ({
+    question: { ...q, view: q.view && fromExport(q.view), prompt: undefined },
+    go: q.prompt ? { label: "AI に聞く", run: fromExport(() => goChat(`[data-testid="case-report"] [data-question="${q.id}"]`, '[data-testid="report-question-ask"]')) } : null,
+  }))
+  const exportChatAsks: ExportQuestion[] = [
+    ...work.proposals.filter((p) => (p.origin.kind === "chat" || p.origin.kind === "excel" || p.origin.kind === "answer") && (p.state === "open" || p.question?.answer != null)),
+    ...fixOutsideList,
+  ].map(exportChatAsk)
+  function exportChatAsk(p: Proposal): ExportQuestion {
+    const id = `${EXPORT_PROPOSAL}${p.id}`
+    const go = (label: string) => ({ label, run: fromExport(() => goChat(`[data-proposal="${p.id}"]`)) })
+    const q = p.question
+    const ANSWER = { yes: "はい", no: "いいえ" } as const
+    if (p.state === "closed") return { question: { id, text: q?.text ?? PROPOSAL_ORIGIN[p.origin.kind], options: [], answered: q?.answer ? ANSWER[q.answer] : "決めました" }, go: null }
+    // 変更案の付いた聞き返しはここで答える（はいで承認できるようになり、いいえで全部を却下）。変更案の無い聞き返しは答えを AI に送るのでチャットで
+    if (q && q.answer === null)
+      return p.count > 0
+        ? { question: { id, text: q.text, detail: `${PROPOSAL_ORIGIN[p.origin.kind]}（${p.count} 件）は、答えてからチャットで承認します`, options: [{ value: "no", label: "いいえ" }, { value: "yes", label: "はい" }], answered: null }, go: go("チャットで見る") }
+        : { question: { id, text: q.text, detail: "答えると AI が続けます", options: [], answered: null }, go: go("チャットで答える") }
+    return { question: { id, text: `${PROPOSAL_ORIGIN[p.origin.kind]}の承認待ち ${pendingOf(p).length} 件`, detail: "中身をチャットで確かめて、承認か却下します", options: [], answered: null }, go: go("チャットで確かめる") }
+  }
+  function answerFromExport(id: string, value: string) {
+    if (!id.startsWith(EXPORT_PROPOSAL)) return answerReport(id, value)
+    if (value === "yes" || value === "no") proposalActions.answer(id.slice(EXPORT_PROPOSAL.length), value)
   }
 
   const tabBadge = (t: WorkTab) => (t === "inquiry" ? inquiries.length : t === "gyoshu" ? gyoshuItems.length : t === "location" ? locationProposals.filter((p) => p.state === "open").length : 0)
@@ -1920,6 +1966,9 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
             setExportOpen(false)
             runFixAction(action, keys)
           }}
+          questions={exportQuestions}
+          chatAsks={exportChatAsks}
+          onAnswer={answerFromExport}
         />
       )}
 
