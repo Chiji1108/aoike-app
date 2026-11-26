@@ -95,8 +95,8 @@ export type ChatPanelProps = {
   carryover: { fiscalYear: number; ready: boolean; names: () => string[]; headers: () => string[] } | null
   onProposal: (p: { proposal: Proposal; changes: ChatChange[] }) => void
   onCaseCost: (usd: number) => void
-  /** 返事が届き終えた（止めた・失敗した返事も。保存した会話を読んだときは呼ばない） */
-  onReply?: () => void
+  /** 返事が届き終えた（ok は失敗していないか。職員が止めた返事と、保存した会話を読んだときは呼ばない） */
+  onReply?: (ok: boolean) => void
   /** 工事場所の一括調査（返事の「調べ始める」は案件の画面と同じものを動かす） */
   location: LocationSearch
   /** 会話の最初に出す変換の報告（案件の作業から作る。保存しない）。chat で報告から決まった質問を送れる（聞き返しの「AI に聞く」） */
@@ -161,8 +161,8 @@ export function ChatPanel(props: ChatPanelProps) {
     onData: (part) => {
       if (part.type === "data-proposal-content") live.current.onProposal(part.data)
     },
-    onFinish: ({ message }) => {
-      live.current.onReply?.()
+    onFinish: ({ message, isAbort, isError, isDisconnect }) => {
+      if (!isAbort) live.current.onReply?.(!isError && !isDisconnect)
       if (message.metadata) live.current.onCaseCost(message.metadata.caseUsd)
       // 去年のコードを添えたかはサーバーの会話の記録の印に従う（止めた・失敗した回は添えたことにならない）
       if (message.metadata?.carryover !== undefined) setCarried(message.metadata.carryover)

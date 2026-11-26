@@ -687,7 +687,8 @@ function ColorLegend({ rows }: { rows: readonly Row[] }) {
     <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="セルの色" data-testid="color-legend">
       {tones.map((t) => (
         <li key={t} className="flex items-center gap-1" title={LEGEND_TIPS[t]} data-tone={t}>
-          <span className={cn("h-3 w-4 shrink-0 rounded-[3px] border border-foreground/20", STATUS[t].cell)} aria-hidden />
+          {/* 見本はセルの淡い色では白い背景で見分けにくいので、同じ色の濃い方（注意書きの点と同じ） */}
+          <span className={cn("size-2.5 shrink-0 rounded-[3px]", STATUS[t].dot)} aria-hidden />
           {STATUS[t].label}
           {LEGEND_TIPS[t] && <span className="sr-only">（{LEGEND_TIPS[t]}）</span>}
         </li>

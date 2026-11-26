@@ -6,10 +6,15 @@ import { convertFixture, deleteCustomer, reload, showAllRows } from "./helpers"
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 const KEY = "csv-table-expanded"
 
-/** チャットのサーバーの代わりに、delayMs 待ってから決まった文の返事を返す（会話を読む GET はサーバーのまま） */
-async function fakeReply(page: Page, text: string, delayMs: number) {
+/** チャットのサーバーの代わりに、delayMs 待ってから決まった文の返事を返す（会話を読む GET はサーバーのまま）。fail なら断る */
+async function fakeReply(page: Page, text: string, delayMs: number, fail = false) {
+  await page.unroute("**/api/csv/cases/*/chat")
   await page.route("**/api/csv/cases/*/chat", async (route: Route) => {
     if (route.request().method() !== "POST") return route.fallback()
+    if (fail) {
+      await new Promise((r) => setTimeout(r, delayMs))
+      return route.fulfill({ status: 500, body: text })
+    }
     const metadata: ChatMetadata = { usd: 0.01, caseUsd: 0.01, ms: 1000, inputTokens: 100, outputTokens: 10, toolCalls: 0 }
     const stream = createUIMessageStream({
       execute: ({ writer }) => {
@@ -43,12 +48,15 @@ test("色の凡例は表にある色だけを出し、黄色の意味を添え�
   await showAllRows(page)
   const legend = page.getByTestId("color-legend")
   await expect(legend).toBeVisible()
+  // 凡例は全行で数えるので、全行が描かれている（仮想化で外れていない）ことを確かめてから表のセルと比べる
+  const all = Number(/(\d+)\s*$/.exec((await page.getByTestId("row-filters-all").textContent()) ?? "")![1])
+  await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key]')).toHaveCount(all)
   const tones = await tableTones(page)
   const shown = await legend.locator("li").evaluateAll((lis) => lis.map((li) => (li as HTMLElement).dataset.tone!))
   // 色なし（そのまま）は凡例に出さない。出す種類は表のセルの色とちょうど同じ
   expect(shown.sort()).toEqual(tones.filter((t) => t !== "ok").sort())
   expect(shown.length).toBeGreaterThan(0)
-  if (shown.includes("warning")) await expect(legend.locator('li[data-tone="warning"]')).toHaveAttribute("title", /AI の推定・手書き・警告/)
+  if (shown.includes("warning")) await expect(legend.locator('li[data-tone="warning"]')).toHaveAttribute("title", /AI が補った値/)
   // 絞り込みを変えても凡例は動かない（全行で数える）
   await page.getByTestId("row-filters-fix").click()
   await expect(legend.locator("li")).toHaveCount(shown.length)
@@ -98,6 +106,24 @@ test("表を広げるとチャットをたたみ、たたんでいる間に返�
   await page.keyboard.press("Enter")
   await expect(chat).toBeHidden()
   await expect(frame).toBeFocused()
+
+  // 失敗した返事は、印の言葉を変える
+  await page.getByTestId("table-expand").click()
+  await expect(chat).toBeVisible()
+  await fakeReply(page, "合成の失敗", 1500, true)
+  await page.getByTestId("chat-input").fill("もう一度")
+  await page.getByTestId("chat-send").click()
+  await toggle.click()
+  await expect(chat).toBeHidden()
+  await expect(page.getByTestId("chat-unread")).toHaveAttribute("data-kind", "error")
+  await expect(toggle).toHaveAttribute("aria-label", "チャットを出す（エラーがあります）")
+
+  // たたんだままのアップロード（ドラッグ）は結果がチャットにだけ出るので印を付ける
+  await toggle.click()
+  await toggle.click()
+  await expect(page.getByTestId("chat-unread")).toHaveCount(0)
+  await page.getByTestId("chat-file-input").setInputFiles({ name: "合成メモ.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF\n") })
+  await expect(page.getByTestId("chat-unread")).toBeVisible()
 
   // タブを切り替えても広げたまま。戻す
   await page.getByTestId("tab-replace").click()

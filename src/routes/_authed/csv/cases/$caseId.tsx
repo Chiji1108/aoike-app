@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Link, createFileRoute, notFound, useRouter } from "@tanstack/react-router"
 import { Ellipsis, FileText, FileUp, Loader2, Maximize2, Minimize2, PanelRightClose, Paperclip, Trash2, TriangleAlert, X } from "lucide-react"
 import { toast } from "sonner"
@@ -214,17 +214,17 @@ function serverAi(caseId: string, failures: Set<string>, onCost: (usd: number) =
   }
 }
 
-/** 画面の幅がクエリに合うか（サーバーで描くときは false） */
+/** 画面の幅がクエリに合うか（サーバーで描くときは false。ブラウザでは最初の描画から今の幅で描く） */
 function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false)
-  useEffect(() => {
-    const m = window.matchMedia(query)
-    setMatches(m.matches)
-    const on = (e: MediaQueryListEvent) => setMatches(e.matches)
-    m.addEventListener("change", on)
-    return () => m.removeEventListener("change", on)
-  }, [query])
-  return matches
+  return useSyncExternalStore(
+    (on) => {
+      const m = window.matchMedia(query)
+      m.addEventListener("change", on)
+      return () => m.removeEventListener("change", on)
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  )
 }
 
 const TABLE_EXPANDED_KEY = "csv-table-expanded"
@@ -232,28 +232,47 @@ const TABLE_EXPANDED_KEY = "csv-table-expanded"
 /**
  * 表を広げる（広い画面でチャットの列をたたみ、作業の画面を画面いっぱいにする）か。端末ごとに覚える:
  * 画面の広さと職員の使い方で決まることで、案件の中身ではない（案件に保存すると、ほかの端末・職員の画面まで変わる）。
- * localStorage が使えなければ覚えない（毎回チャットを出す）
+ * 最初の描画から覚えた値で描く（チャットの列が一瞬出てから消えない）。localStorage が使えなければ、この画面を開いている間だけ覚える
  */
-function useTableExpanded() {
-  const [expanded, setExpanded] = useState(false)
-  useEffect(() => {
-    try {
-      setExpanded(localStorage.getItem(TABLE_EXPANDED_KEY) === "1")
-    } catch {
-      /* 使えない環境では覚えない */
+const expandedStore = {
+  value: null as boolean | null,
+  listeners: new Set<() => void>(),
+  get() {
+    if (this.value === null) {
+      try {
+        this.value = localStorage.getItem(TABLE_EXPANDED_KEY) === "1"
+      } catch {
+        this.value = false
+      }
     }
-  }, [])
-  const change = (next: boolean) => {
-    setExpanded(next)
+    return this.value
+  },
+  set(next: boolean) {
+    this.value = next
     try {
       if (next) localStorage.setItem(TABLE_EXPANDED_KEY, "1")
       else localStorage.removeItem(TABLE_EXPANDED_KEY)
     } catch {
-      /* 使えない環境では覚えない */
+      /* 使えない環境では、この画面を開いている間だけ覚える */
     }
-  }
-  return [expanded, change] as const
+    for (const l of this.listeners) l()
+  },
+  subscribe(l: () => void) {
+    expandedStore.listeners.add(l)
+    return () => void expandedStore.listeners.delete(l)
+  },
 }
+
+function useTableExpanded() {
+  const expanded = useSyncExternalStore(expandedStore.subscribe, () => expandedStore.get(), () => false)
+  return [expanded, (next: boolean) => expandedStore.set(next)] as const
+}
+
+/** たたんでいる間にチャットに来たもの（作業の画面の上の印）。error は失敗した返事・アップロードの失敗 */
+type ChatUnread = "news" | "error"
+const UNREAD_TEXT: Record<ChatUnread, string> = { news: "（新しい返事があります）", error: "（エラーがあります）" }
+/** チャットの流れに出る変更案の出どころ */
+const CHAT_ORIGINS = new Set(["chat", "excel", "answer"])
 
 /** 変換の元に読み込めるか（PDF などは保存と一覧だけ） */
 const isPdf = (name: string) => /\.pdf$/i.test(name)
@@ -286,7 +305,11 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
   const [sourceError, setSourceError] = useState<{ file: CaseFile; message: string } | null>(null)
   /** アップロードしたファイルをどう扱ったか（報告に出す。保存しない） */
   const [uploadNotes, setUploadNotes] = useState<UploadNote[]>([])
-  const note = (n: UploadNote) => setUploadNotes((ns) => [...ns.slice(-9), n])
+  /** アップロードの結果はチャットの報告にだけ出るので、たたんでいる間は印を付ける（返ってきた Excel の「AI で読む」の案内もここで） */
+  const note = (n: UploadNote) => {
+    setUploadNotes((ns) => [...ns.slice(-9), n])
+    markUnread(n.tone === "error" ? "error" : "news")
+  }
   /** AI が列の対応を考えている間の、見出しからの推定（保存しない） */
   const [planDraft, setPlanDraft] = useState<SavedPlan | null>(null)
   const planning = planDraft !== null
@@ -316,8 +339,18 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
   const [workChoice, setWorkChoice] = useState<boolean | null>(null)
   /** 表を広げる（チャットの列をたたむ）。効くのは広い画面で作業の画面を開いているときだけ（chatFolded） */
   const [tableExpanded, setTableExpanded] = useTableExpanded()
-  /** たたんでいる間にチャットに新しい返事・聞き返し・変更案が来たか（作業の画面の上に印を出す） */
-  const [chatUnread, setChatUnread] = useState(false)
+  /**
+   * 広げた設定は残したまま、その場だけチャットを出しているか（次にやることの「答える」）。「表を広げる」を押すとまたたたむ
+   */
+  const [chatPeek, setChatPeek] = useState(false)
+  /** たたんでいる間にチャットに来たもの（作業の画面の上に印を出す。チャットを出したら消す） */
+  const [chatUnread, setChatUnread] = useState<ChatUnread | null>(null)
+  /** 今チャットをたたんでいるか（待っている処理の終わりに読む。描くたびに入れる） */
+  const chatFoldedRef = useRef(false)
+  /** たたんでいる間なら印を付ける（失敗は成功で上書きしない） */
+  const markUnread = (kind: ChatUnread) => {
+    if (chatFoldedRef.current) setChatUnread((u) => (u === "error" ? u : kind))
+  }
   /** 案件の元（ファイルとシートの計画）の世代。待っている間に元が変わった計画・回答の結果は捨てる */
   const caseGeneration = useRef(0)
   /** 変換の世代。元・計画が変わったら上げ、待っている間の古い変換の結果を捨てる */
@@ -1557,9 +1590,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
           update("proposals", (ps) => [...ps.filter((x) => x.id !== proposal.id), proposal])
         }}
         onCaseCost={setCostUsd}
-        onReply={() => {
-          if (chatFolded) setChatUnread(true)
-        }}
+        onReply={(ok) => markUnread(ok ? "news" : "error")}
         location={locationSearch}
         suggestions={[
           ...(leftInquiries > 0
@@ -1673,7 +1704,8 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
       return showTab("table")
     }
     if (!wide) setWorkChoice(false)
-    setTableExpanded(false)
+    // 広げた設定は残し、その場だけチャットを出す
+    setChatPeek(true)
     // 閉じた作業の画面がフォーカスを戻したあとに、答えを待つものへ移る
     requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>('[data-testid="chat-column"] [data-pending]')
@@ -1684,6 +1716,9 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
   }
 
   const tabBadge = (t: WorkTab) => (t === "inquiry" ? inquiries.length : t === "gyoshu" ? gyoshuItems.length : t === "location" ? locationProposals.filter((p) => p.state === "open").length : 0)
+
+  /** 表を広げる設定で、今その場でチャットを出していないか（効くのは作業の画面を横に並べているときだけ。chatFolded） */
+  const foldChat = tableExpanded && !chatPeek
 
   /** 作業の画面（表と、7割・問い合わせ・工事場所・一括置換のタブ）。広い画面ではチャットの右、狭い画面では上に重ねて開く */
   const workPanel =
@@ -1702,13 +1737,22 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
                 size="icon-sm"
                 variant="ghost"
                 className="relative"
-                onClick={() => setTableExpanded(!tableExpanded)}
-                aria-label={tableExpanded ? (chatUnread ? "チャットを出す（新しい返事があります）" : "チャットを出す") : "表を広げる"}
-                title={tableExpanded ? (chatUnread ? "チャットを出す（新しい返事があります）" : "チャットを出す") : "表を広げる（チャットをたたむ）"}
+                onClick={() => {
+                  setChatPeek(false)
+                  setTableExpanded(!foldChat)
+                }}
+                aria-label={foldChat ? `チャットを出す${chatUnread ? UNREAD_TEXT[chatUnread] : ""}` : "表を広げる"}
+                title={foldChat ? `チャットを出す${chatUnread ? UNREAD_TEXT[chatUnread] : ""}` : "表を広げる（チャットをたたむ）"}
                 data-testid="table-expand"
               >
-                {tableExpanded ? <Minimize2 /> : <Maximize2 />}
-                {tableExpanded && chatUnread && <span className="absolute top-1 right-1 size-2 rounded-full bg-violet-500 ring-2 ring-background" data-testid="chat-unread" />}
+                {foldChat ? <Minimize2 /> : <Maximize2 />}
+                {foldChat && chatUnread && (
+                  <span
+                    className={cn("absolute top-1 right-1 size-2 rounded-full ring-2 ring-background", chatUnread === "error" ? "bg-red-500" : "bg-violet-500")}
+                    data-testid="chat-unread"
+                    data-kind={chatUnread}
+                  />
+                )}
               </Button>
             )}
             <Button size="icon-sm" variant="ghost" onClick={() => setWorkChoice(false)} aria-label="作業の画面を閉じる" title="作業の画面を閉じる（チャットの「表を開く」で開き直せます）" data-testid="work-close">
@@ -1830,14 +1874,19 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
    * チャットの列をたたんでいるか（表を広げていて、作業の画面を横に並べているとき）。作業の画面を閉じるとチャットを出す（広げる設定は覚えたまま）。
    * たたんでもチャットは置いたまま隠すだけにし、返事・変更案は届き続ける
    */
-  const chatFolded = workInline && tableExpanded
-  // 待っている答え（変更案・聞き返し）が増えたら、たたんでいる間は印を出す。チャットを出したら印を消す
-  const [seenPending, setSeenPending] = useState(chatPending)
-  if (seenPending !== chatPending) {
-    setSeenPending(chatPending)
-    if (chatFolded && chatPending > seenPending) setChatUnread(true)
+  const chatFolded = workInline && foldChat
+  chatFoldedRef.current = chatFolded
+  /**
+   * チャットに出る変更案（チャットの返事・返ってきた Excel・顧客の回答）が増えたら、たたんでいる間は印を出す。
+   * 次にやることの「答える」の数（chatPending）は表の手直しで増える業種の未決や計画の聞き返しも数えるので使わない
+   */
+  const chatProposals = work.proposals.filter((p) => p.state === "open" && CHAT_ORIGINS.has(p.origin.kind)).length
+  const [seenProposals, setSeenProposals] = useState(chatProposals)
+  if (seenProposals !== chatProposals) {
+    setSeenProposals(chatProposals)
+    if (chatFolded && chatProposals > seenProposals) setChatUnread((u) => u ?? "news")
   }
-  if (!chatFolded && chatUnread) setChatUnread(false)
+  if (!chatFolded && chatUnread) setChatUnread(null)
   /**
    * たたんだとき、チャットの中にあったフォーカスは作業の画面へ（隠した要素にフォーカスを残さない）。
    * チャットの「表を開く」で開いてたたんだときは、押したボタンが消えてフォーカスが body に落ちているので、それも作業の画面へ

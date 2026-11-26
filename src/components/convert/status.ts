@@ -23,10 +23,15 @@ export function cellClass(c: CellResult) {
   return STATUS[cellTone(c)].cell
 }
 
-/** 表の色の凡例に出す種類（色なしの「そのまま」は出さない）と、意味が1語で足りないものの説明 */
+/**
+ * 表の色の凡例に出す種類（色なしの「そのまま」は出さない）と、意味が1語で足りないものの説明（cellTone と同じ決まりで書く）。
+ * 黄色は検査の警告と、AI が補った値（手書き・画像から読んだ値を含む。注意書きのある AI の値）。
+ * 注意書きの無い AI の推定（guessed）は紫のまま（行の理由に「AI の推定」と出る）
+ */
 export const LEGEND_TONES = ["changed", "ai", "warning", "error"] as const satisfies readonly CellStatus[]
 export const LEGEND_TIPS: Partial<Record<CellStatus, string>> = {
-  warning: "AI の推定・手書き・警告。値を確かめてください",
+  ai: "AI が変換・推定した値",
+  warning: "検査の警告と、AI が補った値（手書き・画像から読んだ値を含む）。値を確かめてください",
 }
 
 /** 表の絞り込み。直す（CSV に載せる行のうち、職員が直すセルがある行）か、すべて（載せない行も） */
