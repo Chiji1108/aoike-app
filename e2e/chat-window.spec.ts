@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
-import { callsServerFn, deleteCustomer, openNewCase, reload, showAllRows } from "./helpers"
+import { callsServerFn, deleteCustomer, openNewCase, openTab, reload, showAllRows } from "./helpers"
 import { syntheticPdf } from "./pdf"
 
 /**
@@ -259,5 +259,64 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
     expect(Math.round((await box(page, "chat-column")).height)).toBe(Math.round(before.height) + 20)
     await page.keyboard.press("Home")
     await expect.poll(async () => Math.round((await box(page, "chat-column")).width)).toBe(Math.round(before.width))
+  })
+
+  /** 端末に覚えた窓の大きさ */
+  const savedSize = () => page.evaluate(() => (JSON.parse(localStorage.getItem("csv.chatWindow") ?? "null") as { size: unknown } | null)?.size ?? null)
+  const frameSize = () => chat(page).evaluate((el) => [(el as HTMLElement).offsetWidth, (el as HTMLElement).offsetHeight])
+
+  await test.step("取っ手を押しただけ（引いていない）では大きさを覚えず、決まりの大きさ（画面の高さに合わせる）のまま", async () => {
+    expect(await savedSize()).toBeNull()
+    await page.getByTestId("chat-resize").click()
+    expect(await savedSize()).toBeNull()
+    await page.setViewportSize({ width: 1500, height: 700 })
+    // 決まりの高さは並べ方の欄から 6rem 引いた高さまで縮む（覚えた px に固まっていない）
+    const area = await chat(page).evaluate((el) => (el.parentElement as HTMLElement).offsetHeight)
+    await expect.poll(async () => (await frameSize())[1]).toBe(Math.min(640, area - 96))
+  })
+
+  await test.step("短い画面でも、各タブの下の余白は窓の高さ分だけ（大きな空白にならない）", async () => {
+    await openTab(page, "gyoshu")
+    const pad = await page.getByRole("tabpanel").evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))
+    const [, h] = await frameSize()
+    // 1rem（もとの余白）+ 窓の高さ + 104px
+    expect(Math.round(pad)).toBe(16 + h! + 104)
+    await openTab(page, "table")
+    await page.setViewportSize({ width: 1500, height: 1000 })
+  })
+
+  await test.step("引いている途中で中断（pointercancel）したら、始めの大きさに戻し、覚えない", async () => {
+    const [w0, h0] = await frameSize()
+    const handle = await box(page, "chat-resize")
+    await page.mouse.move(handle.x + 10, handle.y + 10)
+    await page.mouse.down()
+    await page.mouse.move(handle.x - 40, handle.y - 20, { steps: 3 })
+    await expect.poll(async () => (await frameSize())[0]).toBe(w0! + 50)
+    await page.getByTestId("chat-resize").dispatchEvent("pointercancel", { pointerId: 1, bubbles: true })
+    await page.mouse.up()
+    await expect.poll(frameSize).toEqual([w0, h0])
+    expect(await savedSize()).toBeNull()
+  })
+
+  await test.step("中央から窓へ動く途中で大きさを変えても、縮んだ見た目ではなく窓の大きさから変える", async () => {
+    // 動きを減らす設定は画面を開いたときに読むので、設定を戻して開き直す
+    await page.emulateMedia({ reducedMotion: "no-preference" })
+    await reload(page)
+    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await page.getByTestId("work-close").click()
+    await expect(chat(page)).toHaveAttribute("data-place", "full")
+    // 「表を開く」を押してすぐ（動きの途中）に、取っ手で ← を押す
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>('[data-testid="work-open"]')!.click()
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const handle = document.querySelector<HTMLElement>('[data-testid="chat-resize"]')!
+        handle.focus()
+        handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))
+      }))
+    })
+    await expect.poll(savedSize).toEqual({ w: 440, h: 640 })
+    await page.getByTestId("chat-resize").focus()
+    await page.keyboard.press("Home")
+    await page.emulateMedia({ reducedMotion: "reduce" })
   })
 })

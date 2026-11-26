@@ -3,7 +3,7 @@ import { ChevronDown, FileUp, MessageSquare, Paperclip } from "lucide-react"
 import { LazyMotion, MotionConfig } from "motion/react"
 import * as m from "motion/react-m"
 import { useShallow } from "zustand/react/shallow"
-import { useCase, useCaseActions, useCaseView } from "@/components/cases/store/context"
+import { useCase, useCaseActions, useCaseSession, useCaseView } from "@/components/cases/store/context"
 import type { ChatSize } from "@/components/cases/store/create-case-store"
 import { Button } from "@/components/ui/button"
 import { ATTACH_ACCEPT } from "@/lib/cases/types"
@@ -83,14 +83,14 @@ function Layout({ header }: { header: React.ReactNode }) {
 function WorkFrame({ place, shown, chat, children }: { place: "inline" | "overlay"; shown: boolean; chat: ChatPlace; children: React.ReactNode }) {
   const actions = useCaseActions()
   const { collapsed, size } = useCase(useShallow((s) => ({ collapsed: s.ui.chat.collapsed, size: s.ui.chat.size })))
-  // 窓は下から 5rem・右から 1rem（下はボタン）。表の枠は作業の画面の端から 1rem 内側で、スクロールバーの分（約 1rem）と少しの間を足す。
+  // 窓と同じ式（並べ方の欄の cqw・cqh）で決める（短い画面で窓が縮んだときに余白だけ大きくならない）。窓は下から 5rem・右から 1rem（下はボタン）。表の枠は作業の画面の端から 1rem 内側で、スクロールバーの分（約 1rem）と少しの間を足す。
   // 表は右端の列を窓の左までスクロールできれば、どのセルも窓の外に出せる（下に余白を足すと、窓が高いと最後の行が見出しの下に入る）ので、窓を開いている間は右だけ
   const cover =
     chat !== "window"
       ? undefined
       : collapsed
         ? { "--chat-cover-b": "5.5rem", "--chat-cover-table-b": "5.5rem" }
-        : { "--chat-cover-b": `${(size?.h ?? CHAT_H) + 104}px`, "--chat-cover-r": `${(size?.w ?? CHAT_W) + 40}px` }
+        : { "--chat-cover-b": `calc(${chatHeight(size)} + 104px)`, "--chat-cover-r": `calc(${chatWidth(size)} + 40px)` }
   return (
     <div
       hidden={!shown}
@@ -114,8 +114,9 @@ function WorkFrame({ place, shown, chat, children }: { place: "inline" | "overla
 /** 中央 ⇄ 窓・開く ⇄ たたむの動き（約0.3秒。「動きを減らす」の設定では動かさない〔MotionConfig〕） */
 const CHAT_MOTION = { layout: { duration: 0.3, ease: [0.2, 0, 0, 1] as const }, opacity: { duration: 0.2 } }
 
-/** 窓の高さ（px か、画面に合わせた決まりの高さ。cqh は並べ方の欄の高さ） */
-const windowHeight = (size: ChatSize | null) => (size ? `${size.h}px` : `min(${CHAT_H}px, 100cqh - 6rem)`)
+/** 窓の幅と高さ（CSS の式。覚えた大きさか決まりの大きさを、並べ方の欄〔cqw・cqh〕に収める。窓・中身・作業の画面の余白で同じ式） */
+const chatWidth = (size: ChatSize | null) => `min(${size?.w ?? CHAT_W}px, 100cqw - 2rem)`
+const chatHeight = (size: ChatSize | null) => `min(${size?.h ?? CHAT_H}px, 100cqh - 6rem)`
 
 /**
  * チャットの枠。full は画面の中央に大きく、window は右下の窓（左上の角の取っ手で大きさを変える。Escape でたたむ）。
@@ -129,8 +130,8 @@ function ChatFrame({ place, covered, children }: { place: ChatPlace; covered: bo
   const win = place === "window"
   const hidden = win && collapsed
   const moved = `${place}:${hidden}`
-  const width = `min(${size?.w ?? CHAT_W}px, 100cqw - 2rem)`
-  const height = `min(${windowHeight(size)}, 100cqh - 6rem)`
+  const width = chatWidth(size)
+  const height = chatHeight(size)
   return (
     <m.div
       layout
@@ -184,19 +185,24 @@ const RESIZE_STEP = 20
  * 引いている間はストアの大きさだけを変え（窓と作業の画面の枠だけが描き直す）、離したときに端末に覚える
  */
 function ResizeHandle() {
-  const actions = useCaseActions()
-  const drag = useRef<{ x: number; y: number; w: number; h: number; last: ChatSize } | null>(null)
-  /** 今の窓の大きさと、変えられる範囲（並べ方の欄から） */
+  const { actions, store } = useCaseSession()
+  /** 引き始めたときのストアの大きさ（読むのは押したときだけ。描画のたびには読まない） */
+  const storeSize = () => store.getState().ui.chat.size
+  /** 引き始め（start は始めのストアの大きさ。中断したら戻す）。moved は実際に引いたか（押しただけでは覚えない） */
+  const drag = useRef<{ x: number; y: number; w: number; h: number; start: ChatSize | null; last: ChatSize; moved: boolean } | null>(null)
+  /**
+   * 今の窓の大きさと、変えられる範囲（並べ方の欄から）。offsetWidth・offsetHeight で測る（開く・移る動きの途中は transform の scale が掛かっていて、
+   * getBoundingClientRect は縮んだ大きさを返す）
+   */
   const measure = (el: HTMLElement) => {
     const frame = el.closest<HTMLElement>("#chat-window")!
-    const r = frame.getBoundingClientRect()
-    const area = frame.parentElement!.getBoundingClientRect()
+    const area = frame.parentElement!
     // 窓は右から 1rem・下から 5rem。左と上に 1rem 残す
     const clamp = (s: ChatSize): ChatSize => ({
-      w: Math.round(Math.max(MIN_W, Math.min(area.width - 32, s.w))),
-      h: Math.round(Math.max(MIN_H, Math.min(area.height - 96, s.h))),
+      w: Math.round(Math.max(MIN_W, Math.min(area.offsetWidth - 32, s.w))),
+      h: Math.round(Math.max(MIN_H, Math.min(area.offsetHeight - 96, s.h))),
     })
-    return { w: r.width, h: r.height, clamp }
+    return { w: frame.offsetWidth, h: frame.offsetHeight, clamp }
   }
   return (
     <button
@@ -207,23 +213,28 @@ function ResizeHandle() {
       onPointerDown={(e) => {
         if (e.button !== 0) return
         const { w, h } = measure(e.currentTarget)
-        drag.current = { x: e.clientX, y: e.clientY, w, h, last: { w, h } }
+        drag.current = { x: e.clientX, y: e.clientY, w, h, start: storeSize(), last: { w, h }, moved: false }
         e.currentTarget.setPointerCapture(e.pointerId)
         e.preventDefault()
       }}
       onPointerMove={(e) => {
         const d = drag.current
-        if (!d) return
+        if (!d || (e.clientX === d.x && e.clientY === d.y)) return
+        d.moved = true
         d.last = measure(e.currentTarget).clamp({ w: d.w - (e.clientX - d.x), h: d.h - (e.clientY - d.y) })
         actions.resizeChat(d.last, false)
       }}
       onPointerUp={() => {
         const d = drag.current
         drag.current = null
-        if (d) actions.resizeChat(d.last, true)
+        // 押しただけ（引いていない）なら覚えない（決まりの大きさのまま、画面の高さに合わせ続ける）
+        if (d?.moved) actions.resizeChat(d.last, true)
       }}
       onPointerCancel={() => {
+        // 中断（OS・ブラウザが引くのを取り上げた）は職員が決めた大きさではないので、始めの大きさに戻す（覚えた値も変えない）
+        const d = drag.current
         drag.current = null
+        if (d?.moved) actions.resizeChat(d.start, false)
       }}
       onDoubleClick={() => actions.resizeChat(null, true)}
       onKeyDown={(e) => {
