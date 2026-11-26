@@ -16,8 +16,22 @@ export const STATUS: Record<CellStatus, { label: string; cell: string; dot: stri
 /** AI が値を補った（例: 都道府県の補完）セルは、AI の変換でも要確認として黄色で目立たせる */
 const needsReview = (c: CellResult) => c.status === "warning" || (c.status === "ai" && !!c.message)
 
+/** セルの色の種類（AI が補ったセルは要確認の黄色）。表のセルの色と凡例で同じ決まり */
+export const cellTone = (c: CellResult): CellStatus => (needsReview(c) ? "warning" : c.status)
+
 export function cellClass(c: CellResult) {
-  return needsReview(c) ? STATUS.warning.cell : STATUS[c.status].cell
+  return STATUS[cellTone(c)].cell
+}
+
+/**
+ * 表の色の凡例に出す種類（色なしの「そのまま」は出さない）と、意味が1語で足りないものの説明（cellTone と同じ決まりで書く）。
+ * 黄色は検査の警告と、AI が補った値（手書き・画像から読んだ値を含む。注意書きのある AI の値）。
+ * 注意書きの無い AI の推定（guessed）は紫のまま（行の理由に「AI の推定」と出る）
+ */
+export const LEGEND_TONES = ["changed", "ai", "warning", "error"] as const satisfies readonly CellStatus[]
+export const LEGEND_TIPS: Partial<Record<CellStatus, string>> = {
+  ai: "AI が変換・推定した値",
+  warning: "検査の警告と、AI が補った値（手書き・画像から読んだ値を含む）。値を確かめてください",
 }
 
 /** 表の絞り込み。直す（CSV に載せる行のうち、職員が直すセルがある行）か、すべて（載せない行も） */
