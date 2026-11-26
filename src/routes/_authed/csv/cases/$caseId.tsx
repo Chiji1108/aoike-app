@@ -42,7 +42,7 @@ import { fetchCaseFile, uploadCaseFile } from "@/lib/cases/files-client"
 import { fromSaved, MAX_REJECTED_EXCEL, newWork, type CaseWork, type SavedPlan } from "@/lib/cases/state"
 import { setTax, withPlanTax } from "@/lib/cases/tax"
 import { ATTACH_ACCEPT, CASE_STATUSES, CASE_STATUS_LABELS, contentTypeOf, FILE_KIND_LABELS, fileUrl, isSheetFile, onlyNonSheetSources, type CaseFile, type CaseStatus, type FileKind } from "@/lib/cases/types"
-import { canUndo, pushUndo, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
+import { canUndo, pushUndo, RANGE_UNDO, SELECTION_UNDO, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
 import { uploadKind, warnsUnlinked } from "@/lib/cases/upload-kind"
 import { baseRows, editRows, orderAndFinalize, selectRows } from "@/lib/cases/view"
 import { askFacts, askImpact, askPrompt, askWording, needsConfirm } from "@/lib/cases/ask-impact"
@@ -57,7 +57,7 @@ import { convertRows, editKey, editSession, resolveRows, staffEdit, type CellEdi
 import { csvFileName, datedFileName, toCsvBytes } from "@/lib/convert/csv"
 import { compareFormats, describeFormatDiff } from "@/lib/convert/format-diff"
 import { heuristicPlan, planSheets, primarySheet, sheetByNames } from "@/lib/convert/heuristic-plan"
-import { RULE7_TAX_LABELS, SELECTION_LABELS, SELECTION_MODES, summarizeKoji, TAX_LABELS, type Inclusion, type Rule7Tax, type TaxMode } from "@/lib/convert/koji-selection"
+import { ALL_HINT_MANUAL, manualIncludedCount, RULE7_TAX_LABELS, SELECTION_LABELS, SELECTION_MODES, summarizeKoji, TAX_LABELS, type Inclusion, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
 import { personLetters } from "@/lib/convert/persons"
 import { addressInputs, fillAiCache, type AiCache, type AiCaller } from "@/lib/convert/pipeline"
 import { acceptAiPlan, hasExclusion, reviewPlanTransforms, type MappingPlan, type PlanAsk, type PlanAskKind, type SheetGrid, type ValueFilter } from "@/lib/convert/plan"
@@ -861,6 +861,38 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
     toast.success(`${shortLabel(field)}を確かめた値にしました`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, `「${CONFIRM_LABEL}」`) } } : undefined)
   }
   const lastConfirmUndo = [...work.undo].reverse().find((e) => e.proposalId.startsWith(CONFIRM_UNDO) && canUndo(e)) ?? null
+
+  /**
+   * 載せる工事の選び方を変える（7割と金額のタブの「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。
+   * 取り消しの記録に残し、通知の「取り消す」で戻せる（承認の取り消しと同じ記録）
+   */
+  function changeSelection(mode: SelectionMode) {
+    if (workRef.current.selection === mode) return
+    const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
+    const pushed = commitWithUndo(id, (w) => withUndo(w, { ...w, selection: mode }, id, []))
+    toast.success(`載せる工事を${SELECTION_LABELS[mode]}にしました`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "載せる工事の切り替え") } } : undefined)
+  }
+  /** 表の Shift＋クリックで範囲をまとめて入れ外しする（1回の操作を1つの取り消しの記録に） */
+  function toggleRange(keys: readonly string[], included: boolean, skippedExcluded: number) {
+    const skipped = skippedExcluded ? `（除外の ${skippedExcluded} 行は入れていません）` : ""
+    if (!keys.length) {
+      toast.info(`範囲の行はもう${included ? "載せています" : "外しています"}${skipped}`)
+      return
+    }
+    const id = `${RANGE_UNDO}${crypto.randomUUID()}`
+    const pushed = commitWithUndo(id, (w) => {
+      const manual = new Map(w.manual)
+      for (const k of keys) manual.set(k, included)
+      return withUndo(w, { ...w, manual }, id, [])
+    })
+    toast.success(`${keys.length} 行を${included ? "載せました" : "外しました"}${skipped}`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "まとめての入れ外し") } } : undefined)
+  }
+  /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
+  const manualIncluded = useMemo(() => manualIncludedCount(inclusion), [inclusion])
+  const allHint =
+    selectionMode === "rule7" && !work.allHintClosed && manualIncluded >= ALL_HINT_MANUAL
+      ? { count: manualIncluded, onAll: () => changeSelection("all"), onClose: () => set("allHintClosed", true) }
+      : null
 
   /** 変換の元の表が無く（PDF だけ）、AI に一から表を作らせる案件か */
   const noSheetSource = !work.sourceFileId && onlyNonSheetSources(files)
@@ -1697,6 +1729,10 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
               openEditor={(cell) => editSession(cell, letters)}
               onEdit={edit}
               onToggle={(key, included) => update("manual", (prev) => new Map(prev).set(key, included))}
+              onToggleRange={toggleRange}
+              selection={selectionMode}
+              onSelection={changeSelection}
+              allHint={allHint}
               filter={tableFilter}
               onFilterChange={setFilter}
               fixes={rowFixes}
@@ -1726,7 +1762,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
               rule7Tax={rule7Tax}
               onRule7Tax={(t) => set("rule7Tax", t)}
               selection={selectionMode}
-              onSelection={(m) => set("selection", m)}
+              onSelection={changeSelection}
               manualCount={manual.size}
               onClearManual={() => set("manual", new Map())}
               roundingTotals={roundingTotals}
