@@ -5,15 +5,14 @@ import { finalXlsx } from "@/lib/excel/final-xlsx"
 import { readWorkbook } from "@/lib/convert/workbook"
 import { applyChanges } from "@/lib/chat/proposals"
 import type { SaveRequest, SaveResponse } from "@/lib/cases/autosave"
-import type { CaseFile } from "@/lib/cases/types"
 import { decisionOf, newProposal, type ChatChange } from "@/lib/chat/proposals"
 import { fixture } from "@/lib/convert/__tests__/helpers"
 import type { MappingPlan } from "@/lib/convert/plan"
 import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { receiveProposal } from "../actions/proposals"
+import { fakeDeps, FILES, NO_AI, page } from "./helpers"
 import { setRuntime, setWork } from "../create-case-store"
 import type { CaseDeps } from "../deps"
-import type { SessionPage } from "../env"
 import { createCaseSession } from "../session"
 import { savesSettled, type PeerChannel } from "../sync"
 
@@ -29,43 +28,6 @@ function deferred<T>() {
 }
 /** 待っている処理（microtask・タイマー）を進める */
 const settle = () => new Promise((r) => setTimeout(r, 0))
-
-const file = (id: string): CaseFile => ({ id, caseId: "c", kind: "source", name: "sample-messy.xlsx", contentType: "application/octet-stream", size: 1, createdAt: 0 })
-const FILES = [file("f1"), file("f2")]
-const NO_AI = { ok: false as const, reason: "error" as const, message: "偽の AI は使えません", usd: 0 }
-
-function page(): SessionPage {
-  return {
-    kase: { id: "c", status: "converting", costUsd: 0 },
-    files: FILES,
-    state: null,
-    proposals: [],
-    unreadableProposals: [],
-    closedMissing: 0,
-    settings: { rule7Tax: "excluded" },
-    chatEnabled: true,
-    excelKey: "1".repeat(64),
-    previousUnsaved: false,
-    previous: null,
-  }
-}
-
-/** 偽の外の処理（ファイルはどれも合成のサンプル。AI は使えない。住所は空の結果） */
-function fakeDeps(over: Partial<CaseDeps> = {}): CaseDeps {
-  return {
-    saveState: async (req) => ({ ok: true, version: req.version + 1 }),
-    planWithAi: async () => NO_AI,
-    runAiBatch: async () => NO_AI,
-    recordProposal: async () => undefined,
-    approveRule: async () => undefined,
-    approveLocations: async () => undefined,
-    updateStatus: async () => undefined,
-    uploadFile: async (kind, _f, name) => ({ ...file(crypto.randomUUID()), kind, name }),
-    fetchFile: async () => fixture("sample-messy.xlsx"),
-    lookupAddresses: async () => new Map(),
-    ...over,
-  }
-}
 
 const noChannel = () => null
 const KOJI_FIELDS = KOJI_KEIREKI.fields.map((f) => f.id)

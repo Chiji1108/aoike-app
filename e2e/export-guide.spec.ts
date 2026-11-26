@@ -200,7 +200,8 @@ test("ダウンロードの前の確認の中でも、載せる件数が大き�
 
   // Escape は上の確かめだけを閉じる
   await ask(page, "plan-ask-0").locator('[data-value="exclude"]').click()
-  await expect(confirm).toBeVisible()
+  // 確かめにフォーカスが移ってから押す（開いた直後の数 ms はまだ下の確認にフォーカスがあり、Escape は下の確認に届く）
+  await expect(confirm.getByTestId("ask-confirm-cancel")).toBeFocused()
   await page.keyboard.press("Escape")
   await expect(confirm).toBeHidden()
   await expect(dialog).toBeVisible()

@@ -1,5 +1,7 @@
 import { createStore } from "zustand"
 import type { UploadNote } from "@/components/cases/case-report"
+import type { WorkTab } from "@/components/cases/work-tabs"
+import type { TableFilter } from "@/components/convert/status"
 import type { FinalImport } from "@/components/convert/final-import-panel"
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
@@ -19,6 +21,18 @@ export type Source = { fileId: string; name: string; bytes: Uint8Array; sheets: 
  * saved は別のタブがこの案件を保存した（この画面の作業は古い。変えても保存はぶつかる）
  */
 export type PeerState = "none" | "open" | "saved"
+
+/** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
+export type AskConfirm = { id: string; option: string; title: string; lines: string[] }
+
+/** チャットの欄の中の移り先（target の要素、無ければ最初の答えを待つもの）と、その中でフォーカスを合わせるボタン */
+export type ChatTarget = { target: string; button?: string }
+
+/**
+ * DOM への頼み（ストアは DOM を触らない。workspace/focus-effects.tsx が描いたあとに動かす）:
+ * chat はチャットの欄の target へ移ってボタンに合わせる、gyoshuRow は業種の一覧のその行へ移って選ぶ欄に合わせる
+ */
+export type FocusRequest = ({ kind: "chat" } & ChatTarget) | { kind: "gyoshuRow"; key: string }
 
 /**
  * 案件の画面のストア（案件ごとに1つ。CaseWorkspace が作り、context で渡す）。
@@ -77,9 +91,37 @@ export type CaseState = {
     finalResult: FinalImport | null
     /**
      * チャットの案内: answer は色付きの欄の外の記入・読めなかった記入のある返ってきた Excel（ファイルごとに AI に読ませるかを出す）、
-     * review は案件を「完了」にしたので振り返りを出せると案内するか（完了から戻すか、送ったら消す）
+     * review は案件を「完了」にしたので振り返りを出せると案内するか（完了から戻すか、送ったら消す）、
+     * inquiry は問い合わせのメールの下書きの案内（hidden はまだ、shown は作業の画面で問い合わせのタブを見たので出す、sent は送ったのでこの画面ではもう出さない）
      */
-    hints: { answer: { fileId: string; name: string }[]; review: boolean }
+    hints: { answer: { fileId: string; name: string }[]; review: boolean; inquiry: "hidden" | "shown" | "sent" }
+  }
+  /**
+   * 画面の状態（保存しない。変えるのは actions/ui.ts などの action だけ）。作業の画面・チャットをどう並べるかは、ここから layoutOf（lib/cases/layout.ts）で決める
+   */
+  ui: {
+    /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
+    wide: boolean
+    /** 作業の画面のタブ */
+    tab: WorkTab
+    /**
+     * 職員が作業の画面を開いた（true）・閉じた（false）か。決めるまで（null）は、表があれば広い画面では開き、狭い画面では閉じておく
+     * （狭い画面で開くとチャットを覆うので、チャットの「表を開く」で開く）
+     */
+    workChoice: boolean | null
+    /** 表の絞り込み（職員が選んだもの。null は選んでいない） */
+    filter: TableFilter | null
+    /**
+     * ダイアログ: export はダウンロードの前の確認（returnTo は閉じたあとにフォーカスを合わせるチャットの欄の移り先。開くたびに外す）、
+     * delete は案件の削除、pendingSource は「変換の元にしますか」の対象、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
+     */
+    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; pendingSource: CaseFile | null; askConfirm: AskConfirm | null }
+    /** ファイルをドラッグしている */
+    dragging: boolean
+    /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
+    focus: FocusRequest | null
+    /** チャットに指示を送れるか（チャットの欄が知らせる。ダウンロードの前の確認の「AI に聞く」） */
+    chatCanSend: boolean
   }
   /** 保存の状態と、同じブラウザの別のタブ */
   sync: { status: SaveStatus; peer: PeerState }
@@ -94,6 +136,11 @@ export function createCaseStore(init: CaseState) {
 /** 作業を変える（next はその時点の作業から作る） */
 export function setWork(store: CaseStore, next: (w: CaseWork) => CaseWork) {
   store.setState((s) => ({ work: next(s.work) }))
+}
+
+/** 画面の状態を変える（next はその時点の画面の状態から、変える項目だけを作る） */
+export function setUi(store: CaseStore, next: (u: CaseState["ui"]) => Partial<CaseState["ui"]>) {
+  store.setState((s) => ({ ui: { ...s.ui, ...next(s.ui) } }))
 }
 
 /** 保存しない状態を変える（next はその時点の状態から、変える項目だけを作る） */
@@ -152,7 +199,17 @@ export function initialCaseState(page: {
       busy: { rule: false },
       notes: [],
       finalResult: null,
-      hints: { answer: [], review: false },
+      hints: { answer: [], review: false, inquiry: "hidden" },
+    },
+    ui: {
+      wide: false,
+      tab: "table",
+      workChoice: null,
+      filter: null,
+      dialogs: { export: { open: false, returnTo: null }, delete: false, pendingSource: null, askConfirm: null },
+      dragging: false,
+      focus: null,
+      chatCanSend: false,
     },
     sync: { status: { kind: "saved" }, peer: "none" },
   }

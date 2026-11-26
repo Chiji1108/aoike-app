@@ -17,7 +17,7 @@ const NO_INCLUSION: ReadonlyMap<string, Inclusion> = new Map()
 const NO_ROWS: RowResult<KojiFieldId>[] = []
 
 /** 入力（引数）が前と同じ参照なら前の結果を返す（今の useMemo と同じ。1つだけ覚える） */
-function memoLast<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+export function memoLast<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
   let last: { args: A; out: R } | null = null
   return (...args) => {
     if (last && last.args.length === args.length && last.args.every((a, i) => Object.is(a, args[i]))) return last.out

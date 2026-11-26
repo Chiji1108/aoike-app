@@ -1,7 +1,9 @@
 import { toast } from "sonner"
 import type { UploadNote } from "@/components/cases/case-report"
 import type { CaseWork } from "@/lib/cases/state"
-import type { FileKind } from "@/lib/cases/types"
+import { isSheetFile, type CaseFile, type FileKind } from "@/lib/cases/types"
+import { uploadKind, warnsUnlinked } from "@/lib/cases/upload-kind"
+import { viewKindOf } from "@/lib/chat/view-kind"
 import { baseRows } from "@/lib/cases/view"
 import { decisionOf, discard, newProposal, type ChatChange } from "@/lib/chat/proposals"
 import type { AddressBook } from "@/lib/convert/address"
@@ -14,10 +16,10 @@ import { errorMessage } from "@/lib/errors"
 import { mergeAnswers, outsideCells, readAnswers, type AnswerReport } from "@/lib/inquiry/inquiry"
 import { readMarked } from "@/lib/inquiry/marked"
 import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
-import { setRuntime, setWork } from "../create-case-store"
+import { setRuntime, setUi, setWork } from "../create-case-store"
 import type { CaseEnv } from "../env"
 import { receiveProposal } from "./proposals"
-import { ensureAddresses, mergeAiCache, serverAi } from "./source"
+import { ensureAddresses, mergeAiCache, openSource, serverAi } from "./source"
 
 const SPEC = KOJI_KEIREKI
 
@@ -232,4 +234,79 @@ export async function importAnswers(env: CaseEnv, f: File, kind: "marked" | "ans
   } catch (e) {
     fail(errorMessage(e, "回答のファイルを読み込めませんでした"))
   }
+}
+
+/** 変換の元に読み込めるか（PDF などは保存と一覧だけ） */
+const isPdf = (name: string) => /\.pdf$/i.test(name)
+
+/** 「変換の元にしますか」を聞く（今の変換の結果と手直しが消えるので） */
+const askSource = (env: CaseEnv, file: CaseFile) => setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, pendingSource: file } }))
+
+/**
+ * 届いたファイルを付ける（チャットの📎でアップロードしたファイル、画面にドラッグしたファイル）。種類は決まった印で見分ける（lib/cases/upload-kind.ts）:
+ * この画面でダウンロードした最後の Excel は差分を変更案に、印付きの Excel・記入用Excel は顧客の回答の変更案にし、ほかの表は届いたファイルとして保存する。
+ * 変換の元がまだ無ければ最初の表を変換の元にし、もう元があれば変換の元にするか聞く。照合用のシートの無い最後の Excel の形の表は、
+ * 変換の元があれば直した Excel と取り違えないよう、表に戻せないと伝えて聞く（前の編集用の Excel も同じ。lib/cases/upload-kind.ts の warnsUnlinked）
+ */
+export async function attach(env: CaseEnv, list: readonly File[]) {
+  const { store } = env
+  let hasSource = !!store.getState().work.sourceFileId
+  for (const f of list) {
+    let sheets: SheetGrid[] | null = null
+    if (isSheetFile(f.name)) {
+      try {
+        const { readWorkbook } = await import("@/lib/convert/workbook")
+        sheets = readWorkbook(f.name, new Uint8Array(await f.arrayBuffer()))
+      } catch (e) {
+        const text = errorMessage(e, "読めませんでした")
+        toast.error(`${f.name}: ${text}`)
+        note(env, { name: f.name, text, tone: "error" })
+        continue
+      }
+    }
+    const kind = uploadKind(sheets)
+    if (kind === "final" && sheets) {
+      await importFinal(env, f, sheets)
+      continue
+    }
+    if (kind === "answer" || kind === "marked") {
+      setUi(store, () => ({ tab: "inquiry" }))
+      await importAnswers(env, f, kind)
+      continue
+    }
+    const saved = await keepFile(env, "source", f, f.name)
+    if (!saved) continue
+    if (isPdf(saved.name) || !isSheetFile(saved.name)) {
+      // HEIC（iPhone の写真）は Claude が見られない（lib/chat/view-file.ts）。保存はして、JPEG で付け直すよう知らせる
+      if (viewKindOf(saved.name)?.kind === "heic") note(env, { name: f.name, text: "届いたファイルとして保存しました。HEIC の写真はチャットの AI が見られないので、JPEG で保存し直して付けてください", tone: "error" })
+      else note(env, { name: f.name, text: "届いたファイルとして保存しました（チャットの AI は読めます）" })
+      continue
+    }
+    if (warnsUnlinked(kind, hasSource)) {
+      note(env, { name: f.name, text: "ダウンロードした Excel の形ですが照合用のシートが無いので、直した Excel としては表に戻せません。変換の元にするかを選んでください" })
+      hasSource = true
+      askSource(env, saved)
+      continue
+    }
+    if (!hasSource) {
+      hasSource = true
+      // PDF から足した行があれば、変換の元にすると消えるので確かめる
+      if (store.getState().work.added.length) askSource(env, saved)
+      else await openSource(env, saved, true)
+    } else askSource(env, saved)
+  }
+}
+
+/** 一覧のファイルを変換の元にする（変換した・手直しした・足した行があれば、消えるので聞く） */
+export function chooseSource(env: CaseEnv, file: CaseFile) {
+  const w = env.store.getState().work
+  if (w.converted || w.edits.size || w.added.length) askSource(env, file)
+  else void openSource(env, file, true)
+}
+
+/** 「変換の元にしますか」に答える（yes なら変換の元にする。いいえは付けるだけ） */
+export function confirmSource(env: CaseEnv, yes: boolean) {
+  const pending = env.store.getState().ui.dialogs.pendingSource
+  if (yes && pending) void openSource(env, pending, true)
+  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, pendingSource: null } }))
 }
