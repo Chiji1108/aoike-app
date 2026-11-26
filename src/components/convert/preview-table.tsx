@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CellEdit, CellResult, EditSession, RowResult } from "@/lib/convert/convert"
-import { INCLUSION_LABELS, type Inclusion } from "@/lib/convert/koji-selection"
+import { INCLUSION_LABELS, rangeToggle, SELECTION_LABELS, type Inclusion, type SelectionMode } from "@/lib/convert/koji-selection"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import type { CsvSpec } from "@/lib/spec/types"
 import { cn } from "@/lib/utils"
@@ -140,6 +140,10 @@ export function PreviewTable({
   openEditor,
   onEdit,
   onToggle,
+  onToggleRange,
+  selection,
+  onSelection,
+  allHint,
   filter,
   onFilterChange,
   fixes,
@@ -158,6 +162,13 @@ export function PreviewTable({
   /** 手直し（主任技術者・監理技術者の欄は2列を一緒に決める） */
   onEdit: (rowKey: string, edits: readonly [KojiFieldId, CellEdit][]) => void
   onToggle: (rowKey: string, included: boolean) => void
+  /** Shift＋クリックの範囲の入れ外し（1回の操作。keys は手動にする行、skippedExcluded は載せる向きで入れなかった除外の行の数） */
+  onToggleRange: (keys: readonly string[], included: boolean, skippedExcluded: number) => void
+  /** 載せる工事の選び方（見出しのチェック。7割と金額のタブの「載せる工事」と同じ設定） */
+  selection: SelectionMode
+  onSelection: (m: SelectionMode) => void
+  /** 7割ルールのまま手で載せた行が多いときの「全件にしますか？」（出さないときは null） */
+  allHint: { count: number; onAll: () => void; onClose: () => void } | null
   /** 絞り込み（案件の画面が持つ。次にやること・報告の聞き返しの「表で見る」を押しても変わる） */
   filter: TableFilter
   onFilterChange: (f: TableFilter) => void
@@ -266,6 +277,30 @@ export function PreviewTable({
     if (restoreFocus) requestAnimationFrame(() => scrollRef.current?.querySelector<HTMLElement>(`tr[data-row-key="${CSS.escape(row)}"] td[data-field="${field}"] button`)?.focus())
   }
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  /**
+   * Shift＋クリックの範囲の起点: 前に「載せる」を押した行と、そのとき見えていた行の並び。並びを覚えるのは、「直す」の絞り込みなどで
+   * 押した行が入れ外しで表から消えても、続けて Shift＋クリックした範囲がその行から始まるように
+   */
+  const [rangeAnchor, setRangeAnchor] = useState<{ key: string; included: boolean; order: readonly string[] } | null>(null)
+  // 絞り込み・検索・並べ替え・選び方が変わったら起点を捨てる（思わぬ広い範囲にしない。描くときに1か所で）
+  const anchorView = `${filterKey(filter)}|${needle}|${JSON.stringify(sorting)}|${selection}`
+  const [anchorViewSeen, setAnchorViewSeen] = useState(anchorView)
+  if (anchorViewSeen !== anchorView) {
+    setAnchorViewSeen(anchorView)
+    setRangeAnchor(null)
+  }
+  /**
+   * 行の「載せる」を押した。Shift を押しながらなら、前に押した行から今の行まで（前に押したときに見えていた行）を今の向きにそろえる
+   * （キーボードの Shift＋Space も同じ。Base UI は押したときのキーの状態を event に載せる）。
+   * 起点の行が押したときの向きでなくなっていれば（取り消しで戻ったなど）起点にしない
+   */
+  function toggleRow(key: string, included: boolean, event: Event) {
+    const from = rangeAnchor && rangeAnchor.key !== key && inclusion.get(rangeAnchor.key)?.included === rangeAnchor.included ? rangeAnchor : null
+    const range = from && "shiftKey" in event && event.shiftKey ? rangeToggle(from.order, from.key, key, included, inclusion) : null
+    setRangeAnchor({ key, included, order: range ? from!.order : shown.map((r) => r.key) })
+    if (range) onToggleRange(range.keys, included, range.skippedExcluded)
+    else onToggle(key, included)
+  }
   /** 項目ごとの定義と選ぶ欄（描くたびに作らない） */
   const fieldInfo = useMemo(() => new Map(spec.fields.map((f) => [f.id, { spec: f, choices: choicesOf(f) }])), [spec])
 
@@ -286,8 +321,8 @@ export function PreviewTable({
       const inc = inclusion.get(r.key)
       return (
         <TableCell key={columnId} className="sticky left-0 z-10 border-b bg-card px-2 py-1.5">
-          <label className="flex items-center gap-1.5 whitespace-nowrap" title={r.excluded}>
-            <Checkbox aria-label="CSVに載せる" checked={inc?.included ?? false} onCheckedChange={(checked) => onToggle(r.key, checked)} />
+          <label className="flex items-center gap-1.5 whitespace-nowrap" title={r.excluded ?? "Shift を押しながら押すと、前に押した行からここまでをまとめて入れ外しします"}>
+            <Checkbox aria-label="CSVに載せる" checked={inc?.included ?? false} onCheckedChange={(checked, details) => toggleRow(r.key, checked, details.event)} />
             <span className="text-[11px] text-muted-foreground">{inc ? INCLUSION_LABELS[inc.reason] : ""}</span>
           </label>
           {inc?.included && <RowReasons fix={fixes.get(r.key) ?? NO_FIX} onOpenInquiry={onOpenInquiry} onFixAction={(a) => onFixAction(a, [r.key])} onConfirm={(f) => onConfirm(r.key, f)} />}
@@ -345,6 +380,9 @@ export function PreviewTable({
       </TableCell>
     )
   }
+
+  /** 載せない行の数（全件のときは手で外した行と除外の行。見出しに添える） */
+  const offCount = useMemo(() => [...inclusion.values()].filter((i) => !i.included).length, [inclusion])
 
   const tableWidth = visibleColumns.reduce((s, c) => s + WIDTH[c.id as keyof typeof WIDTH], 0)
 
@@ -454,6 +492,22 @@ export function PreviewTable({
         </div>
       )}
 
+      {allHint && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-950" role="status" data-testid="all-hint">
+          <span className="min-w-0">
+            手で載せた行が <span className="num">{allHint.count}</span> 行あります。全件にしますか？（7割の判定はそのまま確かめられます）
+          </span>
+          <span className="ml-auto flex items-center gap-1">
+            <Button size="xs" variant="outline" className="bg-background" onClick={allHint.onAll} data-testid="all-hint-apply">
+              全件にする
+            </Button>
+            <Button size="icon-xs" variant="ghost" aria-label="この案内を閉じる" title="この案件では出しません" onClick={allHint.onClose} data-testid="all-hint-close">
+              <X />
+            </Button>
+          </span>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <CellNote spec={spec} store={store.current!} byKey={byKey} />
         <ColorLegend rows={rows} />
@@ -485,7 +539,9 @@ export function PreviewTable({
                         h.column.id === "include" && "sticky left-0 z-30",
                       )}
                     >
-                      {h.column.getCanSort() ? (
+                      {h.column.id === "include" ? (
+                        <IncludeHeader selection={selection} onSelection={onSelection} off={offCount} />
+                      ) : h.column.getCanSort() ? (
                         <Tooltip>
                           <TooltipTrigger
                             render={<button type="button" className="inline-flex items-end gap-1 text-left font-medium hover:text-foreground" onClick={h.column.getToggleSortingHandler()} />}
@@ -536,6 +592,35 @@ export function PreviewTable({
         </table>
       </div>
     </div>
+  )
+}
+
+/**
+ * 「載せる」の見出しのチェック。行がみな付いているかではなく、載せる工事の選び方（7割と金額のタブの「載せる工事」）を出して切り替える。
+ * 全件＝チェック、7割ルール＝一部（−）。全件でも手で外した行・除外の行は載せないが、見出しはチェックのまま「外す N」を添える
+ * （一部の印を使うと7割ルールと見分けられず、押して何が起きるかが分からなくなる）
+ */
+function IncludeHeader({ selection, onSelection, off }: { selection: SelectionMode; onSelection: (m: SelectionMode) => void; off: number }) {
+  const all = selection === "all"
+  const title = all
+    ? `今は全件。押すと7割ルールで選び直します（手で入れ外しした行はそのまま）${off ? `。手で外した行・除外の行 ${off} 行は今も載せていません` : ""}`
+    : "今は7割ルール。押すと全件を載せます（7割と金額のタブの「全件」と同じ。手で外した行・除外の行は載せません）"
+  return (
+    <label className="flex items-center gap-1.5 font-medium whitespace-nowrap" title={title}>
+      <Checkbox
+        aria-label={all ? "7割ルールに戻す（今は全件を載せる）" : "全件を載せる（今は7割ルール）"}
+        checked={all}
+        indeterminate={!all}
+        onCheckedChange={() => onSelection(all ? "rule7" : "all")}
+        data-testid="include-all"
+        data-selection={selection}
+      />
+      載せる
+      <span className="text-[11px] font-normal">
+        {SELECTION_LABELS[selection]}
+        {all && off > 0 && <span data-testid="include-all-off">・外す {off}</span>}
+      </span>
+    </label>
   )
 }
 
