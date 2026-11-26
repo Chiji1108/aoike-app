@@ -38,11 +38,14 @@ import {
   FIX_ACTIONS,
   FIX_KINDS,
   FIX_LABELS,
+  LEGEND_TIPS,
+  LEGEND_TONES,
   NO_FIX,
   ROW_FILTERS,
   STATUS,
   askText,
   cellClass,
+  cellTone,
   changedCell,
   fixActionGroups,
   fixActionText,
@@ -451,7 +454,10 @@ export function PreviewTable({
         </div>
       )}
 
-      <CellNote spec={spec} store={store.current!} byKey={byKey} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <CellNote spec={spec} store={store.current!} byKey={byKey} />
+        <ColorLegend rows={rows} />
+      </div>
 
       <div ref={scrollRef} className="min-h-0 overflow-auto rounded-xl border bg-card">
         <table
@@ -647,7 +653,7 @@ function CellNote({ spec, store, byKey }: { spec: CsvSpec<KojiFieldId>; store: A
   const cell = row && field ? row.cells[field] : undefined
   const label = field ? spec.fields.find((f) => f.id === field)?.label : undefined
   return (
-    <p id={NOTE_ID} className="flex h-5 min-w-0 items-center gap-1.5 text-xs text-muted-foreground" data-testid="cell-note" data-status={cell?.status}>
+    <p id={NOTE_ID} className="flex h-5 min-w-0 flex-1 basis-64 items-center gap-1.5 text-xs text-muted-foreground" data-testid="cell-note" data-status={cell?.status}>
       {cell ? (
         <>
           <span className={cn("size-2 shrink-0 rounded-full", STATUS[cell.status].dot)} />
@@ -663,6 +669,30 @@ function CellNote({ spec, store, byKey }: { spec: CsvSpec<KojiFieldId>; store: A
         "色のセルを選ぶと、理由をここに出します"
       )}
     </p>
+  )
+}
+
+/**
+ * セルの色の凡例（色は STATUS・cellTone から）。案件の表にある色だけを出す。数えるのは全行（絞り込み・検索・載せない行も）:
+ * 凡例はこの案件の表の色の見方なので、絞り込みや検索のたびに出入りして並びが動かないようにする
+ */
+function ColorLegend({ rows }: { rows: readonly Row[] }) {
+  const tones = useMemo(() => {
+    const found = new Set<string>()
+    for (const r of rows) for (const c of Object.values<CellResult>(r.cells)) found.add(cellTone(c))
+    return LEGEND_TONES.filter((t) => found.has(t))
+  }, [rows])
+  if (!tones.length) return null
+  return (
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="セルの色" data-testid="color-legend">
+      {tones.map((t) => (
+        <li key={t} className="flex items-center gap-1" title={LEGEND_TIPS[t]} data-tone={t}>
+          <span className={cn("h-3 w-4 shrink-0 rounded-[3px] border border-foreground/20", STATUS[t].cell)} aria-hidden />
+          {STATUS[t].label}
+          {LEGEND_TIPS[t] && <span className="sr-only">（{LEGEND_TIPS[t]}）</span>}
+        </li>
+      ))}
+    </ul>
   )
 }
 

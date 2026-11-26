@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, createFileRoute, notFound, useRouter } from "@tanstack/react-router"
-import { Ellipsis, FileText, FileUp, Loader2, PanelRightClose, Paperclip, Trash2, TriangleAlert, X } from "lucide-react"
+import { Ellipsis, FileText, FileUp, Loader2, Maximize2, Minimize2, PanelRightClose, Paperclip, Trash2, TriangleAlert, X } from "lucide-react"
 import { toast } from "sonner"
 import { AppShell, CSV } from "@/components/app-shell"
 import { CaseReport, type ReportChat, type ReportProps, type ReportQuestion, type UploadNote } from "@/components/cases/case-report"
@@ -227,6 +227,34 @@ function useMediaQuery(query: string) {
   return matches
 }
 
+const TABLE_EXPANDED_KEY = "csv-table-expanded"
+
+/**
+ * 表を広げる（広い画面でチャットの列をたたみ、作業の画面を画面いっぱいにする）か。端末ごとに覚える:
+ * 画面の広さと職員の使い方で決まることで、案件の中身ではない（案件に保存すると、ほかの端末・職員の画面まで変わる）。
+ * localStorage が使えなければ覚えない（毎回チャットを出す）
+ */
+function useTableExpanded() {
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => {
+    try {
+      setExpanded(localStorage.getItem(TABLE_EXPANDED_KEY) === "1")
+    } catch {
+      /* 使えない環境では覚えない */
+    }
+  }, [])
+  const change = (next: boolean) => {
+    setExpanded(next)
+    try {
+      if (next) localStorage.setItem(TABLE_EXPANDED_KEY, "1")
+      else localStorage.removeItem(TABLE_EXPANDED_KEY)
+    } catch {
+      /* 使えない環境では覚えない */
+    }
+  }
+  return [expanded, change] as const
+}
+
 /** 変換の元に読み込めるか（PDF などは保存と一覧だけ） */
 const isPdf = (name: string) => /\.pdf$/i.test(name)
 
@@ -286,6 +314,10 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
    * （狭い画面で開くとチャットを覆うので、チャットの「表を開く」で開く）
    */
   const [workChoice, setWorkChoice] = useState<boolean | null>(null)
+  /** 表を広げる（チャットの列をたたむ）。効くのは広い画面で作業の画面を開いているときだけ（chatFolded） */
+  const [tableExpanded, setTableExpanded] = useTableExpanded()
+  /** たたんでいる間にチャットに新しい返事・聞き返し・変更案が来たか（作業の画面の上に印を出す） */
+  const [chatUnread, setChatUnread] = useState(false)
   /** 案件の元（ファイルとシートの計画）の世代。待っている間に元が変わった計画・回答の結果は捨てる */
   const caseGeneration = useRef(0)
   /** 変換の世代。元・計画が変わったら上げ、待っている間の古い変換の結果を捨てる */
@@ -1525,6 +1557,9 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
           update("proposals", (ps) => [...ps.filter((x) => x.id !== proposal.id), proposal])
         }}
         onCaseCost={setCostUsd}
+        onReply={() => {
+          if (chatFolded) setChatUnread(true)
+        }}
         location={locationSearch}
         suggestions={[
           ...(leftInquiries > 0
@@ -1638,6 +1673,7 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
       return showTab("table")
     }
     if (!wide) setWorkChoice(false)
+    setTableExpanded(false)
     // 閉じた作業の画面がフォーカスを戻したあとに、答えを待つものへ移る
     requestAnimationFrame(() => {
       const target = document.querySelector<HTMLElement>('[data-testid="chat-column"] [data-pending]')
@@ -1660,6 +1696,21 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
           )}
           <div className="ml-auto flex min-w-0 items-center gap-1">
             {nextSteps && <NextSteps steps={nextSteps} onGo={goStep} exportDisabled={reconverting} />}
+            {/* 表を広げる（チャットの列をたたむ）のは広い画面だけ。狭い画面の作業の画面はもともと画面いっぱいに重なる */}
+            {wide && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="relative"
+                onClick={() => setTableExpanded(!tableExpanded)}
+                aria-label={tableExpanded ? (chatUnread ? "チャットを出す（新しい返事があります）" : "チャットを出す") : "表を広げる"}
+                title={tableExpanded ? (chatUnread ? "チャットを出す（新しい返事があります）" : "チャットを出す") : "表を広げる（チャットをたたむ）"}
+                data-testid="table-expand"
+              >
+                {tableExpanded ? <Minimize2 /> : <Maximize2 />}
+                {tableExpanded && chatUnread && <span className="absolute top-1 right-1 size-2 rounded-full bg-violet-500 ring-2 ring-background" data-testid="chat-unread" />}
+              </Button>
+            )}
             <Button size="icon-sm" variant="ghost" onClick={() => setWorkChoice(false)} aria-label="作業の画面を閉じる" title="作業の画面を閉じる（チャットの「表を開く」で開き直せます）" data-testid="work-close">
               {wide ? <PanelRightClose /> : <X />}
             </Button>
@@ -1775,6 +1826,27 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
     workFrame.current?.focus()
     return () => before?.focus()
   }, [workOverlay])
+  /**
+   * チャットの列をたたんでいるか（表を広げていて、作業の画面を横に並べているとき）。作業の画面を閉じるとチャットを出す（広げる設定は覚えたまま）。
+   * たたんでもチャットは置いたまま隠すだけにし、返事・変更案は届き続ける
+   */
+  const chatFolded = workInline && tableExpanded
+  // 待っている答え（変更案・聞き返し）が増えたら、たたんでいる間は印を出す。チャットを出したら印を消す
+  const [seenPending, setSeenPending] = useState(chatPending)
+  if (seenPending !== chatPending) {
+    setSeenPending(chatPending)
+    if (chatFolded && chatPending > seenPending) setChatUnread(true)
+  }
+  if (!chatFolded && chatUnread) setChatUnread(false)
+  /**
+   * たたんだとき、チャットの中にあったフォーカスは作業の画面へ（隠した要素にフォーカスを残さない）。
+   * チャットの「表を開く」で開いてたたんだときは、押したボタンが消えてフォーカスが body に落ちているので、それも作業の画面へ
+   */
+  const chatColumn = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const at = document.activeElement
+    if (chatFolded && (at === document.body || chatColumn.current?.contains(at))) workFrame.current?.focus()
+  }, [chatFolded])
   const noChatInput = useRef<HTMLInputElement>(null)
 
   return (
@@ -1801,7 +1873,13 @@ function CaseWorkspace({ kase, customer, files: initialFiles, state, chatEnabled
         </div>
 
         <div className="flex min-h-0 flex-1">
-          <div className={cn("min-h-0 min-w-0", workInline ? "w-[400px] shrink-0 border-r 2xl:w-[440px]" : "mx-auto w-full max-w-3xl xl:border-x")} inert={workOverlay} data-testid="chat-column">
+          <div
+            ref={chatColumn}
+            hidden={chatFolded}
+            className={cn("min-h-0 min-w-0", workInline ? "w-[400px] shrink-0 border-r 2xl:w-[440px]" : "mx-auto w-full max-w-3xl xl:border-x")}
+            inert={workOverlay}
+            data-testid="chat-column"
+          >
             {chatPanel ?? (
               // チャットが使えない（APIキーが無い）ときは、報告と📎と同じアップロードの入口をチャットの代わりに出す
               <div className="grid h-full content-start gap-3 overflow-auto p-4">
