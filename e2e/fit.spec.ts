@@ -1,5 +1,7 @@
 import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
+import { sealExpiryOf } from "../src/lib/fit/alerts"
+import { addMonths, daysBetween } from "../src/lib/period"
 import { open } from "./helpers"
 
 /** 申込を受け付け、案件の画面に移るまで待つ。共通ID・氏名は毎回違うもの（前の実行がローカルの D1 に残っていても混ざらない） */
@@ -146,10 +148,14 @@ test("FIT: トップに期限が近いもの（印鑑証明）と住所確定待
   const stamp = Date.now()
   const name = `見本 次郎${stamp}`
   await receive(page, { commonId: `CP${stamp}`, name, receivedOn: shifted({}) })
-  // 印鑑証明は発行から3か月：期限まであと5日になるよう、3か月と5日前の発行にする
+  // 印鑑証明は発行から3か月（応当日が無い月は月末）：5日後の3か月前の発行にする。月末に寄せると期限が1〜2日早まるので、
+  // 出す日数は画面と同じ計算（sealExpiryOf）で出す（どの日に流しても注意の14日の内）
+  const issued = addMonths(shifted({ days: 5 }), -3)
+  const left = daysBetween(shifted({}), sealExpiryOf(issued))
+  expect(left).toBeGreaterThanOrEqual(2)
   await editProcedure(page, async (p) => {
     await p.getByTestId("proc-kind").selectOption("post_change")
-    await p.getByTestId("proc-seal").fill(shifted({ months: -3, days: 5 }))
+    await p.getByTestId("proc-seal").fill(issued)
   })
   const number = (await page.getByTestId("fit-procedure-number").textContent())!
 
@@ -157,7 +163,7 @@ test("FIT: トップに期限が近いもの（印鑑証明）と住所確定待
   const alert = page.getByTestId("fit-alerts").getByRole("link").filter({ hasText: number })
   await expect(alert.getByTestId("fit-alert")).toHaveAttribute("data-kind", "seal")
   await expect(alert.getByTestId("fit-alert")).toHaveAttribute("data-level", "warn")
-  await expect(alert).toContainText("あと5日")
+  await expect(alert).toContainText(`あと${left}日`)
   // 件数から一覧を開くと、その状況で絞り込まれる
   await page.getByTestId("fit-count-received").click()
   await expect(page).toHaveURL(/\/fit\/procedures\?status=received/)

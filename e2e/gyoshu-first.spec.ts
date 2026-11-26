@@ -159,10 +159,12 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
   await test.step("行の「これでよい」で要確認・AI の推定がそのまま片付き、取り消せる", async () => {
     await openTab(page, "table")
     await page.getByTestId("row-filters-fix").click()
-    const confirm = page.getByTestId("row-confirm").first()
+    // 「これでよい」のある最初の行（「これでよい」のある行は1行とは限らない）
+    const tr = page.locator("tr[data-row-key]").filter({ has: page.getByTestId("row-confirm") }).first()
+    const confirm = tr.getByTestId("row-confirm").first()
     await expect(confirm).toBeVisible()
     const field = (await confirm.getAttribute("data-field"))!
-    const key = (await page.locator("tr[data-row-key]").filter({ has: confirm }).getAttribute("data-row-key"))!
+    const key = (await tr.getAttribute("data-row-key"))!
     const fixOf = page.locator(`tr[data-row-key="${key}"] [data-testid="row-fix"][data-field="${field}"]`)
     await confirm.click()
     await expect(fixOf).toHaveCount(0)
