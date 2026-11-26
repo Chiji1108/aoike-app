@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport, validateUIMessages } from "ai"
 import { z } from "zod"
-import { Brain, Code2, FileSpreadsheet, History, Lightbulb, Loader2, MessageSquare, MessageSquareText, PanelRightOpen, Paperclip, Send, Square, Table2, Trash2 } from "lucide-react"
+import { Brain, Code2, Download, History, Lightbulb, Loader2, MessageSquare, MessageSquareText, PanelRightOpen, Paperclip, Send, Square, Table2, Trash2 } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { Markdown } from "@/components/chat/markdown"
@@ -103,7 +103,7 @@ export type ChatPanelProps = {
   tail?: React.ReactNode
   /** 📎でアップロードしたファイル（種類は案件の画面が見分ける。画面にドラッグしたファイルも案件の画面が受け取る） */
   onFiles: (files: File[]) => void
-  /** 返事のボタン（書き出す前の確認・問い合わせ） */
+  /** 返事のボタン（ダウンロードの前の確認・問い合わせ） */
   onAction: (action: ChatAction) => void
   /**
    * 作業の画面のタブを開く。道具の結果が届いたとき（auto。保存した会話を読んだときは開かない）と、
@@ -120,6 +120,8 @@ export type ChatPanelProps = {
    */
   suggestions: readonly Suggestion[]
   onSuggestionSent: (id: string) => void
+  /** 指示を送れるかが変わったとき（報告の「AI に聞く」と同じ条件。ダウンロードの前の確認の「AI に聞く」に使う） */
+  onCanSendChange?: (canSend: boolean) => void
   /**
    * 送る前に作業を保存し終える（サーバーが保存した作業を読む道具のため。例: 振り返り）。保存できなければ false。
    * 保存の要る案内（needsSaved）は false なら送らない。ほかの指示は保存できなくても送る（表は画面が送る）
@@ -215,6 +217,11 @@ export function ChatPanel(props: ChatPanelProps) {
   /** keepInput なら入力欄の書きかけを残す（決まった指示を送るボタン） */
   /** 送る前の保存を待っている間（続けて押しても二度送らない） */
   const [preparing, setPreparing] = useState(false)
+  const canSend = ready && !working && !preparing
+  const onCanSendChange = props.onCanSendChange
+  useEffect(() => {
+    onCanSendChange?.(canSend)
+  }, [canSend, onCanSendChange])
   async function send(text = input.trim(), options: { carryover?: true; keepInput?: true; needsSaved?: true } = {}) {
     if (!text || working || preparing || !ready) return false
     setPreparing(true)
@@ -300,7 +307,7 @@ export function ChatPanel(props: ChatPanelProps) {
         <MessageScroller className="flex-1">
           <MessageScrollerViewport>
             <MessageScrollerContent className="gap-4 px-4 py-3" data-testid="chat-messages">
-              {props.report({ send: (text) => void send(text, { keepInput: true }), canSend: ready && !working && !preparing })}
+              {props.report({ send: (text) => void send(text, { keepInput: true }), canSend })}
               {carryover && history === "loaded" && !carried && (
                 <div className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-carryover">
                   <span className="text-muted-foreground">
@@ -566,7 +573,7 @@ function ChatMessageView({
 }
 
 const ACTION_BUTTONS = {
-  export: { label: "書き出す前の確認を開く", icon: <FileSpreadsheet /> },
+  export: { label: "ダウンロードの前の確認を開く", icon: <Download /> },
   inquiry_excel: { label: "顧客への問い合わせを開く", icon: <MessageSquareText /> },
 } satisfies Record<ChatAction, { label: string; icon: React.ReactNode }>
 

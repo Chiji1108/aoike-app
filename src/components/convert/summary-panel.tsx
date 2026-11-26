@@ -74,7 +74,7 @@ function BasisInput({ value, label, onChange }: { value: number | undefined; lab
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") commit()
-          // Escape で書き出すの確認が閉じる前に確定する（閉じると欄ごと消え、フォーカスを外したときの確定が走らない）。読めなければ閉じずに知らせる
+          // Escape でダウンロードの前の確認が閉じる前に確定する（閉じると欄ごと消え、フォーカスを外したときの確定が走らない）。読めなければ閉じずに知らせる
           if (e.key === "Escape" && !commit()) {
             e.preventDefault()
             e.stopPropagation()

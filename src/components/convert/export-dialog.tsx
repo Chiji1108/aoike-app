@@ -1,9 +1,10 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { ChevronRight, CircleAlert, CircleCheck, Download, FileSpreadsheet, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BasisSection, fmt, fmtSigned, GyoshuRatioTable } from "@/components/convert/summary-panel"
 import { remainingSteps, type NextStepsData, type StepId } from "@/components/cases/next-steps"
+import { QuestionItem, type ReportQuestion } from "@/components/cases/case-report"
 import { FIX_ACTIONS, fixActionText, type FixActionId } from "@/components/convert/status"
 import { exportCheck, issueLabel, type ExportCheck } from "@/lib/cases/export-check"
 import type { RowResult } from "@/lib/convert/convert"
@@ -13,10 +14,15 @@ import { cn } from "@/lib/utils"
 
 const SIDE = { total: "完成工事高", motouke: "うち元請" } as const
 
+/** ダウンロードの前の確認で答える1つ。go は画面を閉じて移る操作（「AI に聞く」・チャットで承認するなど。無ければ出さない） */
+export type ExportQuestion = { question: ReportQuestion; go: { label: string; disabled?: boolean; run: () => void } | null }
+
 /**
- * 書き出す前の確認（1枚）。載せる件数・7割に届いたか（届かない業種だけ表で出す）・エラーと要確認の残り・Shift_JIS で書けない文字を出し、
+ * ダウンロードの前の確認（1枚）。載せる件数・7割に届いたか（届かない業種だけ表で出す）・エラーと要確認の残り・Shift_JIS で書けない文字を出し、
  * 「決算書の額を入れる」で業種ごとの完成工事高（7割の基準額と同じ値）を入れると表の合計と照らす。合わなくても止めない。
- * 出すのは最後の Excel（職員がこれまで作っていた形。Excel で確かめて「CSV で保存」する。直して上げ直すと表に戻る）。CSV は控え
+ * 出すのは最後の Excel（職員がこれまで作っていた形。Excel で確かめて「CSV で保存」する。直して上げ直すと表に戻る）。CSV は控え。
+ * 答えていない聞き返しはここでも答えられ（変換の報告と同じ部品・同じ答えの処理）、答えると件数・7割・確認の行がその場で変わる。
+ * 金額・7割・載せる行に関わる聞き返し（questions）が残っている間は、ダウンロードのボタンを控えめにして「このままダウンロード」と書く
  */
 export function ExportDialog({
   open,
@@ -31,6 +37,11 @@ export function ExportDialog({
   steps,
   onGo,
   onFixAction,
+  questions,
+  chatAsks,
+  onAnswer,
+  amountsUnsettled,
+  finalFocus,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -41,25 +52,43 @@ export function ExportDialog({
   onBasisChange: (code: string, side: "total" | "motouke", value: number | undefined) => void
   onExcel: () => void
   onCsv: () => void
-  /** 次にやること（書き出す前に残っていることを、作業の画面の上・書き出すのツールチップと同じ言葉で出す。押すとそこへ移る） */
+  /** 次にやること（ダウンロードの前に残っていることを、作業の画面の上・ダウンロードのツールチップと同じ言葉で出す。押すとそこへ移る） */
   steps: NextStepsData | null
   onGo: (id: StepId) => void
   /** 直し方の操作（「業種が空の N 行を一覧で決める」など。表の上と同じ） */
   onFixAction: (action: FixActionId, keys: readonly string[]) => void
+  /** 変換の報告の聞き返し（税込・税抜、計画の聞き返し）。どれも金額・7割・載せる行に関わる。答えたものも渡す（この画面で答えたものは答えを出して取り消せる） */
+  questions: readonly ExportQuestion[]
+  /** チャットで答えを待つもの（AI の聞き返し・承認待ちの変更案）。answered が null なら「答える」に数えるもの */
+  chatAsks: readonly ExportQuestion[]
+  onAnswer: (id: string, value: string) => void
+  /** 金額の税込・税抜が決まっていない（「分からない（顧客に聞く）」と答えたときも。金額と7割が決まらないので、答えたあとも控えめのまま） */
+  amountsUnsettled: boolean
+  /** 閉じたあとのフォーカス（チャットへ移るときはその先。無ければ開いたボタンに戻す） */
+  finalFocus: () => HTMLElement | true
 }) {
   const check = useMemo(() => (open ? exportCheck(output, summary) : null), [open, output, summary])
+  // 開いたときに答えを待っていたもの。この画面で答えても消さず、答えと取り消しを出す（次に開くまで）
+  const [kept, setKept] = useState<{ open: boolean; ids: ReadonlySet<string> }>({ open: false, ids: new Set() })
+  if (kept.open !== open) setKept({ open, ids: open ? new Set([...questions, ...chatAsks].filter((q) => q.question.answered === null).map((q) => q.question.id)) : new Set() })
+  const answers = [...questions, ...chatAsks].filter(({ question: q }) => q.answered === null || kept.ids.has(q.id))
+  const answersLeft = answers.filter((q) => q.question.answered === null).length
+  // 金額・7割・載せる行に関わる聞き返しが残っている間は、ダウンロードのボタンを控えめに（止めはしない）
+  const unsettled = amountsUnsettled || questions.some((q) => q.question.answered === null)
+  const label = (kind: string) => (unsettled ? `このままダウンロード（${kind}）` : kind)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl" data-testid="export-dialog">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl" finalFocus={finalFocus} data-testid="export-dialog">
         <DialogHeader>
           <DialogTitle>
-            書き出す（<span className="num" data-testid="export-rows">{output.length}</span> 件）
+            ダウンロード（<span className="num" data-testid="export-rows">{output.length}</span> 件）
           </DialogTitle>
-          <DialogDescription>書き出す前に、残りと7割を確かめます。</DialogDescription>
+          <DialogDescription>ダウンロードの前に、残りと7割を確かめます。</DialogDescription>
         </DialogHeader>
         {check && (
           <div className="grid gap-3 text-sm">
-            <Remaining steps={steps} onGo={onGo} onFixAction={onFixAction} />
+            <Answers answers={answers} left={answersLeft} onAnswer={onAnswer} />
+            <Remaining steps={steps} answers={answers.length ? answersLeft : null} onGo={onGo} onFixAction={onFixAction} />
             <ul className="grid gap-1.5" data-testid="export-checks">
               <Rule7Line check={check} summary={summary} />
               <CheckLine ok={check.mismatches.length === 0} testId="export-basis">
@@ -100,12 +129,12 @@ export function ExportDialog({
             </p>
           </div>
         )}
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2" data-testid="export-footer" data-unsettled={unsettled ? "1" : "0"}>
           <Button variant="outline" onClick={onCsv} disabled={output.length === 0} data-testid="download-button">
-            <Download /> CSV
+            <Download /> {label("CSV")}
           </Button>
-          <Button onClick={onExcel} disabled={output.length === 0} data-testid="export-excel">
-            <FileSpreadsheet /> Excel
+          <Button variant={unsettled ? "outline" : "default"} onClick={onExcel} disabled={output.length === 0} data-testid="export-excel">
+            <FileSpreadsheet /> {label("Excel")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -113,9 +142,39 @@ export function ExportDialog({
   )
 }
 
-/** 書き出す前に残っていること（次にやることと同じ言葉）。無ければ済みと出す */
-function Remaining({ steps, onGo, onFixAction }: { steps: NextStepsData | null; onGo: (id: StepId) => void; onFixAction: (action: FixActionId, keys: readonly string[]) => void }) {
-  const left = steps ? remainingSteps(steps) : []
+/**
+ * 答えを待つもの（変換の報告の聞き返しと、チャットの聞き返し・変更案）。報告の聞き返しはその場で答える。
+ * チャットのものは、その場で答えられる聞き返し（変更案の付いた「はい・いいえ」）だけ答え、ほかはボタンでチャットへ移る
+ */
+function Answers({ answers, left, onAnswer }: { answers: readonly ExportQuestion[]; left: number; onAnswer: (id: string, value: string) => void }) {
+  if (!answers.length) return null
+  return (
+    <section className="grid gap-1.5" aria-label="答える" data-testid="export-answers" data-left={left}>
+      <h3 className="font-medium">{left ? `答える（あと ${left}）` : "答えました"}</h3>
+      {answers.map(({ question, go }) => (
+        <QuestionItem key={question.id} question={question} onAnswer={onAnswer} ask={go && question.answered === null ? { ...go, disabled: go.disabled ?? false } : null} />
+      ))}
+    </section>
+  )
+}
+
+/**
+ * ダウンロードの前に残っていること（次にやることと同じ言葉）。答えるは上に1つずつ出すので、出していれば（answers が上の残りの数）除く。
+ * 無ければ済みと出す（上に答えが残っていれば出さない）
+ */
+function Remaining({
+  steps,
+  answers,
+  onGo,
+  onFixAction,
+}: {
+  steps: NextStepsData | null
+  answers: number | null
+  onGo: (id: StepId) => void
+  onFixAction: (action: FixActionId, keys: readonly string[]) => void
+}) {
+  const left = steps ? remainingSteps(steps).filter((r) => !(answers !== null && r.id === "answer")) : []
+  if (!left.length && answers) return null
   if (!left.length)
     return (
       <p className="flex items-center gap-2 text-emerald-800" data-testid="export-remaining" data-left="0">
@@ -152,7 +211,7 @@ function Remaining({ steps, onGo, onFixAction }: { steps: NextStepsData | null; 
           ))}
         </span>
       )}
-      <span className="basis-full pt-0.5 text-xs text-amber-800/80">残っていても書き出せます。</span>
+      <span className="basis-full pt-0.5 text-xs text-amber-800/80">残っていてもダウンロードできます。</span>
     </div>
   )
 }

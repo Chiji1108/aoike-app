@@ -126,7 +126,7 @@ export function readCheckSheet(rows: readonly (readonly string[])[]): FinalCheck
   const version = Number((rows[0]?.[1] ?? "").trim())
   if (!Number.isInteger(version)) return { error: "照合用のシートが書き換えられていて読めません" }
   if (version > CHECK_VERSION) return { error: "この画面より新しい形の Excel です。画面を読み込み直してからアップロードしてください" }
-  if (version < CHECK_VERSION) return { error: "前の形の Excel なので表に戻せません。書き出し直してから直してください" }
+  if (version < CHECK_VERSION) return { error: "前の形の Excel なので表に戻せません。ダウンロードし直してから直してください" }
   let meta: CheckMeta | undefined
   const persons: FinalCheck["persons"] = []
   const out: CheckRow[] = []

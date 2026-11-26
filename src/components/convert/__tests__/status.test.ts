@@ -117,7 +117,7 @@ describe("直し方", () => {
     expect(fixActionOf("prefecture", decided)).toBeUndefined()
   })
 
-  test("まとめて頼む操作は、載せる行の同じ直し方を1つにまとめ、表・次にやること・書き出すの確認で同じ言葉にする", () => {
+  test("まとめて頼む操作は、載せる行の同じ直し方を1つにまとめ、表・次にやること・ダウンロードの前の確認で同じ言葉にする", () => {
     const empty = kojiRow({ gyoshu: "" }, 1)
     const guessed = { ...kojiRow({}, 2), cells: { ...kojiRow({}, 2).cells, gyoshu: { value: "8", status: "warning" as const, source: "AI", original: "電工", guessed: true as const } } }
     const notIncluded = kojiRow({ gyoshu: "" }, 3)

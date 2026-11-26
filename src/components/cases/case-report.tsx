@@ -8,7 +8,7 @@ import type { ReportPhase } from "@/lib/cases/phase"
 /**
  * 変換の報告（チャットの最初の返事）。ファイルを読む → 列の対応を考える → 変換する の進み具合と、変換のあとの知らせ（答えは要らない。
  * 計画の AI のメモ・見出しから推定した理由・まとめた行・去年との違い）、職員に聞くこと（Confirmation。答えを選ぶと閉じ、取り消せる）、
- * 費用のかかる工事場所の調査を出す。直す行の件数・書き出す・問い合わせは作業の画面の「次にやること」にあるので出さない。
+ * 費用のかかる工事場所の調査を出す。直す行の件数・ダウンロード・問い合わせは作業の画面の「次にやること」にあるので出さない。
  * 案件の作業から作るので保存しない（変われば書き直る）
  */
 
@@ -145,54 +145,12 @@ function Body(p: ReportProps) {
         </p>
       )}
       {p.questions.map((q) => (
-        <Item
+        <QuestionItem
           key={q.id}
-          variant="outline"
-          size="sm"
-          className={cn("items-start", q.answered === null ? "border-amber-300 bg-amber-50" : "bg-muted/30")}
-          data-testid="report-question"
-          data-question={q.id}
-          data-answered={q.answered ?? undefined}
-          data-pending={q.answered === null ? "1" : undefined}
-        >
-          <ItemMedia variant="icon">
-            <CircleHelp className="text-amber-600" />
-          </ItemMedia>
-          <ItemContent className="gap-2">
-            <ItemTitle className="whitespace-pre-wrap">{q.text}</ItemTitle>
-            {q.detail && <ItemDescription className="line-clamp-none" data-testid="report-question-detail">{q.detail}</ItemDescription>}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {q.answered !== null ? (
-                <>
-                  <span className="text-sm font-medium" data-testid="report-question-answer">
-                    {q.answered}
-                  </span>
-                  {q.undo && (
-                    <Button size="xs" variant="ghost" onClick={q.undo} data-testid="report-question-undo">
-                      <Undo2 /> 取り消す
-                    </Button>
-                  )}
-                </>
-              ) : (
-                q.options.map((o) => (
-                  <Button key={o.value} size="sm" variant="outline" className="bg-background" onClick={() => p.onAnswer(q.id, o.value)} data-testid="report-answer" data-value={o.value}>
-                    {o.label}
-                  </Button>
-                ))
-              )}
-              {q.view && (
-                <Button size="sm" variant="ghost" onClick={q.view} data-testid="report-question-view">
-                  <TableProperties /> 表で見る
-                </Button>
-              )}
-              {q.prompt && p.chat && (
-                <Button size="sm" variant="ghost" disabled={!p.chat.canSend} onClick={() => p.chat!.send(q.prompt!)} data-testid="report-question-ask">
-                  <MessageSquareText /> AI に聞く
-                </Button>
-              )}
-            </div>
-          </ItemContent>
-        </Item>
+          question={q}
+          onAnswer={p.onAnswer}
+          ask={q.prompt && p.chat ? { label: "AI に聞く", disabled: !p.chat.canSend, run: () => p.chat!.send(q.prompt!) } : null}
+        />
       ))}
       {p.notes.length > 0 && (
         <div className="grid gap-1" data-testid="report-notes">
@@ -228,5 +186,69 @@ function Body(p: ReportProps) {
         </Button>
       )}
     </div>
+  )
+}
+
+/**
+ * 職員に聞くこと1つ（変換の報告とダウンロードの前の確認で同じ部品）。答えを選ぶと答えを出して閉じ、取り消せる。
+ * 「表で見る」「AI に聞く」は答えではない（押しても閉じない）。ask は報告ならチャットに送る、ダウンロードの前の確認ならチャットへ移る
+ */
+export function QuestionItem({
+  question: q,
+  onAnswer,
+  ask,
+}: {
+  question: ReportQuestion
+  onAnswer: (id: string, value: string) => void
+  ask: { label: string; disabled: boolean; run: () => void } | null
+}) {
+  return (
+    <Item
+      variant="outline"
+      size="sm"
+      className={cn("items-start", q.answered === null ? "border-amber-300 bg-amber-50" : "bg-muted/30")}
+      data-testid="report-question"
+      data-question={q.id}
+      data-answered={q.answered ?? undefined}
+      data-pending={q.answered === null ? "1" : undefined}
+    >
+      <ItemMedia variant="icon">
+        <CircleHelp className="text-amber-600" />
+      </ItemMedia>
+      <ItemContent className="min-w-0 gap-2">
+        <ItemTitle className="whitespace-pre-wrap">{q.text}</ItemTitle>
+        {q.detail && <ItemDescription className="line-clamp-none" data-testid="report-question-detail">{q.detail}</ItemDescription>}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {q.answered !== null ? (
+            <>
+              <span className="text-sm font-medium" data-testid="report-question-answer">
+                {q.answered}
+              </span>
+              {q.undo && (
+                <Button size="xs" variant="ghost" onClick={q.undo} data-testid="report-question-undo">
+                  <Undo2 /> 取り消す
+                </Button>
+              )}
+            </>
+          ) : (
+            q.options.map((o) => (
+              <Button key={o.value} size="sm" variant="outline" className="bg-background" onClick={() => onAnswer(q.id, o.value)} data-testid="report-answer" data-value={o.value}>
+                {o.label}
+              </Button>
+            ))
+          )}
+          {q.view && (
+            <Button size="sm" variant="ghost" onClick={q.view} data-testid="report-question-view">
+              <TableProperties /> 表で見る
+            </Button>
+          )}
+          {ask && (
+            <Button size="sm" variant="ghost" disabled={ask.disabled} onClick={ask.run} data-testid="report-question-ask">
+              <MessageSquareText /> {ask.label}
+            </Button>
+          )}
+        </div>
+      </ItemContent>
+    </Item>
   )
 }

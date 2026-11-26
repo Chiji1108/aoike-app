@@ -138,11 +138,11 @@ export async function readFinalSheet(
   ai: FinalAi,
 ): Promise<{ changes: ChatChange[]; report: FinalReport } | { error: string }> {
   const check = finalCheckOf(sheets)
-  if (!check) return { error: "照合用のシートがありません。この画面の「書き出す」でダウンロードした Excel を直してアップロードしてください" }
+  if (!check) return { error: "照合用のシートがありません。この画面の「ダウンロード」で出した Excel を直してアップロードしてください" }
   if ("error" in check) return check
   if (check.meta.caseId !== id.caseId) return { error: "別の案件でダウンロードした Excel です" }
-  if (check.meta.sourceFileId !== id.sourceFileId) return { error: "ダウンロードしたあとに変換の元のファイルが変わったので、この Excel は表に戻せません。書き出し直してから直してください" }
-  if (check.meta.keyMark !== (await keyMark(id.excelKey, id.caseId))) return { error: "この Excel の記録と合いません。書き出し直してから直してください" }
+  if (check.meta.sourceFileId !== id.sourceFileId) return { error: "ダウンロードしたあとに変換の元のファイルが変わったので、この Excel は表に戻せません。ダウンロードし直してから直してください" }
+  if (check.meta.keyMark !== (await keyMark(id.excelKey, id.caseId))) return { error: "この Excel の記録と合いません。ダウンロードし直してから直してください" }
   const data = sheets.find((s) => s.name === FINAL_SHEET_NAME) ?? sheets.find((s) => s.name !== CHECK_SHEET_NAME)
   if (!data) return { error: "データのシートがありません" }
   const extraColumns = data.rows.flatMap((r, i) => (r.slice(FIELDS.length).some(Boolean) ? [i + 1] : []))
@@ -176,7 +176,7 @@ export async function readFinalSheet(
     uploaded.map((u) => comparable(u.values)),
     sent.map((s) => comparable(s.csv)),
   )
-  if (sent.length && !match.pairs.length && !match.candidates.size) return { error: "ダウンロードしたときの工事が1つも見つかりません。書き出した Excel のデータのシートをアップロードしてください" }
+  if (sent.length && !match.pairs.length && !match.candidates.size) return { error: "ダウンロードしたときの工事が1つも見つかりません。ダウンロードした Excel のデータのシートをアップロードしてください" }
   const report: FinalReport = { cells: 0, added: 0, excluded: 0, alreadyAdded: 0, conflicts: [], invalid: [], refused: [], ambiguous: [], keptRows: 0, unknownRows: 0, extraColumns }
   const now = new Map(view.shown.map((r) => [r.key, r]))
 
