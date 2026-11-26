@@ -17,7 +17,7 @@ import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { setRuntime, setWork } from "../create-case-store"
 import type { CaseEnv } from "../env"
 import { receiveProposal } from "./proposals"
-import { ensureAddresses, serverAi } from "./source"
+import { ensureAddresses, mergeAiCache, serverAi } from "./source"
 
 const SPEC = KOJI_KEIREKI
 
@@ -68,7 +68,7 @@ async function readFinalFile(env: CaseEnv, f: File, sheets: readonly SheetGrid[]
   if (generation !== store.getState().runtime.gen.case) return undefined
   if ("error" in result) return result
   if (failures.size) toast.warning(`AI を使えなかった値があります: ${[...failures].join(" / ")}`)
-  setWork(store, (w) => ({ ...w, aiCache: new Map([...cache, ...w.aiCache]) }))
+  setWork(store, (w) => ({ ...w, aiCache: mergeAiCache(w.aiCache, start.work.aiCache, cache) }))
   // 開いている（未決の）・却下した直した Excel の変更案と同じ項目は除く（同じ Excel をもう一度上げても二重にせず、却下したものを出し直さない。
   // 承認した項目は、表がもうその値なので readFinalSheet が出さない）
   const { work, contents } = store.getState()
@@ -83,10 +83,14 @@ async function readFinalFile(env: CaseEnv, f: File, sheets: readonly SheetGrid[]
   const report = recount(result.report, changes, skipped)
   if (!changes.length) return { report }
   const saved = await keepFile(env, "edit_sheet", f, f.name)
-  if (!saved) return undefined
+  // 保存を待っている間に元が変わったら、前の元の行への変更なので入れない
+  const stale = () => generation !== store.getState().runtime.gen.case
+  if (!saved || stale()) return undefined
   const proposal = newProposal(crypto.randomUUID(), { kind: "excel", fileId: saved.id }, changes, null)
   await deps.recordProposal({ proposal, changes })
-  receiveProposal(store, { proposal, changes }, "replace")
+  // 記録している間に元が変わったら、閉じた変更案として足す（サーバーの記録から開き直しても、また開かない）
+  receiveProposal(store, { proposal: stale() ? discard(proposal) : proposal, changes }, "replace")
+  if (stale()) return undefined
   return { report }
 }
 
@@ -132,7 +136,8 @@ async function readAnswerFile(env: CaseEnv, f: File, kind: "marked" | "answer", 
   const { readWorkbook } = await import("@/lib/convert/workbook")
   const sheets = readWorkbook(f.name, new Uint8Array(await f.arrayBuffer()))
   const failures = new Set<string>()
-  const cache: AiCache = new Map(store.getState().work.aiCache)
+  const cacheStart = store.getState().work.aiCache
+  const cache: AiCache = new Map(cacheStart)
   // 住所は変換と同じ仕組みで引く（住所データを読めなければ、その値は読めない記入として出す。取り込み全体は止めない）
   const ai = {
     ctx: { rounding: store.getState().work.rounding },
@@ -188,7 +193,7 @@ async function readAnswerFile(env: CaseEnv, f: File, kind: "marked" | "answer", 
     receiveProposal(store, { proposal: stale() ? discard(proposal) : proposal, changes }, "replace")
     if (stale()) return undefined
   }
-  setWork(store, (x) => ({ ...x, aiCache: new Map([...cache, ...x.aiCache]), answers: merged }))
+  setWork(store, (x) => ({ ...x, aiCache: mergeAiCache(x.aiCache, cacheStart, cache), answers: merged }))
   // 色付きの欄の外（印の無いセルの書き換え・別の列・メモ・別のシート）に記入があるか、読めなかった記入があれば、このファイルを AI に読ませられる
   const readable = outside > 0 || merged.invalid.length > 0 || merged.unreadable.length > 0
   return { aiFailures: [...failures], proposed: changes.length, outside, forAi: readable ? saved : null }

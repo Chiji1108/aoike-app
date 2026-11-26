@@ -41,8 +41,10 @@ export type CaseState = {
     unreadable: number
     /** 案件のファイルの一覧（D1・R2 の写し。アップロード・ダウンロードの控えで足す） */
     files: CaseFile[]
-    /** 案件の状態（変えるときは楽観的に変え、失敗したら戻す） */
+    /** 案件の状態（変えるときは楽観的に変え、失敗したら savedStatus に戻す） */
     status: CaseStatus
+    /** サーバーが最後に受け付けた案件の状態 */
+    savedStatus: CaseStatus
     /** 案件の AI の費用の合計（変換・チャットの分。サーバーの合計に足したものを画面でも足す） */
     costUsd: number
     /** 読んだ変換の元 */
@@ -132,6 +134,7 @@ export function initialCaseState(page: {
       unreadable: page.unreadableProposals.length,
       files: page.files,
       status: page.kase.status,
+      savedStatus: page.kase.status,
       costUsd: page.kase.costUsd,
       source: null,
       loading: null,

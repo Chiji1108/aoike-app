@@ -60,6 +60,16 @@ export function setCost(env: CaseEnv, usd: number) {
   setRuntime(env.store, () => ({ costUsd: usd }))
 }
 
+/**
+ * 待っている間に AI に聞いた結果（filled。始めた時点の写し start から足した・変えたもの）を、今の作業の AI の結果に重ねる。
+ * 待っている間にほかの処理が足した結果は残す（丸ごと置き換えると消え、同じ値をまた AI に聞いて費用が二重になる）
+ */
+export function mergeAiCache(current: AiCache, start: AiCache, filled: AiCache): AiCache {
+  const merged = new Map(current)
+  for (const [k, v] of filled) if (start.get(k) !== v) merged.set(k, v)
+  return merged
+}
+
 /** 外の処理で AI を呼ぶ（費用は案件の合計に足す）。失敗の理由は failures に集める */
 export function serverAi(env: CaseEnv, failures: Set<string>): AiCaller {
   return async (req) => {
@@ -235,11 +245,11 @@ export async function convert(env: CaseEnv) {
     if (!current()) return
     await fillAiCache(convertRows(SPEC, sources.rows, plan, { rounding: s.work.rounding, addresses: book }), cache, serverAi(env, failures))
     if (!current()) return
-    setWork(store, (w) =>
-      w.plan === planAtStart
-        ? { ...w, aiCache: cache, converted: true, aiNotice: failures.size ? [...failures].join(" / ") : null }
-        : { ...w, aiCache: new Map([...cache, ...w.aiCache]) },
-    )
+    // 変換している間に計画が変わっていたら、この結果は使わない（AI の結果だけ残す。新しい計画で変換し直す）
+    setWork(store, (w) => {
+      const aiCache = mergeAiCache(w.aiCache, s.work.aiCache, cache)
+      return w.plan === planAtStart ? { ...w, aiCache, converted: true, aiNotice: failures.size ? [...failures].join(" / ") : null } : { ...w, aiCache }
+    })
   } catch (e) {
     if (current()) setRuntime(store, () => ({ convertError: { message: errorMessage(e, "変換に失敗しました"), plan: planAtStart } }))
   } finally {

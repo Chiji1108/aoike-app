@@ -179,10 +179,14 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   }
   if (nextPlan) supersedeConversion(env)
   apply([...table, ...planned])
+  // 外に書くのを待っている間に元が変わった（変更案が閉じた）・変更案を決め終えたら、表に重ねず承認の印も付けない
+  const generation = store.getState().runtime.gen.case
+  const stillOpen = () => store.getState().runtime.gen.case === generation && store.getState().work.proposals.find((x) => x.id === id)?.state === "open"
   if (located.length) {
     try {
       await writingOutside(env, () => deps.approveLocations(id, located))
-      apply(located, ["location"])
+      if (stillOpen()) apply(located, ["location"])
+      else toast.info("工事場所は顧客の覚えた結果に書きましたが、待っている間に変更案が閉じたので、表には入れていません")
     } catch (e) {
       toast.error(errorMessage(e, "工事場所を承認できませんでした（顧客の覚えた結果に書けませんでした）"))
     }
@@ -190,14 +194,18 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   const rules = chosen.filter((i) => changes[i]!.kind === "rule")
   if (!rules.length) return
   try {
-    await writingOutside(env, async () => {
+    const closed = await writingOutside(env, async () => {
       for (const i of rules) {
+        if (!stillOpen()) return true
         // サーバーが変更案の記録から追記し、足した印も一緒に書く（開き直して同じ項目をもう一度承認しても二度足さない）
         await deps.approveRule(id, i)
+        if (!stillOpen()) return true
         commit(store, { group: id, kind: "approval", items: [i], external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
       }
+      return false
     })
-    toast.success("ルールに追記しました")
+    if (closed) toast.info("待っている間に変更案が閉じたので、残りのルールの追記と承認の印はやめました（書けた追記はルールに入っています）")
+    else toast.success("ルールに追記しました")
   } catch (e) {
     toast.error(errorMessage(e, "ルールに追記できませんでした（保存できたものは承認済みにしました）"))
   }

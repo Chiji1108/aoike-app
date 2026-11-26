@@ -20,6 +20,7 @@ export type PeerChannel = {
 }
 
 export type SyncOptions = {
+  caseId: string
   save: (req: SaveRequest) => Promise<SaveResponse>
   /** 読んだときの版（まだ保存が無ければ 0） */
   version: number
@@ -48,45 +49,66 @@ export function broadcastChannel(caseId: string): () => PeerChannel | null {
 }
 
 /**
- * 保存・同期の層。ストアの作業（work）の参照が変わったら自動保存（lib/cases/autosave.ts）に渡し、保存の状態をストアの sync に入れる
+ * 画面を離れたあとも送っている最後の保存（案件ごと）。同じ案件の画面を開き直すときは、読む前にこれを待つ
+ * （前の画面の最後の保存より古い版を読むと、新しい画面の保存がぶつかる）
+ */
+const leaving = new Map<string, Promise<unknown>>()
+
+/** 画面を離れた案件の、最後の保存が終わるのを待つ（読み込みの前。送っていなければすぐ返る） */
+export function savesSettled(caseId: string): Promise<unknown> {
+  return leaving.get(caseId) ?? Promise.resolve()
+}
+
+/**
+ * 保存・同期の層。つないでいる間、ストアの作業（work）の参照が変わったら自動保存（lib/cases/autosave.ts）に渡し、保存の状態をストアの sync に入れる
  * （保存しない状態〔runtime〕の変化では送らない）。別の画面が先に保存したら今と同じく止めて再読み込みを頼む。
  * そのうえで、同じブラウザの別のタブとは開いたとき・保存したとき・閉じたときに知らせ合い、ぶつかる前に見出しに出す（sync.peer）
  */
 export function createCaseSync(store: CaseStore, options: SyncOptions) {
-  const tab = crypto.randomUUID()
-  let channel: PeerChannel | null = null
+  /** 今つないでいる道と名乗る id（hello・here を送り、届いた知らせを読む） */
+  let current: { ch: PeerChannel; tab: string } | null = null
+  /**
+   * 閉じていない道と、その道で名乗る id（つなぐたびに新しい id。外したあとも、最後の保存の saved を送ってから bye を送って閉じる。
+   * つなぎ直した〔React の StrictMode・同じ画面に戻った〕ときの前の道の bye で、今の道を閉じたと数えさせない）
+   */
+  const open = new Map<PeerChannel, string>()
+  /** この画面が名乗った id（前の道の遅れた知らせを、別のタブのものと数えない） */
+  const mine = new Set<string>()
   /** 開いている別のタブ */
   const peers = new Set<string>()
+  /** 閉じた（bye を送ってきた）タブ。そのあとに届いた知らせで足し直さない（開き直せば hello が来る） */
+  const gone = new Set<string>()
   const setPeer = (peer: PeerState) => store.setState((s) => (s.sync.peer === peer ? s : { sync: { ...s.sync, peer } }))
-  const post = (kind: PeerMessage["kind"]) => channel?.post({ kind, tab })
+  const message = (kind: PeerMessage["kind"], tab: string): PeerMessage => ({ kind, tab })
 
   const autosave = createAutosave({
     version: options.version,
     saved: options.saved,
     save: async (req) => {
       const res = await options.save(req)
-      if (res.ok) post("saved")
+      if (res.ok) for (const [ch, tab] of open) ch.post(message("saved", tab))
       return res
     },
     onStatus: (status) => store.setState((s) => ({ sync: { ...s.sync, status } })),
     errorMessage: (e) => errorMessage(e, "保存できませんでした"),
   })
-  // 作業が変わったときだけ送る（ストアを作ったときから。保存の状態・runtime の変化では送らない）
-  store.subscribe((s, prev) => {
-    if (s.work !== prev.work) autosave.change(s.work)
-  })
+  /** 自動保存に渡した最後の作業（つなぎ直したとき、外していた間の変更を渡す） */
+  let forwarded = store.getState().work
 
   function receive(data: unknown) {
     const m = peerMessageSchema.safeParse(data)
-    if (!m.success || m.data.tab === tab) return
+    if (!m.success || mine.has(m.data.tab)) return
     const { kind, tab: from } = m.data
     if (kind === "bye") {
       peers.delete(from)
+      gone.add(from)
       if (!peers.size && store.getState().sync.peer === "open") setPeer("none")
       return
     }
+    if (kind === "hello") gone.delete(from)
+    else if (gone.has(from)) return
     peers.add(from)
-    if (kind === "hello") post("here")
+    if (kind === "hello") current?.ch.post(message("here", current.tab))
     // 別のタブが保存したら、この画面の作業は古い（再読み込みするまで saved のまま）
     if (kind === "saved") setPeer("saved")
     else if (store.getState().sync.peer === "none") setPeer("open")
@@ -94,32 +116,61 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
 
   return {
     /**
-     * 画面につなぐ（離れる前の警告・別のタブとの道）。返す関数で外す（画面の中で別のページに移ったときは、待っている変更をすぐに送る）
+     * 画面につなぐ（自動保存・離れる前の警告・別のタブとの道）。返す関数で外す: 待っている変更をすぐに送り、そのあとの変更は受けない。
+     * 別のタブには、最後の保存が終わって saved を送ってから bye を送って道を閉じる
      */
     connect() {
+      const forward = (work: CaseWork) => {
+        forwarded = work
+        autosave.change(work)
+      }
+      // 作業が変わったときだけ送る（保存の状態・runtime の変化では送らない）。外していた間の変更も送る
+      const unsubscribe = store.subscribe((s) => {
+        if (s.work !== forwarded) forward(s.work)
+      })
+      if (store.getState().work !== forwarded) forward(store.getState().work)
       const warn = (e: BeforeUnloadEvent) => {
         if (autosave.unsaved()) e.preventDefault()
       }
-      // タブを閉じる（React の後片付けは走らない）・戻るで戻った（ページの控えから開き直した）ときも知らせる
-      const hide = () => post("bye")
+      const ch = options.channel()
+      const tab = crypto.randomUUID()
+      mine.add(tab)
+      current = ch && { ch, tab }
+      if (ch) {
+        open.set(ch, tab)
+        // 外したあとに届いた知らせは読まない（つなぎ直したときは新しい道で読む）
+        ch.listen((data) => {
+          if (current?.ch === ch) receive(data)
+        })
+      }
+      // タブを閉じる（React の後片付けは走らない）ときは、すぐに知らせる。戻るで戻った（ページの控えから開き直した）ときは開き直す
+      const hide = () => {
+        ch?.post(message("bye", tab))
+        peers.clear()
+        gone.clear()
+      }
       const show = (e: PageTransitionEvent) => {
-        if (e.persisted) post("hello")
+        if (e.persisted) ch?.post(message("hello", tab))
       }
       window.addEventListener("beforeunload", warn)
       window.addEventListener("pagehide", hide)
       window.addEventListener("pageshow", show)
-      channel = options.channel()
-      channel?.listen(receive)
-      post("hello")
+      ch?.post(message("hello", tab))
       return () => {
+        unsubscribe()
         window.removeEventListener("beforeunload", warn)
         window.removeEventListener("pagehide", hide)
         window.removeEventListener("pageshow", show)
-        autosave.flush()
-        post("bye")
-        channel?.close()
-        channel = null
+        if (current?.ch === ch) current = null
         peers.clear()
+        gone.clear()
+        const settled = autosave.settle().finally(() => {
+          ch?.post(message("bye", tab))
+          ch?.close()
+          if (ch) open.delete(ch)
+          if (leaving.get(options.caseId) === settled) leaving.delete(options.caseId)
+        })
+        leaving.set(options.caseId, settled)
       }
     },
     /** 今の作業まで保存し終えるのを待つ（lib/cases/autosave.ts の settle。チャットの送る前・振り返り） */

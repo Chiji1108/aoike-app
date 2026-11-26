@@ -26,7 +26,7 @@ import { derive } from "@/components/cases/store/derive"
 import { serverDeps } from "@/components/cases/store/deps"
 import type { CasePageData } from "@/components/cases/store/env"
 import { createCaseSession } from "@/components/cases/store/session"
-import { broadcastChannel } from "@/components/cases/store/sync"
+import { broadcastChannel, savesSettled } from "@/components/cases/store/sync"
 import { GyoshuSummaryTable, RoundingNote } from "@/components/convert/summary-panel"
 import type { ProposalActions, UndoState } from "@/components/chat/proposal-card"
 import {
@@ -82,10 +82,17 @@ import { getCasePageFn } from "@/server/cases"
 import { createClientOnlyFn } from "@tanstack/react-start"
 
 export const Route = createFileRoute("/_authed/csv/cases/$caseId")({
-  loader: async ({ params }) => {
-    const page = await getCasePageFn({ data: { id: params.caseId } })
-    if (!page) throw notFound()
-    return page
+  // 前に読んだ案件のデータ（戻る・先読み）で画面を描かず、読み直し終えてから描く（画面の1回分はそのときのデータから1回だけ作るので、
+  // 古いデータで作ると、そのあとに届いた新しいデータを使わない）
+  loader: {
+    staleReloadMode: "blocking",
+    handler: async ({ params }) => {
+      // 同じ案件の画面から離れてすぐ戻ったときは、前の画面の最後の保存が終わってから読む（古い版を読んで保存がぶつからない）
+      await savesSettled(params.caseId)
+      const page = await getCasePageFn({ data: { id: params.caseId } })
+      if (!page) throw notFound()
+      return page
+    },
   },
   component: CasePage,
 })
