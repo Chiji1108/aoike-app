@@ -1,4 +1,5 @@
-import { canUndo } from "@/lib/cases/undo"
+import type { UndoState } from "@/components/chat/proposal-card"
+import { canUndo, CONFIRM_UNDO, GYOSHU_UNDO, type UndoEntry } from "@/lib/cases/undo"
 import { decisionOf, type ChatChange, type Proposal } from "@/lib/chat/proposals"
 import type { CaseState } from "./create-case-store"
 
@@ -16,6 +17,10 @@ export type Derived = {
   pendingInquiryText: boolean
   /** 未決の工事場所の項目がある変更案がある（決めるまで次の一括調査を始めさせない） */
   undecidedLocation: boolean
+  /** 取り消しの単位（変更案の id・`report:<聞き返し>`・操作の印と id）ごとの取り消せるか（変更案のカード・報告の聞き返し・ダウンロードの前の確認） */
+  undoStates: ReadonlyMap<string, UndoState>
+  /** 直前の、まだ取り消せる業種の一覧の決定・「これでよい」（業種のタブ・表の「取り消す」） */
+  lastOp: { gyoshu: UndoEntry | null; confirm: UndoEntry | null }
 }
 
 /**
@@ -42,7 +47,20 @@ function deriveFrom(proposals: readonly Proposal[], undo: CaseState["work"]["und
   /** 開いている変更案に、未決の項目で when に合うものがあるか */
   const pendingWhere = (when: (c: ChatChange) => boolean) =>
     proposals.some((p) => p.state === "open" && (contents.get(p.id) ?? []).some((c, i) => when(c) && decisionOf(p, i) === "pending"))
+  const undoStates = new Map<string, UndoState>()
+  for (const e of undo) {
+    const u = undoStates.get(e.proposalId) ?? { can: false, undone: false, tooLarge: false, external: [] }
+    undoStates.set(e.proposalId, {
+      can: u.can || canUndo(e),
+      undone: u.undone || !!e.undone,
+      tooLarge: u.tooLarge || !!e.tooLarge,
+      external: [...new Set([...u.external, ...e.external])],
+    })
+  }
+  const last = (mark: string) => undo.findLast((e) => e.proposalId.startsWith(mark) && canUndo(e)) ?? null
   return {
+    undoStates,
+    lastOp: { gyoshu: last(GYOSHU_UNDO), confirm: last(CONFIRM_UNDO) },
     panels: { excel: panel("excel"), answer: panel("answer"), location: panel("location"), fix: panel("fix") },
     pendingReview: pendingWhere((c) => c.kind === "rule" && c.source === "review"),
     pendingInquiryText: pendingWhere((c) => c.kind === "inquiryMail"),

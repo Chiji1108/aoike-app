@@ -97,6 +97,19 @@ describe("振り返る指示（画面の会話から）", () => {
     const [old] = reviewTurnsFromUi(ui, [closed("p1", 3, 1)], [{ proposalId: "p1", undone: true }])
     expect(reviewMaterial({ turns: [old!], table, view: deriveTable(table), hide: reviewGuard(table).hide }).instructions[0]!.result).toBe("承認 3/4（取り消した項目があるが数は不明）")
   })
+
+  test("変更案に書いた取り消した項目（Proposal.undone）を読み、取り消しの記録が上限で捨てられても数え方が変わらない", () => {
+    const ui: ChatMessage[] = [user("u1", "直して"), assistant("a1", [{ type: "data-proposal", data: { id: "p1" } }])]
+    const p: Proposal = { ...closed("p1", 3, 1), undone: [2] }
+    const withRecord = reviewTurnsFromUi(ui, [p], [{ proposalId: "p1", undone: true, items: [2] }])
+    const dropped = reviewTurnsFromUi(ui, [p], [])
+    const expected = { applied: 3, undone: 1, undoneUnknown: false, count: 4, open: false }
+    expect(withRecord[0]!.proposal).toEqual(expected)
+    expect(dropped[0]!.proposal).toEqual(expected)
+    // 変更案に書く前の取り消し（記録の番号だけ）と、書いたあとの取り消しを合わせて数える
+    const [both] = reviewTurnsFromUi(ui, [{ ...closed("p1", 3, 1), undone: [2] }], [{ proposalId: "p1", undone: true, items: [0] }])
+    expect(both!.proposal).toEqual({ ...expected, undone: 2 })
+  })
 })
 
 describe("振り返りの材料", () => {

@@ -12,7 +12,18 @@ import { KOJI_KEIREKI } from "@/lib/spec/koji-keireki"
  */
 export type CaseState = {
   work: CaseWork
+  /**
+   * 変更案の中身。開いている変更案には、記録が読めないもの（runtime.unreadable）のほかは必ずある
+   * （足すのは receiveProposal だけ。記録の無い開いた変更案は、案件を読むときにサーバーが閉じる〔server/cases.ts の getCasePageFn〕）
+   */
   contents: ReadonlyMap<string, readonly ChatChange[]>
+  /** 保存しない状態 */
+  runtime: {
+    /** 案件を読むときに、中身（R2 の記録）が無くサーバーが閉じた変更案の数（報告に1行出す） */
+    closedMissing: number
+    /** 記録はあるが読めなかった変更案の数（作業にあるものは閉じずに残す。報告に1行出す。カードは決められない） */
+    unreadable: number
+  }
 }
 
 export type CaseStore = ReturnType<typeof createCaseStore>
@@ -24,11 +35,6 @@ export function createCaseStore(init: CaseState) {
 /** 作業を変える（next はその時点の作業から作る） */
 export function setWork(store: CaseStore, next: (w: CaseWork) => CaseWork) {
   store.setState((s) => ({ work: next(s.work) }))
-}
-
-/** 変更案をその中身と一緒に足す（1回で入れる。proposals はその時点の作業の変更案から作る） */
-export function putProposal(store: CaseStore, record: ProposalRecord, proposals: (ps: CaseWork["proposals"]) => CaseWork["proposals"]) {
-  store.setState((s) => ({ contents: new Map(s.contents).set(record.proposal.id, record.changes), work: { ...s.work, proposals: proposals(s.work.proposals) } }))
 }
 
 /**
@@ -45,16 +51,20 @@ function reviewSavedPlan(w: CaseWork): CaseWork {
 
 /**
  * 読み込んだ案件からストアの最初の状態を作る。保存した作業が無ければ新しい作業（7割の計算は事務所の設定）。
- * サーバーが記録した変更案のうち、作業にまだ無いもの（返事を受け取り損ねたもの）も作業に入れる
+ * サーバーが記録した変更案のうち、作業にまだ無いもの（返事を受け取り損ねたもの）も作業に入れる。
+ * closedMissing はサーバーが閉じた記録の無い変更案の数、unreadableProposals は記録を読めなかった変更案（作業に無いものも。閉じない）
  */
 export function initialCaseState(page: {
   state: { work: SavedWork; aiCache: SavedAiCache } | null
   proposals: readonly ProposalRecord[]
+  unreadableProposals: readonly string[]
+  closedMissing: number
   settings: { rule7Tax: Rule7Tax }
 }): CaseState {
   const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
     contents: new Map(page.proposals.map((r) => [r.proposal.id, r.changes])),
+    runtime: { closedMissing: page.closedMissing, unreadable: page.unreadableProposals.length },
   }
 }

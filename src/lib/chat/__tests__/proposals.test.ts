@@ -6,7 +6,7 @@ import { fromSaved, MAX_STATE_BYTES, newWork, savedWorkSchema, toSavedWork } fro
 import { deriveTable } from "../../cases/view"
 import { collectInquiries } from "../../inquiry/inquiry"
 import { z } from "zod"
-import { addedCountAfter, answer, applyChanges, chatChangeSchema, decide, decisionOf, discard, newProposal, proposalRecordSchema, withRecorded, type ChatChange } from "../proposals"
+import { addedCountAfter, answer, applyChanges, chatChangeSchema, decide, decisionOf, discard, newProposal, proposalRecordSchema, withRecorded, withUndone, type ChatChange } from "../proposals"
 import { MAX_ADDED_ROWS } from "../../cases/added"
 import { describeChange, describeSettings } from "../describe"
 import type { Rounding } from "../../convert/transforms"
@@ -173,4 +173,14 @@ describe("問い合わせのメールの下書きの変更案", () => {
     expect({ ...applied, inquiryText: target.inquiryText }).toEqual(target)
     expect(applied.inquiryText).toEqual({ subject: "件名", intro: "前置き" })
   })
+})
+
+test("取り消した項目（undone）は書き足すだけで、閉じても・要らなくなって閉じても残る", () => {
+  const p = newProposal("p", { kind: "chat", messageId: "m" }, [{ kind: "include", rowKey: "r", include: true }, { kind: "include", rowKey: "s", include: false }, { kind: "include", rowKey: "t", include: true }], null)
+  const a = withUndone(decide(p, [0], "applied"), [0])
+  expect(a.undone).toEqual([0])
+  expect(withUndone(a, [0])).toBe(a)
+  expect(decide(a, [1, 2], "rejected")).toMatchObject({ state: "closed", applied: 1, rejected: 2, undone: [0] })
+  expect(discard(a)).toMatchObject({ state: "closed", undone: [0] })
+  expect(withUndone(discard(decide(p, [2, 1], "applied")), [2, 1]).undone).toEqual([1, 2])
 })

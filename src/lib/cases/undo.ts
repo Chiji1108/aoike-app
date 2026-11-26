@@ -37,10 +37,18 @@ export type Undoable = {
 
 type Pair<T> = [before: T, after: T]
 
+/**
+ * 記録の枠。approval は変更案の承認・報告の聞き返しの答え、op は画面の操作（業種の一覧で決める・「これでよい」・載せる工事の選び方・範囲の入れ外し）。
+ * 枠ごとに上限を数えるので、押すだけで何度も積める操作が承認の記録を押し出さない
+ */
+export type UndoKind = "approval" | "op"
+
 export type UndoEntry = {
   id: string
-  /** どの変更案の承認か（変更案の一覧から取り消せる） */
+  /** どの変更案の承認か（変更案の一覧から取り消せる）。操作の記録は印（SELECTION_UNDO など）と1回ごとの id */
   proposalId: string
+  /** 記録の枠（この項目より前の記録には無い。kindOf が印から決める） */
+  kind?: UndoKind
   /** 承認した変更案の項目の番号（振り返りで、取り消した項目を数える。この項目より前の記録には無い） */
   items?: number[]
   label: string
@@ -73,9 +81,25 @@ export type UndoEntry = {
   undone?: true
 }
 
-/** 残す記録の数と大きさ（案件の作業は D1 の1行に入れるので、取り消しの記録で埋めない） */
-export const MAX_UNDO_ENTRIES = 30
-export const MAX_UNDO_BYTES = 200_000
+/**
+ * 枠ごとに残す記録の数と大きさ（案件の作業は D1 の1行〔MAX_STATE_BYTES〕に入れるので、取り消しの記録で埋めない。合わせて 600KB 以内）。
+ * 大きさは、どちらの枠も300行の業種をまとめて決めた1回（前後の値に AI の案の注意書き〔120文字まで〕が付くとき約 280KB）が1件で入るように決めた
+ * （240行の範囲の入れ外しは約 14KB）。操作は直前の数回を戻せれば足りる
+ */
+export const UNDO_LIMITS: Record<UndoKind, { entries: number; bytes: number }> = {
+  approval: { entries: 30, bytes: 300_000 },
+  op: { entries: 10, bytes: 300_000 },
+}
+
+/** 操作の記録の印（proposalId の前置き。1回の操作ごとに後ろに id を付ける） */
+export const SELECTION_UNDO = "selection:"
+export const RANGE_UNDO = "include:"
+export const GYOSHU_UNDO = "gyoshu:"
+export const CONFIRM_UNDO = "confirm:"
+const OP_MARKS = [SELECTION_UNDO, RANGE_UNDO, GYOSHU_UNDO, CONFIRM_UNDO]
+
+/** 記録の枠（kind の無い前の記録は、操作の印で始まるものを op、ほかを approval とみなす） */
+export const kindOf = (e: Pick<UndoEntry, "kind" | "proposalId">): UndoKind => e.kind ?? (OP_MARKS.some((m) => e.proposalId.startsWith(m)) ? "op" : "approval")
 
 const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b)
 
@@ -83,7 +107,7 @@ const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.s
 export function undoEntry(
   before: Undoable,
   after: Undoable,
-  meta: { id: string; proposalId: string; items?: number[]; label: string; at: number; external?: UndoEntry["external"]; exclusions?: ValueFilter[] },
+  meta: { id: string; proposalId: string; kind: UndoKind; items?: number[]; label: string; at: number; external?: UndoEntry["external"]; exclusions?: ValueFilter[] },
 ): UndoEntry | null {
   const edits: UndoEntry["edits"] = []
   for (const [k, v] of after.edits) if (before.edits.get(k) !== v) edits.push([k, before.edits.get(k) ?? null, v])
@@ -124,31 +148,24 @@ export function undoEntry(
 const sizeOf = (e: UndoEntry) => new TextEncoder().encode(JSON.stringify(e)).byteLength
 
 /**
- * 表の操作（載せる工事の選び方の切り替え・範囲の入れ外し）の記録の印。押すだけで何度も積めるので、承認の記録とは別に数える
- */
-export const SELECTION_UNDO = "selection:"
-export const RANGE_UNDO = "include:"
-const isTableOp = (e: UndoEntry) => e.proposalId.startsWith(SELECTION_UNDO) || e.proposalId.startsWith(RANGE_UNDO)
-/** 表の操作の記録を残す数（直前の数回を戻せれば足りる） */
-export const MAX_TABLE_OP_ENTRIES = 10
-
-/**
- * 記録を足す。数と大きさの上限を超えたら古いものから捨てる。1件だけで上限を超える記録は中身を捨て、取り消せない印だけを残す。
- * 表の操作の記録は MAX_TABLE_OP_ENTRIES 件までにし、上限を超えたときは表の操作の記録から先に捨てる
- * （見出しを何度か押す・大きな範囲を入れ外しするだけで、チャットの承認の記録が押し出されて取り消せなくならないように）
+ * 記録を足す。足した記録の枠で、数と大きさの上限を超えたら、その枠の古いものから捨てる（ほかの枠の記録は捨てない）。
+ * 1件だけで枠の大きさを超える記録は中身を捨て、取り消せない印だけを残す
  */
 export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntry[] {
+  const kind = kindOf(entry)
+  const limit = UNDO_LIMITS[kind]
   const kept: UndoEntry =
-    sizeOf(entry) > MAX_UNDO_BYTES ? { id: entry.id, proposalId: entry.proposalId, ...(entry.items ? { items: entry.items } : {}), label: entry.label, at: entry.at, edits: [], manual: [], added: [], external: entry.external, tooLarge: true } : entry
+    sizeOf(entry) > limit.bytes
+      ? { id: entry.id, proposalId: entry.proposalId, kind, ...(entry.items ? { items: entry.items } : {}), label: entry.label, at: entry.at, edits: [], manual: [], added: [], external: entry.external, tooLarge: true }
+      : entry
   const next = [...list, kept]
-  let bytes = next.reduce((n, e) => n + sizeOf(e), 0)
-  const drop = (i: number) => (bytes -= sizeOf(next.splice(i, 1)[0]!))
-  while (next.filter(isTableOp).length > MAX_TABLE_OP_ENTRIES) drop(next.findIndex(isTableOp))
-  while (next.length > MAX_UNDO_ENTRIES || (bytes > MAX_UNDO_BYTES && next.length > 1)) {
-    const op = next.findIndex(isTableOp)
-    drop(op >= 0 ? op : 0)
-  }
-  return next
+  /** この枠の記録の位置（古い順） */
+  const at = next.flatMap((e, i) => (kindOf(e) === kind ? [i] : []))
+  let bytes = at.reduce((n, i) => n + sizeOf(next[i]!), 0)
+  let drop = 0
+  while (at.length - drop > limit.entries || (bytes > limit.bytes && at.length - drop > 1)) bytes -= sizeOf(next[at[drop++]!]!)
+  const dropped = new Set(at.slice(0, drop))
+  return next.filter((_, i) => !dropped.has(i))
 }
 
 /** 取り消せる記録か（取り消した・中身が無い・戻す値が無いものは取り消せない） */
@@ -254,6 +271,7 @@ const pair = <T extends z.ZodType>(s: T) => z.tuple([s, s])
 export const undoEntrySchema: z.ZodType<UndoEntry> = z.object({
   id: z.string(),
   proposalId: z.string(),
+  kind: z.enum(["approval", "op"]).optional(),
   items: z.array(z.number().int().min(0)).optional(),
   label: z.string(),
   at: z.number(),

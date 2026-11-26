@@ -20,7 +20,8 @@ import { choicesOf } from "@/lib/spec/choices"
 import { FixSuggestionPanel, useGyoshuSuggestion } from "@/components/convert/fix-suggestion"
 import { NextSteps, type StepId } from "@/components/cases/next-steps"
 import { CaseStoreContext, useCase, useCaseStore } from "@/components/cases/store/context"
-import { createCaseStore, initialCaseState, putProposal, setWork as setStoreWork, type CaseState } from "@/components/cases/store/create-case-store"
+import { createCaseStore, initialCaseState, setWork as setStoreWork } from "@/components/cases/store/create-case-store"
+import { commit, receiveProposal, undoGroup, type Committed } from "@/components/cases/store/actions/proposals"
 import { derive } from "@/components/cases/store/derive"
 import { GyoshuSummaryTable, RoundingNote } from "@/components/convert/summary-panel"
 import type { ProposalActions, UndoState } from "@/components/chat/proposal-card"
@@ -45,7 +46,7 @@ import { MAX_REJECTED_EXCEL, newWork, type CaseWork, type SavedPlan } from "@/li
 import { awaitsAnswer, caseTodo, pendingGyoshuItems, reportQuestionStates, tabBadge } from "@/lib/cases/todo"
 import { setTax, withPlanTax } from "@/lib/cases/tax"
 import { ATTACH_ACCEPT, CASE_STATUSES, CASE_STATUS_LABELS, contentTypeOf, FILE_KIND_LABELS, fileUrl, isSheetFile, onlyNonSheetSources, type CaseFile, type CaseStatus, type FileKind } from "@/lib/cases/types"
-import { canUndo, pushUndo, RANGE_UNDO, SELECTION_UNDO, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
+import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO, type UndoEntry } from "@/lib/cases/undo"
 import { uploadKind, warnsUnlinked } from "@/lib/cases/upload-kind"
 import { baseRows, editRows, orderAndFinalize, selectRows } from "@/lib/cases/view"
 import { askFacts, askImpact, askPrompt, askWording, needsConfirm } from "@/lib/cases/ask-impact"
@@ -122,9 +123,6 @@ const EXPORT_PROPOSAL = "proposal:"
 const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", excel: "Excel で直した分", answer: "顧客の回答", location: "工事場所", fix: "業種の AI の案" }
 /** 報告の聞き返しの答えの取り消しの記録（cases/undo.ts）の印 */
 const reportUndoId = (questionId: string) => `report:${questionId}`
-/** 業種の一覧で決めたもの・「これでよい」の取り消しの記録（cases/undo.ts）の印。1回の操作ごとに1つ */
-const GYOSHU_UNDO = "gyoshu:"
-const CONFIRM_UNDO = "confirm:"
 /** 業種の選ぶ欄の選択肢 */
 const GYOSHU_CHOICES = choicesOf(KOJI_KEIREKI.fields.find((f) => f.id === "gyoshu")!)!
 
@@ -244,6 +242,9 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const contents = useCase((s) => s.contents)
   /** 欄に出す変更案・未決の有無（ストアの派生。描画でも action でも同じもの） */
   const derived = useCase(derive)
+  /** 開いたときに中身の記録が無く閉じた変更案・記録を読めなかった変更案の数（報告に出す） */
+  const closedMissing = useCase((s) => s.runtime.closedMissing)
+  const unreadableProposals = useCase((s) => s.runtime.unreadable)
   /** 作業を変える（next はその時点の作業から作る。値をそのまま入れるときも、その時点の作業に重ねない値だけ） */
   const setWork = (next: CaseWork | ((w: CaseWork) => CaseWork)) => setStoreWork(store, typeof next === "function" ? next : () => next)
   /** 最新の作業（待っている間に変わったかを確かめる。前の描画の値を使わない） */
@@ -723,18 +724,16 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const [savingRule, setSavingRule] = useState(false)
 
   /** サーバーが置いた変更案の記録を足す（もう作業にあれば足さない。決め終わったものを開き直さない） */
-  function addRecorded(r: ProposalRecord) {
-    if (latestWork().proposals.some((p) => p.id === r.proposal.id)) return
-    putProposal(store, r, (ps) => (ps.some((p) => p.id === r.proposal.id) ? ps : [...ps, r.proposal]))
-  }
+  const addRecorded = (r: ProposalRecord) => receiveProposal(store, r, "ifUnknown")
   const { pendingReview, pendingInquiryText, undecidedLocation } = derived
   // 未決の工事場所の項目がある変更案（一括調査のものも、チャットの「この現場ってどこ？」のものも）を決めるまで、次の一括調査を始めさせない
   const locationSearch = useLocationSearch({ caseId: kase.id, view, table: tableWire, undecided: undecidedLocation, onRecord: addRecorded, onCaseCost: setCostUsd })
   const gyoshuSuggestion = useGyoshuSuggestion({ caseId: kase.id, onRecord: addRecorded, onCaseCost: addCost })
-  /** 作業を変え、取り消しの記録が積めたかを返す（積めたときだけ「取り消す」を出す） */
-  function commitWithUndo(id: string, next: (w: CaseWork, contents: CaseState["contents"]) => CaseWork) {
-    store.setState((s) => ({ work: next(s.work, s.contents) }))
-    return latestWork().undo.some((e) => e.proposalId === id)
+
+  /** 取り消せる操作をした通知（取り消せるときだけ「取り消す」を出す。記録が大きすぎて取り消せないときはそう伝える） */
+  function notifyCommitted(text: string, committed: Committed, onUndo: () => void) {
+    if (committed === "tooLarge") toast.warning(`${text}（変更が大きすぎて取り消しの記録に残せないので、取り消せません）`)
+    else toast.success(text, committed === "undoable" ? { action: { label: "取り消す", onClick: onUndo } } : undefined)
   }
 
   /**
@@ -745,7 +744,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   function decideGyoshu(decisions: readonly GyoshuDecision[], how: "plan" | "pick") {
     if (!decisions.length) return
     const id = `${GYOSHU_UNDO}${crypto.randomUUID()}`
-    const pushed = commitWithUndo(id, (w, contents) => {
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w, contents }) => {
       const pending = pendingGyoshuItems(w.proposals, contents)
       const edits = new Map(w.edits)
       const decided = new Map<string, { applied: number[]; rejected: number[] }>()
@@ -765,13 +764,13 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
         const x = decided.get(p.id)
         return x ? decide(decide(p, x.applied, "applied"), x.rejected, "rejected") : p
       })
-      return withUndo(w, { ...w, edits, proposals }, id, [])
+      return { ...w, edits, proposals }
     })
     const text = how === "plan" ? `${decisions.length} 行の業種を案のまま決めました` : "業種を決めました"
-    toast.success(text, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "業種の決定") } } : undefined)
+    notifyCommitted(text, committed, () => undoProposal(id, "業種の決定"))
   }
-  /** 直前に業種の一覧で決めたもの（取り消せるもの） */
-  const lastGyoshuUndo = [...work.undo].reverse().find((e) => e.proposalId.startsWith(GYOSHU_UNDO) && canUndo(e)) ?? null
+  /** 直前に業種の一覧で決めたもの・「これでよい」にしたもの（取り消せるもの） */
+  const { gyoshu: lastGyoshuUndo, confirm: lastConfirmUndo } = derived.lastOp
 
   /**
    * 「これでよい」: 要確認・AI の推定の値を、職員が同じ値を手で入れた手直し（by staff）にする（表で手で入れたのと同じ editSession）。取り消しの記録に残す
@@ -781,10 +780,9 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     if (!cell) return
     const session = editSession(cell, letters)
     const id = `${CONFIRM_UNDO}${crypto.randomUUID()}`
-    const pushed = commitWithUndo(id, (w) => withUndo(w, { ...w, edits: new Map(w.edits).set(editKey(rowKey, field), session.read(session.text)) }, id, []))
-    toast.success(`${shortLabel(field)}を確かめた値にしました`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, `「${CONFIRM_LABEL}」`) } } : undefined)
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, edits: new Map(w.edits).set(editKey(rowKey, field), session.read(session.text)) }))
+    notifyCommitted(`${shortLabel(field)}を確かめた値にしました`, committed, () => undoProposal(id, `「${CONFIRM_LABEL}」`))
   }
-  const lastConfirmUndo = [...work.undo].reverse().find((e) => e.proposalId.startsWith(CONFIRM_UNDO) && canUndo(e)) ?? null
 
   /**
    * 載せる工事の選び方を変える（7割と金額のタブの「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。
@@ -793,8 +791,8 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   function changeSelection(mode: SelectionMode) {
     if (latestWork().selection === mode) return
     const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
-    const pushed = commitWithUndo(id, (w) => withUndo(w, { ...w, selection: mode }, id, []))
-    toast.success(`載せる工事を${SELECTION_LABELS[mode]}にしました`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "載せる工事の切り替え") } } : undefined)
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode }))
+    notifyCommitted(`載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, () => undoProposal(id, "載せる工事の切り替え"))
   }
   /** 表の Shift＋クリックで範囲をまとめて入れ外しする（1回の操作を1つの取り消しの記録に） */
   function toggleRange(keys: readonly string[], included: boolean, skippedExcluded: number) {
@@ -804,12 +802,12 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       return
     }
     const id = `${RANGE_UNDO}${crypto.randomUUID()}`
-    const pushed = commitWithUndo(id, (w) => {
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w }) => {
       const manual = new Map(w.manual)
       for (const k of keys) manual.set(k, included)
-      return withUndo(w, { ...w, manual }, id, [])
+      return { ...w, manual }
     })
-    toast.success(`${keys.length} 行を${included ? "載せました" : "外しました"}${skipped}`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "まとめての入れ外し") } } : undefined)
+    notifyCommitted(`${keys.length} 行を${included ? "載せました" : "外しました"}${skipped}`, committed, () => undoProposal(id, "まとめての入れ外し"))
   }
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
   const manualIncluded = useMemo(() => manualIncludedCount(inclusion), [inclusion])
@@ -841,20 +839,12 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const updateProposal = (id: string, next: (p: Proposal) => Proposal) => update("proposals", (ps) => ps.map((p) => (p.id === id ? next(p) : p)))
 
   /**
-   * 承認の記録を作って作業に足す（cases/undo.ts）。before と after は承認の前後の作業、items は承認した項目の番号。
-   * exclusions は計画の聞き返しの答えで足した出さない行の決まり（計画の前後の代わりに、足した分だけを残す）
-   */
-  function withUndo(before: CaseWork, after: CaseWork, proposalId: string, items: number[], external: UndoEntry["external"] = [], exclusions?: ValueFilter[]): CaseWork {
-    const entry = undoEntry(before, exclusions ? { ...after, plan: before.plan } : after, { id: crypto.randomUUID(), proposalId, items, label: proposalId, at: Date.now(), external, exclusions })
-    return entry ? { ...after, undo: pushUndo(after.undo, entry) } : after
-  }
-
-  /**
    * 変更案を承認・却下する。承認した表の変更は手直し・入れ外し・設定に重ね、列の対応の変更は今の計画に重ねて変換し直す。
    * 承認するたびに取り消しの記録を残す。ルールの追記は1件ずつ保存し、保存できたものから承認の印を付ける
    * （途中で失敗しても、保存した追記は承認済みになり、もう一度承認しても二重に足さない）
    */
   async function decideProposal(id: string, indices: number[], decision: "applied" | "rejected") {
+    const { work, contents } = store.getState()
     const p = work.proposals.find((x) => x.id === id)
     const changes = contents.get(id)
     if (!p || p.state !== "open" || !changes) return
@@ -899,11 +889,10 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     const apply = (indices: number[], external: UndoEntry["external"] = []) => {
       if (!indices.length) return
       const edited = view?.edited ?? []
-      setWork((w) => {
+      commit(store, { group: id, kind: "approval", items: indices, external }, ({ work: w }) => {
         const overlaid = applyChanges(w, edited, indices.map((i) => approvedChange(p, changes[i]!)))
         const replanned = nextPlan && indices.some((i) => changes[i]!.kind === "plan") && w.plan ? { ...overlaid, plan: { ...w.plan, plan: nextPlan }, converted: false } : overlaid
-        const decided = { ...replanned, proposals: w.proposals.map((x) => (x.id === id ? decide(x, indices, "applied") : x)) }
-        return withUndo(w, decided, id, indices, external)
+        return { ...replanned, proposals: w.proposals.map((x) => (x.id === id ? decide(x, indices, "applied") : x)) }
       })
     }
     if (nextPlan) supersedeConversion()
@@ -926,7 +915,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       for (const i of rules) {
         // サーバーが変更案の記録から追記し、足した印も一緒に書く（開き直して同じ項目をもう一度承認しても二度足さない）
         await approveRuleFn({ data: { caseId: kase.id, proposalId: id, item: i } })
-        setWork((w) => withUndo(w, { ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }, id, [i], ["rule"]))
+        commit(store, { group: id, kind: "approval", items: [i], external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
       }
       toast.success("ルールに追記しました")
     } catch (e) {
@@ -940,38 +929,18 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
    * 変更案の承認（報告の聞き返しの答えも同じ記録）を取り消す（その変更案の、まだ取り消していない記録を新しい順に）。承認のあとに変えた値は残して知らせる
    */
   function undoProposal(proposalId: string, what = "承認") {
-    let next = latestWork()
-    let reverted = 0
-    let kept = 0
-    let planChanged = false
-    for (const e of [...next.undo].reverse()) {
-      if (e.proposalId !== proposalId || !canUndo(e)) continue
-      const r = undo(next, e.id)
-      if (!r) continue
-      next = r.work
-      reverted += r.reverted
-      kept += r.kept
-      planChanged ||= r.planChanged
+    const r = undoGroup(store, proposalId)
+    if (!r) {
+      toast.info(`${what}を取り消せません（取り消しの記録がもう無いか、取り消し済みです）`)
+      return
     }
-    if (planChanged) {
-      supersedeConversion()
-      next = { ...next, converted: false }
-    }
-    setWork(next)
+    const { reverted, kept } = r
+    if (r.planChanged) supersedeConversion()
     if (kept) toast.warning(`${what}を取り消しました（${reverted} 件を戻し、${what}のあとに変えた ${kept} 件はそのままにしました）`)
     else toast.success(`${what}を取り消しました（${reverted} 件を戻しました）`)
   }
 
-  function undoState(proposalId: string): UndoState | null {
-    const entries = work.undo.filter((e) => e.proposalId === proposalId)
-    if (!entries.length) return null
-    return {
-      can: entries.some(canUndo),
-      undone: entries.some((e) => e.undone),
-      tooLarge: entries.some((e) => e.tooLarge),
-      external: [...new Set(entries.flatMap((e) => e.external))],
-    }
-  }
+  const undoState = (proposalId: string): UndoState | null => derived.undoStates.get(proposalId) ?? null
 
   /**
    * 直した最後の Excel を取り込む: 照合用のシートのダウンロードしたときの値との差分を変更案にしてサーバーに置き（チャットの変更案と同じく、開き直しても残る）、
@@ -1010,7 +979,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     if (!saved) return undefined
     const proposal = newProposal(crypto.randomUUID(), { kind: "excel", fileId: saved.id }, changes, null)
     await recordProposalFn({ data: { caseId: kase.id, record: { proposal, changes } } })
-    putProposal(store, { proposal, changes }, (ps) => [...ps, proposal])
+    receiveProposal(store, { proposal, changes }, "replace")
     return { report }
   }
 
@@ -1101,7 +1070,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       const proposal = newProposal(crypto.randomUUID(), { kind: "answer", fileId: saved.id }, changes, null)
       await recordProposalFn({ data: { caseId: kase.id, record: { proposal, changes } } })
       // 記録している間に元が変わったら、閉じた変更案として足す（サーバーの記録から開き直しても、また開かない）
-      putProposal(store, { proposal, changes }, (ps) => [...ps, stale() ? discard(proposal) : proposal])
+      receiveProposal(store, { proposal: stale() ? discard(proposal) : proposal, changes }, "replace")
       if (stale()) return undefined
     }
     setWork((x) => ({ ...x, aiCache: new Map([...cache, ...x.aiCache]), answers: merged }))
@@ -1257,6 +1226,12 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   })
   const sourceSheets = work.plan?.plan.sheets ?? []
   const reportNotes: ReportProps["notes"] = [
+    ...(closedMissing
+      ? [{ text: `中身の記録が無い変更案を ${closedMissing} 件閉じました（未決の項目は却下にしました。要るものはチャットでもう一度頼んでください）。`, tone: "warning" as const, testId: "closed-missing" }]
+      : []),
+    ...(unreadableProposals
+      ? [{ text: `中身の記録を読めない変更案が ${unreadableProposals} 件あります（記録は残しています。決められないので、続くときは管理者に知らせてください）。`, tone: "warning" as const, testId: "unreadable-proposals" }]
+      : []),
     ...(work.plan?.notice ? [{ text: work.plan.notice, tone: "warning" as const }] : []),
     // 計画が税込・税抜を決めたら聞き返さない。決めたことと直し方だけ伝える
     ...(work.taxBy === "plan" && tax !== "unknown"
@@ -1364,7 +1339,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     if (id === "tax") {
       // 「分からない（顧客に聞く）」も職員が決めた値（計画のし直しで上書きしない）
       const next = value === "included" || value === "excluded" ? value : "unknown"
-      setWork((w) => withUndo(w, { ...setTax(w, next, "staff"), reportAnswers: { ...w.reportAnswers, tax: value === "ask" ? "ask" : next } }, reportUndoId(id), []))
+      commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...setTax(w, next, "staff"), reportAnswers: { ...w.reportAnswers, tax: value === "ask" ? "ask" : next } }))
       return
     }
     if (value === "keep") return answerAsk(id, value)
@@ -1410,7 +1385,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       }
       supersedeConversion()
     }
-    setWork((w) => {
+    commit(store, { group: reportUndoId(id), kind: "approval", exclusions: added }, ({ work: w }) => {
       if (!w.plan) return w
       let plan = w.plan
       if (added.length) {
@@ -1419,8 +1394,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
         if (!r.ok) return w
         plan = { ...w.plan, plan: r.plan }
       }
-      const after = { ...w, ...(added.length ? { plan, converted: false } : {}), reportAnswers: { ...w.reportAnswers, [id]: value } }
-      return withUndo(w, after, reportUndoId(id), [], [], added)
+      return { ...w, ...(added.length ? { plan, converted: false } : {}), reportAnswers: { ...w.reportAnswers, [id]: value } }
     })
   }
   const locationSites = locationSearch.sites
@@ -1508,7 +1482,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
             headers: carryoverHeaders,
           }
         }
-        onProposal={(r) => putProposal(store, r, (ps) => [...ps.filter((x) => x.id !== r.proposal.id), r.proposal])}
+        onProposal={(r) => receiveProposal(store, r, "replace")}
         onCaseCost={setCostUsd}
         onCanSendChange={setChatCanSend}
         location={locationSearch}

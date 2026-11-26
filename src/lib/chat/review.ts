@@ -9,7 +9,7 @@ import { ROUNDING_LABELS } from "../convert/transforms"
 import { tryParseJson } from "../json"
 import { basisSchema, roundingSchema, selectionSchema, taxSchema } from "../schemas"
 import { KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
-import { appliedCount, nameScrubber, namesForCarryover, namesOfCase, NAME_MARK, personalNameTest } from "./carryover"
+import { appliedCount, undoneItems, nameScrubber, namesForCarryover, namesOfCase, NAME_MARK, personalNameTest } from "./carryover"
 import { describeSettings } from "./describe"
 import type { ChatMessage } from "./messages"
 import type { Proposal, ProposalQuestion } from "./proposals"
@@ -57,13 +57,9 @@ const outputOf = (output: unknown) => (typeof output === "string" ? tryParseJson
 
 /** 変更案の承認の数（undo は承認の取り消しの記録。取り消した項目を項目ごとに数える） */
 function proposalState(p: Proposal, undo: readonly Pick<UndoEntry, "proposalId" | "undone" | "items">[]): Exclude<ReviewTurn["proposal"], "unknown" | null> {
-  const undone = new Set<number>()
-  let undoneUnknown = false
-  for (const e of undo) {
-    if (e.proposalId !== p.id || !e.undone) continue
-    if (e.items) for (const i of e.items) undone.add(i)
-    else undoneUnknown = true
-  }
+  // 取り消した項目は変更案に書いた番号と記録の番号を合わせる（記録が上限で捨てられても数え方が変わらない）。番号の無い記録は前の形
+  const undone = undoneItems(p, undo)
+  const undoneUnknown = undo.some((e) => e.proposalId === p.id && e.undone && !e.items)
   return { applied: appliedCount(p), undone: undone.size, undoneUnknown, count: p.state === "open" ? p.count : p.applied + p.rejected, open: p.state === "open" }
 }
 

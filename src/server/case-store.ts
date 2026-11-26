@@ -373,6 +373,14 @@ export async function getCaseWorkJson(db: Db, caseId: string): Promise<string | 
   return row?.json
 }
 
+/**
+ * 読んだ版のまま作業の JSON だけを書き直す（版は進めない）。読む人がだれでも同じに直すもの（記録の無い開いた変更案を閉じる）だけに使い、
+ * ほかのタブの保存とぶつけない。読んだあとに版が進んでいたら書かない（次に読むときにまた直す）
+ */
+export async function normalizeCaseState(db: Db, caseId: string, version: number, json: string) {
+  await db.update(csvCaseStates).set({ json }).where(and(eq(csvCaseStates.caseId, caseId), eq(csvCaseStates.version, version)))
+}
+
 export type SaveResult = { ok: true; version: number } | { ok: false; reason: "conflict" | "gone" }
 
 const refusal = async (db: Db, caseId: string): Promise<SaveResult> => ({ ok: false, reason: (await getCase(db, caseId))?.deleting === false ? "conflict" : "gone" })
