@@ -357,6 +357,7 @@ export function PreviewTable({
         className={cn("border-b border-l p-0 align-top whitespace-normal", cellClass(cell))}
         data-field={field}
         data-status={cell.status}
+        data-tone={cellTone(cell)}
         data-changed={changedCell(cell) ? "1" : undefined}
       >
         {isEditing && choices ? (
@@ -378,7 +379,15 @@ export function PreviewTable({
           <CellEditor value={editing.draft} onChange={(draft) => setEditing({ ...editing, draft })} onDone={finishEdit} />
         ) : (
           // 注意書きはセルの下に出さない（色で状態は分かる）。選んだ・マウスを乗せたセルのものを表の上の1行に出す（キーボードで選んでも出る）
-          <CellButton store={store.current!} row={r.key} field={field} message={cell.message} onClick={() => startEdit(r, field)} hasPopup={!!choices}>
+          <CellButton
+            store={store.current!}
+            row={r.key}
+            field={field}
+            // ツールチップはセルに1つ: 注意書きがあればそれ、無ければ「…」で切れうる決まった値の全部（「コード 名前」）
+            title={cell.message || (named ? (choices?.kind === "codes" && choices.set !== "flag" ? `${cell.value} ${named}` : named) : undefined)}
+            onClick={() => startEdit(r, field)}
+            hasPopup={!!choices}
+          >
             <CellValue value={cell.value} named={named} code={choices?.kind === "codes" && choices.set !== "flag"} />
           </CellButton>
         )}
@@ -515,7 +524,7 @@ export function PreviewTable({
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <CellNote spec={spec} store={store.current!} byKey={byKey} />
-        <ColorLegend rows={rows} />
+        <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} />
       </div>
 
       <div ref={scrollRef} className="min-h-0 overflow-auto rounded-xl border bg-card">
@@ -694,7 +703,7 @@ function CellValue({ value, named, code }: { value: string; named: string | unde
   if (!named) return <span className="whitespace-pre-wrap">{value}</span>
   // 「コード 名前」は折り返さない（列の幅は WIDTH で名前が収まるように決める）。それでも収まらなければ名前の側を「…」で切る
   return (
-    <span data-code={value} className="flex min-w-0 items-baseline whitespace-nowrap" title={code ? `${value} ${named}` : named}>
+    <span data-code={value} className="flex min-w-0 items-baseline whitespace-nowrap">
       {code && <span className="num mr-1 shrink-0 text-[10px] text-muted-foreground">{value}</span>}
       <span className="truncate">{named}</span>
     </span>
@@ -715,7 +724,7 @@ function columnTip(spec: CsvSpec<KojiFieldId>, id: string) {
  * セルのボタン。選んだ（フォーカスした）ときだけ注意書きの1行を説明につなぐ（読み上げはフォーカスのときだけ。マウスを乗せただけでは読み上げない）。
  * store を読むのはこのボタンだけなので、選んだセルが変わっても表全体は描き直さない
  */
-function CellButton({ store, row, field, message, onClick, hasPopup, children }: { store: ActiveStore; row: string; field: KojiFieldId; message?: string; onClick: () => void; hasPopup?: boolean; children: React.ReactNode }) {
+function CellButton({ store, row, field, title, onClick, hasPopup, children }: { store: ActiveStore; row: string; field: KojiFieldId; title?: string; onClick: () => void; hasPopup?: boolean; children: React.ReactNode }) {
   const focused = useSyncExternalStore(store.subscribe, () => {
     const a = store.get()
     return a?.row === row && a.field === field && a.via === "focus"
@@ -724,7 +733,7 @@ function CellButton({ store, row, field, message, onClick, hasPopup, children }:
     <button
       type="button"
       className="block min-h-8 w-full px-2 py-1.5 text-left break-words hover:ring-1 hover:ring-ring/40 hover:ring-inset"
-      title={message}
+      title={title}
       aria-describedby={focused ? NOTE_ID : undefined}
       aria-haspopup={hasPopup ? "dialog" : undefined}
       onFocus={() => store.set({ row, field, via: "focus" })}
@@ -764,15 +773,18 @@ function CellNote({ spec, store, byKey }: { spec: CsvSpec<KojiFieldId>; store: A
 }
 
 /**
- * セルの色の凡例（色は STATUS・cellTone から）。案件の表にある色だけを出す。数えるのは全行（絞り込み・検索・載せない行も）:
+ * セルの色の凡例（色は STATUS・cellTone から）。案件の表にある色だけを出す。数えるのは全行（絞り込み・検索・載せない行も）の、見えている列:
  * 凡例はこの案件の表の色の見方なので、絞り込みや検索のたびに出入りして並びが動かないようにする
  */
-function ColorLegend({ rows }: { rows: readonly Row[] }) {
+function ColorLegend({ rows, fields }: { rows: readonly Row[]; fields: readonly string[] }) {
+  // 数えるのは見えている列だけ（「表示する列」で隠した列の色は表に出ない）
+  const shownKey = fields.join(",")
   const tones = useMemo(() => {
     const found = new Set<string>()
-    for (const r of rows) for (const c of Object.values<CellResult>(r.cells)) found.add(cellTone(c))
+    const shownFields = shownKey.split(",") as KojiFieldId[]
+    for (const r of rows) for (const f of shownFields) if (r.cells[f]) found.add(cellTone(r.cells[f]))
     return LEGEND_TONES.filter((t) => found.has(t))
-  }, [rows])
+  }, [rows, shownKey])
   if (!tones.length) return null
   return (
     <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="セルの色" data-testid="color-legend">

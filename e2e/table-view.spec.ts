@@ -6,16 +6,9 @@ import { attachAndConvert, convertFixture, deleteCustomer, openNewCase, showAllR
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
-/** 表のセルの色の種類（status.ts の cellTone と同じ: AI が補った〔注意書きのある AI の〕セルは要確認） */
+/** 表のセルの色の種類（セルの data-tone） */
 const tableTones = (page: Page) =>
-  page.locator('[data-testid="preview-table"] td[data-status]').evaluateAll((tds) => {
-    const tones = new Set<string>()
-    for (const td of tds) {
-      const status = (td as HTMLElement).dataset.status!
-      tones.add(status === "ai" && td.querySelector("button[title]") ? "warning" : status)
-    }
-    return [...tones]
-  })
+  page.locator('[data-testid="preview-table"] td[data-tone]').evaluateAll((tds) => [...new Set(tds.map((td) => (td as HTMLElement).dataset.tone!))])
 
 test("色の凡例は表にある色だけを出し、黄色の意味を添える", async ({ page }) => {
   const { customer } = await convertFixture(page, FIXTURE)
@@ -77,5 +70,9 @@ test("シート名が長くても、元の行と業種のセルは隣の列に�
     return bad
   }, GYOSHU.map((g) => ({ code: g.code, label: g.label })))
   expect(overflow).toEqual([])
+  // ツールチップはセルのボタンに1つだけ（決まった値の中には付けない。注意書きが無ければ「コード 名前」）
+  await expect(page.locator('[data-testid="preview-table"] [data-code][title]')).toHaveCount(0)
+  const gyoshu = page.locator('[data-testid="preview-table"] td[data-field="gyoshu"]:not([data-tone="warning"]) > button').first()
+  await expect(gyoshu).toHaveAttribute("title", /^\d+ \S/)
   await deleteCustomer(page, customer)
 })
