@@ -74,7 +74,8 @@ const columnHelper = createColumnHelper<typeof features, Row>()
 const WIDTH: Record<KojiFieldId | "include" | "origin", number> = {
   include: 156,
   origin: 84,
-  gyoshu: 100,
+  // 「コード 名前」が折り返さない幅（いちばん長い業種「10 タイル・れんが・ブロック」で決める）
+  gyoshu: 184,
   client: 170,
   motoukeShitauke: 92,
   jv: 44,
@@ -336,8 +337,12 @@ export function PreviewTable({
     }
     if (columnId === "origin") {
       return (
-        <TableCell key={columnId} className="num border-b px-2 py-1.5 text-muted-foreground">
-          {originText(r)}
+        <TableCell key={columnId} className="num border-b px-2 py-1.5 text-muted-foreground" title={originText(r)} data-testid="origin-cell">
+          {/* 列からはみ出さない。行番号は必ず見せ、長いシート名の側を「…」で縮める（全部はマウスを乗せると出る） */}
+          <span className="flex min-w-0">
+            <span className="truncate">{r.sheet}</span>
+            <span className="shrink-0">!{r.row + 1}</span>
+          </span>
         </TableCell>
       )
     }
@@ -687,10 +692,11 @@ function RowReasons({ fix, onOpenInquiry, onFixAction, onConfirm }: { fix: RowFi
 function CellValue({ value, named, code }: { value: string; named: string | undefined; code: boolean }) {
   if (!value) return <span className="text-muted-foreground/50">—</span>
   if (!named) return <span className="whitespace-pre-wrap">{value}</span>
+  // 「コード 名前」は折り返さない（列の幅は WIDTH で名前が収まるように決める）。それでも収まらなければ名前の側を「…」で切る
   return (
-    <span data-code={value}>
-      {code && <span className="num mr-1 text-[10px] text-muted-foreground">{value}</span>}
-      {named}
+    <span data-code={value} className="flex min-w-0 items-baseline whitespace-nowrap" title={code ? `${value} ${named}` : named}>
+      {code && <span className="num mr-1 shrink-0 text-[10px] text-muted-foreground">{value}</span>}
+      <span className="truncate">{named}</span>
     </span>
   )
 }
