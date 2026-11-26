@@ -261,3 +261,49 @@ test("AI の聞き返しはダウンロードの前の確認でも答えられ�
   await expect(page.locator('[data-testid="chat-column"] [data-testid="proposal-apply-all"]')).toBeEnabled()
   await expect(page.getByTestId("confirmation")).toHaveAttribute("data-answered", "yes")
 })
+
+/** 要素の文の最初の数（無ければ 0。済んだ段・数の無いタブ） */
+const firstNumber = async (page: Page, testId: string) => Number(/(\d+)/.exec(await page.getByTestId(testId).innerText())?.[1] ?? 0)
+
+test("残りの件数は、次にやること・ダウンロードの前の確認・チャットの答えを待つ印・タブの数・表の「直す」で同じ（外した問い合わせは数えない）", async ({ page }) => {
+  const { customer } = await openNewCase(page)
+  created.push(customer)
+  // 税込・税抜を決めない計画（税の聞き返し）と、計画の聞き返し1つ
+  await fakePlan(page)
+  await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
+  await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
+  const key = await page.locator('[data-testid="preview-table"] tbody tr[data-row-key]').first().getAttribute("data-row-key")
+  await fakeChatWithQuestion(page, [{ kind: "include", rowKey: key!, include: false }])
+  await page.getByTestId("chat-input").fill("1行目を外して")
+  await page.getByTestId("chat-send").click()
+  await expect(page.getByTestId("confirmation")).toBeVisible()
+
+  await test.step("答える: 報告の聞き返し2つとチャットの変更案1つ。次にやること・ツールチップ・確認・チャットの印で同じ数", async () => {
+    await expect(page.getByTestId("next-step-answer")).toContainText("3")
+    await expect(page.locator('[data-testid="chat-column"] [data-pending]')).toHaveCount(3)
+    await expect(page.getByTestId("export-button")).toHaveAttribute("title", /^残り: 答える 3/)
+    await page.getByTestId("export-button").click()
+    const dialog = page.getByTestId("export-dialog")
+    await expect(dialog.getByTestId("export-answers")).toHaveAttribute("data-left", "3")
+    await expect(dialog.locator('[data-testid="report-question"][data-pending]')).toHaveCount(3)
+    await page.keyboard.press("Escape")
+    await expect(dialog).toBeHidden()
+  })
+
+  await test.step("直す・業種を決める: 次にやることと表の絞り込み・業種のタブで同じ数", async () => {
+    expect(await firstNumber(page, "next-step-fix")).toBe(await firstNumber(page, "row-filters-fix"))
+    expect(await firstNumber(page, "next-step-gyoshu")).toBe(await firstNumber(page, "tab-gyoshu"))
+  })
+
+  await test.step("問い合わせ: タブの数は次にやることと同じで、外すと両方が減る", async () => {
+    await openTab(page, "inquiry")
+    const before = await firstNumber(page, "next-step-inquiry")
+    expect(before).toBeGreaterThan(0)
+    expect(await firstNumber(page, "tab-inquiry")).toBe(before)
+    await page.getByTestId("inquiry-panel").locator("summary").click()
+    await page.locator('[data-testid="inquiry-list"] input[type="checkbox"]').first().uncheck()
+    await expect(page.getByTestId("inquiry-counts")).toContainText(`問い合わせ ${before - 1} 件`)
+    expect(await firstNumber(page, "next-step-inquiry")).toBe(before - 1)
+    expect(await firstNumber(page, "tab-inquiry")).toBe(before - 1)
+  })
+})
