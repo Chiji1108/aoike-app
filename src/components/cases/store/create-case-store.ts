@@ -30,9 +30,16 @@ export type ChatTarget = { target: string; button?: string }
 
 /**
  * DOM への頼み（ストアは DOM を触らない。workspace/focus-effects.tsx が描いたあとに動かす）:
- * chat はチャットの欄の target へ移ってボタンに合わせる、gyoshuRow は業種の一覧のその行へ移って選ぶ欄に合わせる
+ * chat はチャットの欄の target へ移ってボタンに合わせる、gyoshuRow は業種の一覧のその行へ移って選ぶ欄に合わせる、
+ * chatWindow は職員が開いたチャットの窓の入力欄へ、chatLauncher は職員がたたんだあとの右下の丸いボタンへ
  */
-export type FocusRequest = ({ kind: "chat" } & ChatTarget) | { kind: "gyoshuRow"; key: string }
+export type FocusRequest = ({ kind: "chat" } & ChatTarget) | { kind: "gyoshuRow"; key: string } | { kind: "chatWindow" } | { kind: "chatLauncher" }
+
+/** チャットの窓の大きさ（px。職員が左上の角で変えた。null は決まった大きさ） */
+export type ChatSize = { w: number; h: number }
+
+/** 端末ごとに覚えるチャットの窓の設定（たたんだか・大きさ・「チャットはここにあります」を出したか） */
+export type ChatPrefs = { collapsed: boolean; size: ChatSize | null; hintShown: boolean }
 
 /**
  * 案件の画面のストア（案件ごとに1つ。CaseWorkspace が作り、context で渡す）。
@@ -122,6 +129,12 @@ export type CaseState = {
     focus: FocusRequest | null
     /** チャットに指示を送れるか（チャットの欄が知らせる。ダウンロードの前の確認の「AI に聞く」） */
     chatCanSend: boolean
+    /**
+     * チャットの窓（広い画面で表があるとき）: collapsed はたたんでいる（職員が決めた値は端末ごとに覚える。「答える」などで移るときはその場だけ開く）、
+     * unread はたたんでいる間にチャットから届いたもの（new は返事・変更案・アップロードの結果、error は失敗した返事・読めなかったファイル。開くと消す）、
+     * size は窓の大きさ、hint は初めて窓にしたときに窓の上に出す「チャットはここにあります（たためます）」（端末ごとに1回。消すと false）
+     */
+    chat: { collapsed: boolean; unread: "new" | "error" | null; size: ChatSize | null; hint: boolean }
   }
   /** 保存の状態と、同じブラウザの別のタブ */
   sync: { status: SaveStatus; peer: PeerState }
@@ -163,6 +176,7 @@ function reviewSavedPlan(w: CaseWork): CaseWork {
 /**
  * 読み込んだ案件からストアの最初の状態を作る。保存した作業が無ければ新しい作業（7割の計算は事務所の設定）。
  * サーバーが記録した変更案のうち、作業にまだ無いもの（返事を受け取り損ねたもの）も作業に入れる。
+ * チャットの窓は端末に覚えた設定（chatPrefs）から始める（窓を置く前から覚えた値なので、置いたあとに開き直さない）。
  * closedMissing はサーバーが閉じた記録の無い変更案の数、unreadableProposals は記録を読めなかった変更案（作業に無いものも。閉じない）
  */
 export function initialCaseState(page: {
@@ -174,7 +188,7 @@ export function initialCaseState(page: {
   closedMissing: number
   settings: { rule7Tax: Rule7Tax }
   previousUnsaved: boolean
-}): CaseState {
+}, chatPrefs: ChatPrefs | null = null): CaseState {
   const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
@@ -210,6 +224,7 @@ export function initialCaseState(page: {
       dragging: false,
       focus: null,
       chatCanSend: false,
+      chat: { collapsed: chatPrefs?.collapsed ?? false, unread: null, size: chatPrefs?.size ?? null, hint: !chatPrefs?.hintShown },
     },
     sync: { status: { kind: "saved" }, peer: "none" },
   }

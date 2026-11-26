@@ -129,7 +129,9 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     const diff = compareFormats(side, { sheets: source.sheets, sheet, headerRow })
     return { diff, lines: describeFormatDiff(diff) }
   })
-  const layoutOfInput = memoLast((wide: boolean, hasTable: boolean, workReady: boolean, workChoice: boolean | null) => layoutOf({ wide, hasTable, workReady, workChoice }))
+  const layoutOfInput = memoLast((wide: boolean, hasTable: boolean, workReady: boolean, workChoice: boolean | null, chatCollapsed: boolean) =>
+    layoutOf({ wide, hasTable, workReady, workChoice, chatCollapsed }),
+  )
 
   let last: { state: CaseState; out: CaseView } | null = null
   return function view(s: CaseState): CaseView {
@@ -170,7 +172,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）
       chatReady: !!t.rows && !t.reconverting && (noSheetSource || (w.converted && !!rt.source && !!t.grid && !!t.plan)),
-      layout: layoutOfInput(s.ui.wide, t.hasTable, !!t.output && !!t.shown, s.ui.workChoice),
+      layout: layoutOfInput(s.ui.wide, t.hasTable, !!t.output && !!t.shown, s.ui.workChoice, s.ui.chat.collapsed),
     }
     // 中身が前と同じ参照なら前の結果を返す（selector が描画ごとに新しいものを返さない）
     const same = last && (Object.keys(out) as (keyof CaseView)[]).every((k) => Object.is(out[k], last!.out[k]))

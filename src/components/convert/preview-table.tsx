@@ -527,7 +527,8 @@ export function PreviewTable({
         <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} />
       </div>
 
-      <div ref={scrollRef} className="min-h-0 overflow-auto rounded-xl border bg-card">
+      {/* 上に重なる窓（案件の画面のチャット）が隠す分（--chat-cover-table-b・--chat-cover-r）だけ、最後の行の下と右端の列の右にスクロールできる余白を足す */}
+      <div ref={scrollRef} className="min-h-0 overflow-auto rounded-xl border bg-card pr-[var(--chat-cover-r,0px)] pb-[var(--chat-cover-table-b,0px)]">
         <table
           data-slot="table"
           data-testid="preview-table"
