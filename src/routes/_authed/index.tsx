@@ -27,8 +27,7 @@ const TOOLS: Tool[] = [
 
 /** app.aoike.jp の外のページ */
 const LINKS: { name: string; description: string; icon: LucideIcon; href: string }[] = [
-  // 公開前の確認用の URL。www.aoike.jp で公開したら差し替える
-  { name: "ホームページ", description: "事務所のホームページ（公開前の確認用）", icon: Globe, href: "https://aoike-website.chiji.workers.dev" },
+  { name: "ホームページ", description: "事務所のホームページ", icon: Globe, href: "https://www.aoike.jp" },
 ]
 
 function PortalPage() {
