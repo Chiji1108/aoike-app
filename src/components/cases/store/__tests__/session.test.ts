@@ -45,6 +45,7 @@ function page(): SessionPage {
     settings: { rule7Tax: "excluded" },
     chatEnabled: true,
     excelKey: "1".repeat(64),
+    previousUnsaved: false,
     previous: null,
   }
 }
@@ -276,9 +277,49 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     expect(s.store.getState().sync.peer).toBe("open")
     window.dispatchEvent(new Event("pagehide"))
     expect(posted.at(-1)).toBe("bye")
-    // 隠れたあとに y だけが閉じても、x が残っているとは数えない
-    send({ kind: "bye", tab: "y" })
+    // 隠れたら知っているタブを忘れ、開いている印を外す。また返事が来れば立てる
     expect(s.store.getState().sync.peer).toBe("none")
+    send({ kind: "here", tab: "y" })
+    expect(s.store.getState().sync.peer).toBe("open")
+  })
+
+  test("閉じたタブの bye のあとに届いた最後の保存（saved）は受けて、保存された印を付ける（開いているタブには数えない）", () => {
+    let send!: (data: unknown) => void
+    const s = createCaseSession(page(), fakeDeps(), () => ({ post: () => undefined, listen: (r) => void (send = r), close: () => undefined }))
+    s.connect()
+    send({ kind: "hello", tab: "x" })
+    send({ kind: "bye", tab: "x" })
+    send({ kind: "saved", tab: "x" })
+    expect(s.store.getState().sync.peer).toBe("saved")
+  })
+
+  test("外すと開いている印を外す", () => {
+    let send!: (data: unknown) => void
+    const s = createCaseSession(page(), fakeDeps(), () => ({ post: () => undefined, listen: (r) => void (send = r), close: () => undefined }))
+    const off = s.connect()
+    send({ kind: "hello", tab: "x" })
+    expect(s.store.getState().sync.peer).toBe("open")
+    off()
+    expect(s.store.getState().sync.peer).toBe("none")
+  })
+
+  test("離れるときに保存できなければ最後の1回であきらめ、savesSettled が false を返す（送り直して新しい画面とぶつからない）。新しい画面は報告に出す", async () => {
+    const saveState = vi.fn<CaseDeps["saveState"]>(async () => {
+      throw new Error("つながりません")
+    })
+    const posted: string[] = []
+    const s = createCaseSession(page(), fakeDeps({ saveState }), () => ({ post: (m) => void posted.push(m.kind), listen: () => undefined, close: () => undefined }))
+    const off = s.connect()
+    setWork(s.store, (w) => ({ ...w, rounding: "round" }))
+    off()
+    expect(posted).toEqual(["hello"])
+    expect(await savesSettled("c")).toBe(false)
+    expect(posted).toEqual(["hello", "bye"])
+    const calls = saveState.mock.calls.length
+    await new Promise((r) => setTimeout(r, 1_100))
+    expect(saveState.mock.calls.length).toBe(calls)
+    const next = createCaseSession({ ...page(), previousUnsaved: true }, fakeDeps(), noChannel)
+    expect(next.store.getState().runtime.previousUnsaved).toBe(true)
   })
 
   test("状態の変更が続けて失敗したら、サーバーが最後に受け付けた状態に戻す（前の楽観的な値に戻さない）", async () => {
@@ -315,6 +356,8 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     await importing
     const excel = s.store.getState().work.proposals.filter((p) => p.origin.kind === "excel")
     expect(excel.map((p) => p.state)).toEqual(["closed"])
+    // 捨てたことを知らせる（上げたファイルは案件に残る）
+    expect(s.store.getState().runtime.notes.at(-1)).toMatchObject({ tone: "error", text: expect.stringContaining("もう一度アップロード") })
   })
 
   test("工事場所・ルールを外に書いている間に変更案が閉じたら、表に重ねず承認の印も付けない", async () => {

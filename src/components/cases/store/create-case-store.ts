@@ -39,6 +39,8 @@ export type CaseState = {
     closedMissing: number
     /** 記録はあるが読めなかった変更案の数（作業にあるものは閉じずに残す。報告に1行出す。カードは決められない） */
     unreadable: number
+    /** 離れてすぐ戻ったとき、前の画面の変更を保存できなかった（報告に1行出す） */
+    previousUnsaved: boolean
     /** 案件のファイルの一覧（D1・R2 の写し。アップロード・ダウンロードの控えで足す） */
     files: CaseFile[]
     /** 案件の状態（変えるときは楽観的に変え、失敗したら savedStatus に戻す） */
@@ -124,6 +126,7 @@ export function initialCaseState(page: {
   unreadableProposals: readonly string[]
   closedMissing: number
   settings: { rule7Tax: Rule7Tax }
+  previousUnsaved: boolean
 }): CaseState {
   const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
   return {
@@ -132,6 +135,7 @@ export function initialCaseState(page: {
     runtime: {
       closedMissing: page.closedMissing,
       unreadable: page.unreadableProposals.length,
+      previousUnsaved: page.previousUnsaved,
       files: page.files,
       status: page.kase.status,
       savedStatus: page.kase.status,

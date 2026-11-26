@@ -15,7 +15,8 @@ type DataOf<F extends (opts: { data: never }) => unknown> = Omit<Parameters<F>[0
  * 単体テストでは偽物を渡す（サーバーの入力はサーバー関数が zod で確かめる）
  */
 export type CaseDeps = {
-  saveState: (req: SaveRequest) => Promise<SaveResponse>
+  /** 作業を保存する（signal は自動保存が決める1回の要求の上限時間） */
+  saveState: (req: SaveRequest, signal: AbortSignal) => Promise<SaveResponse>
   planWithAi: (req: DataOf<typeof planWithAi>) => ReturnType<typeof planWithAi>
   runAiBatch: (req: DataOf<typeof runAiBatch>) => ReturnType<typeof runAiBatch>
   recordProposal: (record: ProposalRecord) => Promise<unknown>
@@ -30,7 +31,7 @@ export type CaseDeps = {
 /** 本物のサーバー関数を案件に結ぶ */
 export function serverDeps(caseId: string): CaseDeps {
   return {
-    saveState: (req) => saveCaseStateFn({ data: { caseId, ...req } }),
+    saveState: (req, signal) => saveCaseStateFn({ data: { caseId, ...req }, signal }),
     planWithAi: (req) => planWithAi({ data: { caseId, ...req } }),
     runAiBatch: (req) => runAiBatch({ data: { caseId, ...req } }),
     recordProposal: (record) => recordProposalFn({ data: { caseId, record } }),

@@ -38,6 +38,9 @@ export async function keepFile(env: CaseEnv, kind: FileKind, blob: Blob, name: s
   }
 }
 
+/** 待っている間に変換の元・列の対応が変わった（画面を離れた）ので取り込みをやめたとき（上げたファイルは案件に残る） */
+const STALE_IMPORT = { error: "取り込んでいる間に変換の元か列の対応が変わったので、取り込みをやめました。もう一度アップロードしてください" }
+
 /** 変換の結果（手直し・置換の前）。元のファイル・計画・端数・AI の結果・引いた住所から作る（AI は呼ばない） */
 function convertedRows(sheets: SheetGrid[], w: CaseWork, addresses: AddressBook) {
   if (!w.converted || !w.plan) return null
@@ -65,7 +68,7 @@ async function readFinalFile(env: CaseEnv, f: File, sheets: readonly SheetGrid[]
     { caseId: config.caseId, sourceFileId: start.work.sourceFileId, excelKey: config.excelKey },
     { rounding: start.work.rounding, cache, callAi: serverAi(env, failures), lookup: (raws) => ensureAddresses(env, [...raws]) },
   )
-  if (generation !== store.getState().runtime.gen.case) return undefined
+  if (generation !== store.getState().runtime.gen.case) return STALE_IMPORT
   if ("error" in result) return result
   if (failures.size) toast.warning(`AI を使えなかった値があります: ${[...failures].join(" / ")}`)
   setWork(store, (w) => ({ ...w, aiCache: mergeAiCache(w.aiCache, start.work.aiCache, cache) }))
@@ -85,12 +88,13 @@ async function readFinalFile(env: CaseEnv, f: File, sheets: readonly SheetGrid[]
   const saved = await keepFile(env, "edit_sheet", f, f.name)
   // 保存を待っている間に元が変わったら、前の元の行への変更なので入れない
   const stale = () => generation !== store.getState().runtime.gen.case
-  if (!saved || stale()) return undefined
+  if (!saved) return undefined
+  if (stale()) return STALE_IMPORT
   const proposal = newProposal(crypto.randomUUID(), { kind: "excel", fileId: saved.id }, changes, null)
   await deps.recordProposal({ proposal, changes })
   // 記録している間に元が変わったら、閉じた変更案として足す（サーバーの記録から開き直しても、また開かない）
   receiveProposal(store, { proposal: stale() ? discard(proposal) : proposal, changes }, "replace")
-  if (stale()) return undefined
+  if (stale()) return STALE_IMPORT
   return { report }
 }
 
@@ -160,7 +164,7 @@ async function readAnswerFile(env: CaseEnv, f: File, kind: "marked" | "answer", 
     report = read
     outside = outsideCells(sheets, against)
   }
-  if (generation !== store.getState().runtime.gen.case) return undefined
+  if (generation !== store.getState().runtime.gen.case) return STALE_IMPORT
   if (store.getState().work.plan !== planAtStart) return { error: "取り込んでいる間に列の対応が変わりました。もう一度取り込んでください" }
   // 読んでいる間に値が変わったセルの回答は外す（今の変換の結果・一括置換・手直しと比べる）
   const { work: w, contents } = store.getState()
@@ -185,13 +189,14 @@ async function readAnswerFile(env: CaseEnv, f: File, kind: "marked" | "answer", 
   const saved = await keepFile(env, "answer", f, f.name)
   // 保存を待っている間に元や列の対応が変わったら、前の元の行への答えなので入れない
   const stale = () => generation !== store.getState().runtime.gen.case || store.getState().work.plan !== planAtStart
-  if (!saved || stale()) return undefined
+  if (!saved) return undefined
+  if (stale()) return STALE_IMPORT
   if (changes.length) {
     const proposal = newProposal(crypto.randomUUID(), { kind: "answer", fileId: saved.id }, changes, null)
     await deps.recordProposal({ proposal, changes })
     // 記録している間に元が変わったら、閉じた変更案として足す（サーバーの記録から開き直しても、また開かない）
     receiveProposal(store, { proposal: stale() ? discard(proposal) : proposal, changes }, "replace")
-    if (stale()) return undefined
+    if (stale()) return STALE_IMPORT
   }
   setWork(store, (x) => ({ ...x, aiCache: mergeAiCache(x.aiCache, cacheStart, cache), answers: merged }))
   // 色付きの欄の外（印の無いセルの書き換え・別の列・メモ・別のシート）に記入があるか、読めなかった記入があれば、このファイルを AI に読ませられる

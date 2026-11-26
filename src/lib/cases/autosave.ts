@@ -17,7 +17,8 @@ export type SaveRequest = { version: number; work: SavedWork; aiCache?: SavedAiC
 export type SaveResponse = { ok: true; version: number } | { ok: false; reason: "conflict" | "gone" | "tooLarge" }
 
 export type AutosaveOptions = {
-  save: (req: SaveRequest) => Promise<SaveResponse>
+  /** 保存を送る。signal は1回の要求の上限時間（timeoutMs）で止まる（固まった要求を待ち続けない） */
+  save: (req: SaveRequest, signal: AbortSignal) => Promise<SaveResponse>
   /** 読んだときの版（まだ保存が無ければ 0） */
   version: number
   /** 読んだときの作業（まだ保存が無ければ null。最初の保存で AI の結果も送る） */
@@ -27,7 +28,12 @@ export type AutosaveOptions = {
   debounceMs?: number
   /** 失敗が続いた回数から、送り直すまでの間 */
   retryMs?: (failures: number) => number
+  /** 1回の保存の要求の上限時間（超えたら失敗として扱う） */
+  timeoutMs?: number
 }
+
+/** 1回の保存の要求の上限時間 */
+export const SAVE_TIMEOUT_MS = 30_000
 
 const retryBackoff = (failures: number) => Math.min(1000 * 2 ** (failures - 1), 30_000)
 
@@ -38,7 +44,7 @@ const retryBackoff = (failures: number) => Math.min(1000 * 2 ** (failures - 1), 
  * 別の画面が先に保存した・案件が消されたときは止める（上書きしない）
  */
 export function createAutosave(options: AutosaveOptions) {
-  const { save, onStatus, errorMessage, debounceMs = 800, retryMs = retryBackoff } = options
+  const { save, onStatus, errorMessage, debounceMs = 800, retryMs = retryBackoff, timeoutMs = SAVE_TIMEOUT_MS } = options
   let version = options.version
   let savedWork = options.saved && JSON.stringify(toSavedWork(options.saved))
   let savedAiCache: AiCache | null = options.saved?.aiCache ?? null
@@ -49,6 +55,8 @@ export function createAutosave(options: AutosaveOptions) {
   let problem: SaveStatus | null = null
   let failures = 0
   let timer: ReturnType<typeof setTimeout> | undefined
+  /** 閉じた（画面を離れた）。新しい変更は受けず、失敗しても送り直さない */
+  let closed = false
 
   const schedule = (ms: number) => {
     clearTimeout(timer)
@@ -79,11 +87,11 @@ export function createAutosave(options: AutosaveOptions) {
     sending = true
     let res: SaveResponse
     try {
-      res = await save({ version, work: toSavedWork(work), aiCache: aiChanged ? toSavedAiCache(work.aiCache) : undefined })
+      res = await save({ version, work: toSavedWork(work), aiCache: aiChanged ? toSavedAiCache(work.aiCache) : undefined }, AbortSignal.timeout(timeoutMs))
     } catch (e) {
       failures++
       report({ kind: "failed", message: errorMessage(e) })
-      schedule(retryMs(failures))
+      if (!closed) schedule(retryMs(failures))
       return
     } finally {
       sending = false
@@ -103,28 +111,43 @@ export function createAutosave(options: AutosaveOptions) {
     } else void flush()
   }
 
+  /**
+   * 待たずに送り、今の変更まで保存し終えるのを待つ。保存し終えたら true、送れない・止まっている（別の画面・削除・大きすぎる）なら false
+   * （サーバーが保存した作業を読む処理の前に使う。例: 振り返り）
+   */
+  function settle(): Promise<boolean> {
+    if (stopped) return Promise.resolve(false)
+    if (latest === null && !sending) return Promise.resolve(problem === null)
+    const waiting = new Promise<boolean>((resolve) => waiters.push(resolve))
+    void flush()
+    return waiting
+  }
+
   return {
     change(work: CaseWork) {
-      if (stopped) return
+      if (stopped || closed) return
       latest = work
       if (!problem) report({ kind: "pending" })
       // 送れなかった後は、送り直しの間を待つ（変更のたびに送り直さない）
       if (problem?.kind !== "failed") schedule(debounceMs)
     },
-    /** 待たずに送る（画面を離れるとき） */
-    flush: () => void flush(),
+    /**
+     * 閉じる（画面を離れるとき）: 新しい変更は受けず、待っている変更を待たずに送り、失敗しても送り直さない（最後の1回だけ試す）。
+     * 送っている最中なら、その結果（と続きの1回）を待つ。保存し終えたら true、保存できなかった（あきらめた・止まっている）なら false
+     */
+    close(): Promise<boolean> {
+      closed = true
+      clearTimeout(timer)
+      return settle()
+    },
+    /** 閉じたのを開き直す（すぐにつなぎ直したとき）。保存できていない変更があれば送り直す */
+    reopen() {
+      if (!closed) return
+      closed = false
+      if (latest && !sending && !stopped) schedule(debounceMs)
+    },
     /** 保存できていない変更があるか */
     unsaved: () => !stopped && (latest !== null || sending),
-    /**
-     * 待たずに送り、今の変更まで保存し終えるのを待つ。保存し終えたら true、送れない・止まっている（別の画面・削除・大きすぎる）なら false
-     * （サーバーが保存した作業を読む処理の前に使う。例: 振り返り）
-     */
-    settle(): Promise<boolean> {
-      if (stopped) return Promise.resolve(false)
-      if (latest === null && !sending) return Promise.resolve(problem === null)
-      const waiting = new Promise<boolean>((resolve) => waiters.push(resolve))
-      void flush()
-      return waiting
-    },
+    settle,
   }
 }

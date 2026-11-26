@@ -21,7 +21,7 @@ export type PeerChannel = {
 
 export type SyncOptions = {
   caseId: string
-  save: (req: SaveRequest) => Promise<SaveResponse>
+  save: (req: SaveRequest, signal: AbortSignal) => Promise<SaveResponse>
   /** 読んだときの版（まだ保存が無ければ 0） */
   version: number
   /** 読んだときの作業（まだ保存が無ければ null） */
@@ -52,11 +52,14 @@ export function broadcastChannel(caseId: string): () => PeerChannel | null {
  * 画面を離れたあとも送っている最後の保存（案件ごと）。同じ案件の画面を開き直すときは、読む前にこれを待つ
  * （前の画面の最後の保存より古い版を読むと、新しい画面の保存がぶつかる）
  */
-const leaving = new Map<string, Promise<unknown>>()
+const leaving = new Map<string, Promise<boolean>>()
 
-/** 画面を離れた案件の、最後の保存が終わるのを待つ（読み込みの前。送っていなければすぐ返る） */
-export function savesSettled(caseId: string): Promise<unknown> {
-  return leaving.get(caseId) ?? Promise.resolve()
+/**
+ * 画面を離れた案件の、最後の保存が終わる（保存し終えたか、あきらめた）のを待つ（読み込みの前。送っていなければすぐ返る）。
+ * 前の画面の変更を保存し終えたら true、保存できなかったら false（新しい画面で知らせる）。保存の要求には上限時間があるので必ず終わる
+ */
+export function savesSettled(caseId: string): Promise<boolean> {
+  return leaving.get(caseId) ?? Promise.resolve(true)
 }
 
 /**
@@ -84,8 +87,8 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
   const autosave = createAutosave({
     version: options.version,
     saved: options.saved,
-    save: async (req) => {
-      const res = await options.save(req)
+    save: async (req, signal) => {
+      const res = await options.save(req, signal)
       if (res.ok) for (const [ch, tab] of open) ch.post(message("saved", tab))
       return res
     },
@@ -94,6 +97,13 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
   })
   /** 自動保存に渡した最後の作業（つなぎ直したとき、外していた間の変更を渡す） */
   let forwarded = store.getState().work
+
+  /** 知っている別のタブを忘れる（隠れる・外すとき）。開いている印は外す（別のタブの保存を知った印は、再読み込みするまで残す） */
+  function forgetPeers() {
+    peers.clear()
+    gone.clear()
+    if (store.getState().sync.peer === "open") setPeer("none")
+  }
 
   function receive(data: unknown) {
     const m = peerMessageSchema.safeParse(data)
@@ -105,13 +115,18 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
       if (!peers.size && store.getState().sync.peer === "open") setPeer("none")
       return
     }
+    // 別のタブが保存したら、この画面の作業は古い（再読み込みするまで saved のまま）。閉じたタブの保存も受ける
+    // （隠れるときは保存の終わりを待てない〔隠れたページは止まる〕ので、bye のあとに最後の保存の saved が届く）
+    if (kind === "saved") {
+      if (!gone.has(from)) peers.add(from)
+      setPeer("saved")
+      return
+    }
     if (kind === "hello") gone.delete(from)
     else if (gone.has(from)) return
     peers.add(from)
     if (kind === "hello") current?.ch.post(message("here", current.tab))
-    // 別のタブが保存したら、この画面の作業は古い（再読み込みするまで saved のまま）
-    if (kind === "saved") setPeer("saved")
-    else if (store.getState().sync.peer === "none") setPeer("open")
+    if (store.getState().sync.peer === "none") setPeer("open")
   }
 
   return {
@@ -120,6 +135,7 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
      * 別のタブには、最後の保存が終わって saved を送ってから bye を送って道を閉じる
      */
     connect() {
+      autosave.reopen()
       const forward = (work: CaseWork) => {
         forwarded = work
         autosave.change(work)
@@ -146,8 +162,7 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
       // タブを閉じる（React の後片付けは走らない）ときは、すぐに知らせる。戻るで戻った（ページの控えから開き直した）ときは開き直す
       const hide = () => {
         ch?.post(message("bye", tab))
-        peers.clear()
-        gone.clear()
+        forgetPeers()
       }
       const show = (e: PageTransitionEvent) => {
         if (e.persisted) ch?.post(message("hello", tab))
@@ -162,13 +177,14 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
         window.removeEventListener("pagehide", hide)
         window.removeEventListener("pageshow", show)
         if (current?.ch === ch) current = null
-        peers.clear()
-        gone.clear()
-        const settled = autosave.settle().finally(() => {
+        forgetPeers()
+        // 待っている変更を送り（失敗しても送り直さない）、保存し終えるかあきらめてから、別のタブに bye を送って道を閉じる
+        const settled = autosave.close().then((saved) => {
           ch?.post(message("bye", tab))
           ch?.close()
           if (ch) open.delete(ch)
           if (leaving.get(options.caseId) === settled) leaving.delete(options.caseId)
+          return saved
         })
         leaving.set(options.caseId, settled)
       }

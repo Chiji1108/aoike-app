@@ -24,7 +24,7 @@ import { commit, receiveProposal, type Committed } from "@/components/cases/stor
 import { previousSideOf } from "@/components/cases/store/actions/source"
 import { derive } from "@/components/cases/store/derive"
 import { serverDeps } from "@/components/cases/store/deps"
-import type { CasePageData } from "@/components/cases/store/env"
+import type { CaseLoaderData } from "@/components/cases/store/env"
 import { createCaseSession } from "@/components/cases/store/session"
 import { broadcastChannel, savesSettled } from "@/components/cases/store/sync"
 import { GyoshuSummaryTable, RoundingNote } from "@/components/convert/summary-panel"
@@ -86,12 +86,12 @@ export const Route = createFileRoute("/_authed/csv/cases/$caseId")({
   // 古いデータで作ると、そのあとに届いた新しいデータを使わない）
   loader: {
     staleReloadMode: "blocking",
-    handler: async ({ params }) => {
-      // 同じ案件の画面から離れてすぐ戻ったときは、前の画面の最後の保存が終わってから読む（古い版を読んで保存がぶつからない）
-      await savesSettled(params.caseId)
+    handler: async ({ params }): Promise<CaseLoaderData> => {
+      // 同じ案件の画面から離れてすぐ戻ったときは、前の画面の最後の保存が終わって（あきらめて）から読む（古い版を読んで保存がぶつからない）
+      const saved = await savesSettled(params.caseId)
       const page = await getCasePageFn({ data: { id: params.caseId } })
       if (!page) throw notFound()
-      return page
+      return { ...page, previousUnsaved: !saved }
     },
   },
   component: CasePage,
@@ -153,7 +153,7 @@ function CasePage() {
 }
 
 /** 案件の画面。案件の1回分（ストア・表の派生・action・保存）を案件ごとに1つ作って渡す（key={kase.id} なので案件が変われば作り直す） */
-function CaseWorkspace(page: CasePageData) {
+function CaseWorkspace(page: CaseLoaderData) {
   const [session] = useState(() => createCaseSession(page, serverDeps(page.kase.id), broadcastChannel(page.kase.id)))
   // 保存の層と別のタブとの道をつなぐ（初めてつないだときに変換の元・去年の Excel を読み始める）
   useEffect(() => session.connect(), [session])
@@ -164,7 +164,7 @@ function CaseWorkspace(page: CasePageData) {
   )
 }
 
-function CaseWorkspaceBody({ kase, customer, chatEnabled, previous, excelKey }: CasePageData) {
+function CaseWorkspaceBody({ kase, customer, chatEnabled, previous, excelKey }: CaseLoaderData) {
   const router = useRouter()
   const session = useCaseSession()
   const { store, actions } = session
@@ -180,6 +180,7 @@ function CaseWorkspaceBody({ kase, customer, chatEnabled, previous, excelKey }: 
   /** 開いたときに中身の記録が無く閉じた変更案・記録を読めなかった変更案の数（報告に出す） */
   const closedMissing = useCase((s) => s.runtime.closedMissing)
   const unreadableProposals = useCase((s) => s.runtime.unreadable)
+  const previousUnsaved = useCase((s) => s.runtime.previousUnsaved)
   /** 作業を変える（next はその時点の作業から作る。値をそのまま入れるときも、その時点の作業に重ねない値だけ） */
   const setWork = (next: CaseWork | ((w: CaseWork) => CaseWork)) => setStoreWork(store, typeof next === "function" ? next : () => next)
   /** 最新の作業（待っている間に変わったかを確かめる。前の描画の値を使わない） */
@@ -637,6 +638,9 @@ function CaseWorkspaceBody({ kase, customer, chatEnabled, previous, excelKey }: 
   })
   const sourceSheets = work.plan?.plan.sheets ?? []
   const reportNotes: ReportProps["notes"] = [
+    ...(previousUnsaved
+      ? [{ text: "前の画面の変更を保存できませんでした（保存した時点の続きから開いています）。要る変更はもう一度してください。", tone: "warning" as const, testId: "previous-unsaved" }]
+      : []),
     ...(closedMissing
       ? [{ text: `中身の記録が無い変更案を ${closedMissing} 件閉じました（未決の項目は却下にしました。要るものはチャットでもう一度頼んでください）。`, tone: "warning" as const, testId: "closed-missing" }]
       : []),

@@ -7,8 +7,10 @@ import type { TableDerived } from "./table"
 
 export type CasePageData = NonNullable<Awaited<ReturnType<typeof getCasePageFn>>>
 export type PreviousCase = NonNullable<CasePageData["previous"]>
+/** 案件の画面の読み込みのデータ（previousUnsaved は、離れてすぐ戻ったとき前の画面の変更を保存できなかった） */
+export type CaseLoaderData = CasePageData & { previousUnsaved: boolean }
 /** 案件の画面の1回分を作るのに使う、読み込んだページの部分 */
-export type SessionPage = Pick<CasePageData, "files" | "state" | "proposals" | "unreadableProposals" | "closedMissing" | "settings" | "chatEnabled" | "excelKey" | "previous"> & {
+export type SessionPage = Pick<CaseLoaderData, "previousUnsaved" | "files" | "state" | "proposals" | "unreadableProposals" | "closedMissing" | "settings" | "chatEnabled" | "excelKey" | "previous"> & {
   kase: Pick<CasePageData["kase"], "id" | "status" | "costUsd">
 }
 

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test"
-import { deleteCustomer, openNewCase, openTab } from "./helpers"
+import { callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
@@ -7,9 +7,12 @@ test("計画を立てている途中で顧客の画面へ移ってすぐ戻っ�
   const errors: string[] = []
   page.on("pageerror", (e) => errors.push(e.message))
   const { customer } = await openNewCase(page)
+  // 前の画面が送った列の計画の要求（離れたあとにこの返事が届いても、前の画面は入れず保存もしない）
+  const firstPlan = page.waitForRequest((r) => callsServerFn(r.url(), ["planWithAi"]))
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
-  // 変換の元を読んで計画を立て始めたら（AI を待っている間に）離れる
-  await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", /planning|converting/, { timeout: 60_000 })
+  // 計画の AI を待っている間に離れる
+  const planRequest = await firstPlan
+  await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "planning")
   await page.getByRole("link", { name: customer }).click()
   await expect(page.getByRole("heading", { name: customer })).toBeVisible()
   await page.goBack()
@@ -17,11 +20,13 @@ test("計画を立てている途中で顧客の画面へ移ってすぐ戻っ�
   // 戻った画面が計画を立て直して変換する（前の画面の返事は入れない・保存しない）
   await attachAndConvertDone(page)
   await openTab(page, "selection")
+  // 前の画面の計画の返事が届いてから（届いた返事は前の画面が捨てる）、もう一度変えて保存する。前の画面が保存していればここでぶつかる
+  await planRequest.response()
   await page.getByTestId("rounding-round").click()
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
-  // 前の画面の計画・変換が遅れて終わっても、保存はぶつからない
-  await page.waitForTimeout(3_000)
-  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved")
+  await page.getByTestId("rounding-floor").click()
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "pending")
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
 
   expect(errors).toEqual([])
   await deleteCustomer(page, customer)
