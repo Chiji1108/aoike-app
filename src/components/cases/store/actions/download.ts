@@ -59,19 +59,23 @@ export async function downloadInquiry(env: CaseEnv) {
   const { output, currentSource } = env.table(s)
   const { attachment, placement, placementId, activeCells } = env.view(s)
   if (!output) return
-  const [{ markedXlsx }, { inquiryXlsx }] = await loadInquiryXlsx()
-  const type = contentTypeOf("x.xlsx")
-  const save = (bytes: Uint8Array, name: string) => {
-    saveFile(bytes, name, type)
-    void keepFile(env, "inquiry_sheet", new Blob([bytes as BlobPart], { type }), name)
+  try {
+    const [{ markedXlsx }, { inquiryXlsx }] = await loadInquiryXlsx()
+    const type = contentTypeOf("x.xlsx")
+    const save = (bytes: Uint8Array, name: string) => {
+      saveFile(bytes, name, type)
+      void keepFile(env, "inquiry_sheet", new Blob([bytes as BlobPart], { type }), name)
+    }
+    if (attachment.kind === "marked" && currentSource && placement && placementId) {
+      const marks = await planMarks(currentSource.sheets, placement, { caseId: config.caseId, sourceFileId: currentSource.fileId, excelKey: config.excelKey })
+      const out = await markedXlsx(currentSource, marks, config.excelKey, config.customerName)
+      if (out.ok) return save(out.bytes, datedFileName("確認のお願い", config.customerName, new Date(), "xlsx"))
+      // 同じ元・同じ場所では記入用Excelにする（保存する。メールの本文も合わせる）
+      setWork(store, (w) => ({ ...w, markFailure: { fileId: currentSource.fileId, key: placementId, reason: out.reason } }))
+      toast.warning(`${out.reason}、記入用Excelにしました（メールの本文も記入用Excelに合わせました）`)
+    }
+    save(await inquiryXlsx(inquirySheet(output, activeCells), config.customerName), datedFileName("記入のお願い", config.customerName, new Date(), "xlsx"))
+  } catch (e) {
+    toast.error(errorMessage(e, "問い合わせの Excel を作れませんでした"))
   }
-  if (attachment.kind === "marked" && currentSource && placement && placementId) {
-    const marks = await planMarks(currentSource.sheets, placement, { caseId: config.caseId, sourceFileId: currentSource.fileId, excelKey: config.excelKey })
-    const out = await markedXlsx(currentSource, marks, config.excelKey, config.customerName)
-    if (out.ok) return save(out.bytes, datedFileName("確認のお願い", config.customerName, new Date(), "xlsx"))
-    // 同じ元・同じ場所では記入用Excelにする（保存する。メールの本文も合わせる）
-    setWork(store, (w) => ({ ...w, markFailure: { fileId: currentSource.fileId, key: placementId, reason: out.reason } }))
-    toast.warning(`${out.reason}、記入用Excelにしました（メールの本文も記入用Excelに合わせました）`)
-  }
-  save(await inquiryXlsx(inquirySheet(output, activeCells), config.customerName), datedFileName("記入のお願い", config.customerName, new Date(), "xlsx"))
 }
