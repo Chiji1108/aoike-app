@@ -2,7 +2,7 @@ import { createStore } from "zustand"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedWork } from "@/lib/cases/state"
 import type { Rule7Tax } from "@/lib/convert/koji-selection"
 import { reviewPlanTransforms } from "@/lib/convert/plan"
-import { discard, withRecorded, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
+import { withRecorded, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
 import { KOJI_KEIREKI } from "@/lib/spec/koji-keireki"
 
 /**
@@ -14,20 +14,15 @@ export type CaseState = {
   work: CaseWork
   /**
    * 変更案の中身。開いている変更案には、記録が読めないもの（runtime.unreadable）のほかは必ずある
-   * （足すのは receiveProposal だけ。読み込みで記録の無い開いた変更案は initialCaseState が閉じる）
+   * （足すのは receiveProposal だけ。記録の無い開いた変更案は、案件を読むときにサーバーが閉じる〔server/cases.ts の getCasePageFn〕）
    */
   contents: ReadonlyMap<string, readonly ChatChange[]>
   /** 保存しない状態 */
   runtime: {
-    /** 開いたときに中身（R2 の記録）が無く閉じた変更案の数（報告に1行出す） */
+    /** 案件を読むときに、中身（R2 の記録）が無くサーバーが閉じた変更案の数（報告に1行出す） */
     closedMissing: number
-    /** 記録はあるが読めなかった開いた変更案の数（閉じずに残し、報告に1行出す。カードは決められない） */
+    /** 記録はあるが読めなかった変更案の数（作業にあるものは閉じずに残す。報告に1行出す。カードは決められない） */
     unreadable: number
-    /**
-     * 自動保存の基準にする、読み込んだ作業（記録の無い変更案を閉じる前。まだ保存が無ければ null）。閉じたら作業と違うので、開いた直後に一度保存する
-     * （閉じた形を D1 に入れ、開くたびに同じ報告を出さない）
-     */
-    loaded: CaseWork | null
   }
 }
 
@@ -57,24 +52,19 @@ function reviewSavedPlan(w: CaseWork): CaseWork {
 /**
  * 読み込んだ案件からストアの最初の状態を作る。保存した作業が無ければ新しい作業（7割の計算は事務所の設定）。
  * サーバーが記録した変更案のうち、作業にまだ無いもの（返事を受け取り損ねたもの）も作業に入れる。
- * 開いているのに中身（R2 の記録）が無い変更案は閉じる（未決は却下。決められない壊れたカードを出さない）。
- * 記録はあるが読めなかったもの（unreadableProposals）は閉じない（記録を残し、直れば読める）
+ * closedMissing はサーバーが閉じた記録の無い変更案の数、unreadableProposals は記録を読めなかった変更案（作業に無いものも。閉じない）
  */
 export function initialCaseState(page: {
   state: { work: SavedWork; aiCache: SavedAiCache } | null
   proposals: readonly ProposalRecord[]
   unreadableProposals: readonly string[]
+  closedMissing: number
   settings: { rule7Tax: Rule7Tax }
 }): CaseState {
   const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
-  const contents = new Map(page.proposals.map((r) => [r.proposal.id, r.changes]))
-  const unreadable = new Set(page.unreadableProposals)
-  const open = withRecorded(w.proposals, page.proposals).filter((p) => p.state === "open" && !contents.has(p.id))
-  const missing = new Set(open.filter((p) => !unreadable.has(p.id)).map((p) => p.id))
-  const loaded = { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) }
   return {
-    work: missing.size ? { ...loaded, proposals: loaded.proposals.map((p) => (missing.has(p.id) ? discard(p) : p)) } : loaded,
-    contents,
-    runtime: { closedMissing: missing.size, unreadable: open.length - missing.size, loaded: page.state ? loaded : null },
+    work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
+    contents: new Map(page.proposals.map((r) => [r.proposal.id, r.changes])),
+    runtime: { closedMissing: page.closedMissing, unreadable: page.unreadableProposals.length },
   }
 }

@@ -134,6 +134,20 @@ function withItems(p: Proposal, key: "undone" | "logged", items: readonly number
   const next = [...new Set([...(p[key] ?? []), ...items])].sort((a, b) => a - b)
   return next.length === (p[key]?.length ?? 0) ? p : { ...p, [key]: next }
 }
+/**
+ * 開いているのに記録（R2）の無い変更案を閉じる（決められないので。未決は却下）。known は記録がある（読めた・読めなかった）変更案の id。
+ * 閉じた数も返す（案件を読むときにサーバーが使う）
+ */
+export function closeUnrecorded(proposals: readonly Proposal[], known: ReadonlySet<string>): { proposals: Proposal[]; closed: number } {
+  let closed = 0
+  const next = proposals.map((p) => {
+    if (p.state !== "open" || known.has(p.id)) return p
+    closed++
+    return discard(p)
+  })
+  return { proposals: next, closed }
+}
+
 /** 承認を取り消した項目を書き足す */
 export const withUndone = (p: Proposal, items: readonly number[]) => withItems(p, "undone", items)
 /** 取り消しの記録に残した承認の項目を書き足す */

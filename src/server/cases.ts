@@ -7,6 +7,7 @@ import { CASE_STATUSES, isSheetFile, type Case } from "@/lib/cases/types"
 import { planColumns } from "@/lib/convert/plan"
 import { excelKeyOf } from "@/lib/excel/excel-key"
 import { tryParseJson } from "@/lib/json"
+import { closeUnrecorded } from "@/lib/chat/proposals"
 import * as store from "./case-store"
 import { endChat, readOpenProposals } from "./chat"
 import { ChatBusyError } from "./chat-store"
@@ -74,9 +75,20 @@ export const getCasePageFn = createServerFn({ method: "GET" })
     }
     // 変更案の記録（R2）のうち、案件の作業で決め終わっていないもの（作業にまだ無いもの＝画面が受け取り損ねたものも）
     const [{ records: proposals, unreadable: unreadableProposals }, previous] = await Promise.all([readOpenProposals(kase.id, new Set(state?.work.proposals.filter((p) => p.state === "closed").map((p) => p.id))), previousOf(db, kase)])
+    // 開いているのに記録（R2）が無い変更案は決められないので閉じる（未決は却下）。読んだ版のまま D1 にも書き（版を進めず、ほかのタブの保存とぶつけない）、
+    // 次に開いたときは閉じたもの。記録はあるが読めないものは閉じない（記録を残し、直れば読める）
+    let closedMissing = 0
+    if (state) {
+      const closed = closeUnrecorded(state.work.proposals, new Set([...proposals.map((r) => r.proposal.id), ...unreadableProposals]))
+      if (closed.closed) {
+        state = { ...state, work: { ...state.work, proposals: closed.proposals } }
+        await store.normalizeCaseState(db, kase.id, state.version, JSON.stringify(state.work))
+        closedMissing = closed.closed
+      }
+    }
     // 最後の Excel の照合用の鍵（案件ごとにいつも同じ。lib/excel/excel-key.ts）
     const excelKey = await excelKeyOf(env.BETTER_AUTH_SECRET, kase.id)
-    return { kase, customer: customer!, files, state, chatEnabled: !!env.ANTHROPIC_API_KEY, proposals, unreadableProposals, previous, settings, excelKey }
+    return { kase, customer: customer!, files, state, chatEnabled: !!env.ANTHROPIC_API_KEY, proposals, unreadableProposals, closedMissing, previous, settings, excelKey }
   })
 
 /**

@@ -296,7 +296,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     return ++conversionGeneration.current
   }
 
-  const { status: saveStatus, settle: settleSave } = useCaseAutosave(kase.id, { version: state?.version ?? 0, saved: store.getState().runtime.loaded }, work)
+  const { status: saveStatus, settle: settleSave } = useCaseAutosave(kase.id, { version: state?.version ?? 0, saved: state ? work : null }, work)
 
   const shownPlan = work.plan ?? planDraft
   const plan = shownPlan?.plan ?? null

@@ -82,7 +82,12 @@ export function undoGroup(store: CaseStore, group: string): UndoSummary | null {
       items.push(...(e.items ?? []))
     }
     if (!undone) return s
-    if (items.length) work = { ...work, proposals: work.proposals.map((p) => (p.id === group ? withUndone(p, items) : p)) }
+    // logged の無い前の変更案は、取り消す前の記録（取り消せないもの・取り消し済みも）の項目から logged を書く（記録がこのあと捨てられても判断できる）。
+    // 項目の分からない前の記録があれば書かない（記録で見る読み方のまま）
+    const records = s.work.undo.filter((e) => e.proposalId === group)
+    const legacy = records.every((e) => e.items) ? records.flatMap((e) => e.items!) : null
+    if (items.length)
+      work = { ...work, proposals: work.proposals.map((p) => (p.id === group ? withUndone(p.logged || !legacy ? p : withLogged(p, legacy), items) : p)) }
     if (sum.planChanged) work = { ...work, converted: false }
     out = sum
     return { work }
