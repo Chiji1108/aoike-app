@@ -284,6 +284,7 @@ export function ChatPanel(props: ChatPanelProps) {
     canSend: ready && !working,
     undo: actions.undo,
     undoState: actions.undoState,
+    awaiting: actions.awaiting,
   }
 
   return (

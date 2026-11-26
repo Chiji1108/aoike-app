@@ -3,7 +3,8 @@ import { ChevronRight, CircleAlert, CircleCheck, Download, FileSpreadsheet, Tria
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BasisSection, fmt, fmtSigned, GyoshuRatioTable } from "@/components/convert/summary-panel"
-import { remainingSteps, type NextStepsData, type StepId } from "@/components/cases/next-steps"
+import { remainingSteps, type StepId } from "@/components/cases/next-steps"
+import type { CaseTodo } from "@/lib/cases/todo"
 import { QuestionItem, type ReportQuestion } from "@/components/cases/case-report"
 import { FIX_ACTIONS, fixActionText, type FixActionId } from "@/components/convert/status"
 import { exportCheck, issueLabel, type ExportCheck } from "@/lib/cases/export-check"
@@ -53,13 +54,13 @@ export function ExportDialog({
   onExcel: () => void
   onCsv: () => void
   /** 次にやること（ダウンロードの前に残っていることを、作業の画面の上・ダウンロードのツールチップと同じ言葉で出す。押すとそこへ移る） */
-  steps: NextStepsData | null
+  steps: CaseTodo
   onGo: (id: StepId) => void
   /** 直し方の操作（「業種が空の N 行を一覧で決める」など。表の上と同じ） */
   onFixAction: (action: FixActionId, keys: readonly string[]) => void
   /** 変換の報告の聞き返し（税込・税抜、計画の聞き返し）。どれも金額・7割・載せる行に関わる。答えたものも渡す（この画面で答えたものは答えを出して取り消せる） */
   questions: readonly ExportQuestion[]
-  /** チャットで答えを待つもの（AI の聞き返し・承認待ちの変更案）。answered が null なら「答える」に数えるもの */
+  /** チャットで答えを待つもの（AI の聞き返し・承認待ちの変更案。steps.answer の変更案の分）と、この確認で答えて閉じたもの */
   chatAsks: readonly ExportQuestion[]
   onAnswer: (id: string, value: string) => void
   /** 金額の税込・税抜が決まっていない（「分からない（顧客に聞く）」と答えたときも。金額と7割が決まらないので、答えたあとも控えめのまま） */
@@ -72,7 +73,8 @@ export function ExportDialog({
   const [kept, setKept] = useState<{ open: boolean; ids: ReadonlySet<string> }>({ open: false, ids: new Set() })
   if (kept.open !== open) setKept({ open, ids: open ? new Set([...questions, ...chatAsks].filter((q) => q.question.answered === null).map((q) => q.question.id)) : new Set() })
   const answers = [...questions, ...chatAsks].filter(({ question: q }) => q.answered === null || kept.ids.has(q.id))
-  const answersLeft = answers.filter((q) => q.question.answered === null).length
+  // 残りの数は次にやることと同じもの（lib/cases/todo.ts の answer）
+  const answersLeft = steps.answer.length
   // 金額・7割・載せる行に関わる聞き返しが残っている間は、ダウンロードのボタンを控えめに（止めはしない）
   const unsettled = amountsUnsettled || questions.some((q) => q.question.answered === null)
   const label = (kind: string) => (unsettled ? `このままダウンロード（${kind}）` : kind)
@@ -168,12 +170,12 @@ function Remaining({
   onGo,
   onFixAction,
 }: {
-  steps: NextStepsData | null
+  steps: CaseTodo
   answers: number | null
   onGo: (id: StepId) => void
   onFixAction: (action: FixActionId, keys: readonly string[]) => void
 }) {
-  const left = steps ? remainingSteps(steps).filter((r) => !(answers !== null && r.id === "answer")) : []
+  const left = remainingSteps(steps).filter((r) => !(answers !== null && r.id === "answer"))
   if (!left.length && answers) return null
   if (!left.length)
     return (
@@ -193,7 +195,7 @@ function Remaining({
           </Button>
         </span>
       ))}
-      {steps && steps.fixActions.length > 0 && (
+      {steps.fixActions.length > 0 && (
         <span className="flex basis-full flex-wrap gap-1 pt-1" data-testid="export-fix-actions">
           {steps.fixActions.map((g) => (
             <Button

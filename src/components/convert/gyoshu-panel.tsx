@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { codeLabel } from "@/lib/spec/code-sets"
 import type { FieldChoices } from "@/lib/spec/choices"
-import type { KojiFieldId } from "@/lib/spec/koji-keireki"
+import type { GyoshuItem } from "@/lib/cases/todo"
 import { cn } from "@/lib/utils"
 import { CellPicker } from "./cell-picker"
 import { summaryText, type FixRun } from "./fix-suggestion"
-import { FIX_LABELS, type FixKind } from "./status"
+import { FIX_LABELS } from "./status"
 
 /**
  * 業種を決める一覧（作業の画面の「業種」のタブ）。業種が決まっていない行（空・エラー・要確認・AI の推定）のうち、
@@ -16,18 +16,6 @@ import { FIX_LABELS, type FixKind } from "./status"
  * 業種がそろってから7割を選ぶので、決めたあとに載せる行が入れ替わっても、業種の決まっていない行は入ってこない。
  * 決めた行は一覧から消える（決めたことは取り消しの記録に残り、「取り消す」で戻る）
  */
-
-/** 一覧の1行。plan は案（AI の案の変更案の未決の項目か、今の値〔AI の推定・要確認〕）と根拠 */
-export type GyoshuItem = {
-  key: string
-  workName: string
-  amount: string
-  included: boolean
-  kind: FixKind
-  plan: { value: string; note: string } | null
-  /** 行の今の値（選ぶ欄に渡す） */
-  values: Readonly<Record<KojiFieldId, string>>
-}
 
 export type GyoshuDecision = { key: string; value: string }
 
