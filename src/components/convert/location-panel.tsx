@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Loader2, MapPin, Square } from "lucide-react"
 import { toast } from "sonner"
 import { ProposalCard, type ProposalActions } from "@/components/chat/proposal-card"
@@ -72,66 +72,70 @@ export function useLocationSearch({
     }
   }, [caseId, keysSig])
 
-  async function refresh() {
+  /** 走っている回の進み具合を読み直す（費用・結果の変更案は最新の props の関数に渡す） */
+  const refresh = useCallback(async () => {
     const r = await getLocationRunFn({ data: { caseId } })
     if (r.caseUsd !== null) live.current.onCaseCost(r.caseUsd)
     setLost(r.lost)
     setRun(r.run)
     if (r.record) live.current.onRecord(r.record)
     return r.run
-  }
+  }, [caseId])
 
   const running = run?.status === "running" && !lost
   useEffect(() => {
     void refresh().catch(() => undefined)
-  }, [caseId])
+  }, [refresh])
   useEffect(() => {
     if (!running) return
     const timer = setInterval(() => void refresh().catch(() => undefined), POLL_MS)
     return () => clearInterval(timer)
-  }, [running, caseId])
-
-  async function start() {
-    if (!sites.length || starting || running || undecided) return
-    setStarting(true)
-    try {
-      const t = live.current.table()
-      if (!t) return
-      await startLocationSearchFn({ data: { caseId, table: t } })
-      await refresh()
-    } catch (e) {
-      toast.error(errorMessage(e, "工事場所の調査を始められませんでした"))
-      await refresh().catch(() => undefined)
-    } finally {
-      setStarting(false)
-    }
-  }
-
-  async function stop() {
-    if (!run) return
-    try {
-      await stopLocationSearchFn({ data: { caseId, runId: run.id } })
-      await refresh()
-    } catch (e) {
-      toast.error(errorMessage(e, "止められませんでした"))
-    }
-  }
+  }, [running, refresh])
 
   const known = memorized ? sites.filter((s) => memorized.has(s.key)).length : null
-  return {
-    sites: sites.length,
-    over: runOf.over,
-    skipped: sites.filter((s) => s.skip).length,
-    memorized: known,
-    usd: memorized ? estimateUsd(sites, memorized) : null,
-    run,
-    lost,
-    running,
-    starting,
-    undecided,
-    start,
-    stop,
-  }
+  // 読む部品（チャット・報告・工事場所のタブ）が、調査の状態が変わったときだけ描き直るよう、同じ状態なら同じものを返す
+  return useMemo(() => {
+    async function start() {
+      if (!sites.length || starting || running || undecided) return
+      setStarting(true)
+      try {
+        const t = live.current.table()
+        if (!t) return
+        await startLocationSearchFn({ data: { caseId, table: t } })
+        await refresh()
+      } catch (e) {
+        toast.error(errorMessage(e, "工事場所の調査を始められませんでした"))
+        await refresh().catch(() => undefined)
+      } finally {
+        setStarting(false)
+      }
+    }
+
+    async function stop() {
+      if (!run) return
+      try {
+        await stopLocationSearchFn({ data: { caseId, runId: run.id } })
+        await refresh()
+      } catch (e) {
+        toast.error(errorMessage(e, "止められませんでした"))
+      }
+    }
+
+    return {
+      sites: sites.length,
+      over: runOf.over,
+      skipped: sites.filter((s) => s.skip).length,
+      memorized: known,
+      usd: memorized ? estimateUsd(sites, memorized) : null,
+      run,
+      lost,
+      running,
+      starting,
+      undecided,
+      start,
+      stop,
+    }
+  }, [caseId, refresh, sites, runOf.over, known, memorized, run, lost, running, starting, undecided])
 }
 
 export type LocationSearch = ReturnType<typeof useLocationSearch>

@@ -212,7 +212,7 @@ src/
   routes/
     _authed/csv/index.tsx     顧客の一覧
     _authed/csv/customers/$customerId.tsx  顧客の画面（顧客ルール・案件の一覧）
-    _authed/csv/cases/$caseId.tsx 案件の画面（結果の表＋チャット・変換の報告・承認の取り消し・ダウンロードの前の確認）
+    _authed/csv/cases/$caseId.tsx 案件の画面の読み込み（画面は components/cases/workspace/）
     _authed/csv/rules.tsx     全体ルール
     _authed/csv/feedback.tsx  要望（チャットの AI と職員が残した「あると良い機能」）
     api/csv/cases/$caseId/files.ts  案件にファイルを付ける（R2）
@@ -221,8 +221,11 @@ src/
   components/
     convert/                  結果の表・業種ごとの合計・問い合わせのパネル
     cases/                    削除の確認・次にやること
-    cases/store/              案件の画面のストア（zustand。案件ごとに1つ。作業と変更案の中身・保存しない状態〔元・計画と変換の途中・世代・費用〕・派生の derive と表の table）。
-                              待つ処理は actions/（偽の deps で単体テストできる）、サーバー関数は deps.ts、自動保存と同じブラウザの別のタブへの知らせ（BroadcastChannel）は sync.ts、まとめて作るのは session.ts
+    cases/store/              案件の画面のストア（zustand。案件ごとに1つ。作業と変更案の中身・保存しない状態〔元・計画と変換の途中・世代・費用〕・画面の状態 ui〔タブ・作業の画面・ダイアログ・絞り込み・フォーカスの頼み〕・
+                              派生の derive・表の table・そのあとの case-view〔件数・問い合わせ・聞き返し・並べ方 layoutOf〕）。
+                              変えるのは actions/ だけ（偽の deps で単体テストできる。ui.ts は画面の状態）、サーバー関数は deps.ts、自動保存と同じブラウザの別のタブへの知らせ（BroadcastChannel）は sync.ts、まとめて作るのは session.ts
+    cases/workspace/          案件の画面の部品（見出し・並べ方・チャットの欄と報告・作業の画面とタブ・ダイアログ）。部品はストアの一部を読み、action で変える。
+                              DOM を動かす（フォーカス・スクロール）のは focus-effects.tsx だけ。並べ方は lib/cases/layout.ts の layoutOf
     chat/                     チャット欄・変更案（承認の一覧・聞き返し）・返事の Markdown（Streamdown）
     ui/                       shadcn/ui（`pnpm exec shadcn add` は base-nova の部品に `import { cn } from "cn"` を書き、`cn` の依存を足すので、`@/lib/utils` に直して依存は足さない）
   server/

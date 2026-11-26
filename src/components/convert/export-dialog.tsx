@@ -43,6 +43,7 @@ export function ExportDialog({
   onAnswer,
   amountsUnsettled,
   finalFocus,
+  children,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -67,6 +68,8 @@ export function ExportDialog({
   amountsUnsettled: boolean
   /** 閉じたあとのフォーカス（チャットへ移るときはその先。無ければ開いたボタンに戻す） */
   finalFocus: () => HTMLElement | true
+  /** 確認の上に重ねて開くダイアログ（聞き返しの答えの確かめ）。確認の中に置くので、Escape・外の押下は上のものだけが受ける */
+  children?: React.ReactNode
 }) {
   const check = useMemo(() => (open ? exportCheck(output, summary) : null), [open, output, summary])
   // 開いたときに答えを待っていたもの。この画面で答えても消さず、答えと取り消しを出す（次に開くまで）
@@ -139,6 +142,7 @@ export function ExportDialog({
             <FileSpreadsheet /> {label("Excel")}
           </Button>
         </DialogFooter>
+        {children}
       </DialogContent>
     </Dialog>
   )

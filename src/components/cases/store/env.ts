@@ -2,6 +2,7 @@ import type { addressCache } from "@/lib/convert/address"
 import type { SheetGrid } from "@/lib/convert/plan"
 import type { getCasePageFn } from "@/server/cases"
 import type { CaseState, CaseStore } from "./create-case-store"
+import type { CaseView } from "./case-view"
 import type { CaseDeps } from "./deps"
 import type { TableDerived } from "./table"
 
@@ -12,6 +13,7 @@ export type CaseLoaderData = CasePageData & { previousUnsaved: boolean }
 /** 案件の画面の1回分を作るのに使う、読み込んだページの部分 */
 export type SessionPage = Pick<CaseLoaderData, "previousUnsaved" | "files" | "state" | "proposals" | "unreadableProposals" | "closedMissing" | "settings" | "chatEnabled" | "excelKey" | "previous"> & {
   kase: Pick<CasePageData["kase"], "id" | "status" | "costUsd">
+  customer: Pick<CasePageData["customer"], "name">
 }
 
 /** 案件ごとに決まっていて変わらないもの（読み込んだページから） */
@@ -21,6 +23,8 @@ export type CaseConfig = {
   /** 最後の Excel の照合用の鍵（サーバーが案件ごとに決めたもの） */
   excelKey: string
   caseId: string
+  /** 顧客の名前（ダウンロードするファイルの名前） */
+  customerName: string
   /** 去年の案件 */
   previous: PreviousCase | null
 }
@@ -34,6 +38,8 @@ export type CaseEnv = {
   deps: CaseDeps
   config: CaseConfig
   table: (s: CaseState) => TableDerived
+  /** 表のあとの派生（件数・問い合わせ・聞き返し・並べ方。case-view.ts） */
+  view: (s: CaseState) => CaseView
   addresses: ReturnType<typeof addressCache>
   previousLoad: { current: Promise<SheetGrid[] | null> | null }
 }

@@ -9,6 +9,9 @@ import { Markdown } from "@/components/chat/markdown"
 import { ProposalCard, type ProposalActions } from "@/components/chat/proposal-card"
 import { LocationSearchStatus, type LocationSearch } from "@/components/convert/location-panel"
 import type { ReportChat } from "@/components/cases/case-report"
+import { useCase, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
+import { useCarryover, useChatSuggestions, useProposalActions } from "@/components/cases/workspace/hooks"
+import { useFx, useLocationTool } from "@/components/cases/workspace/tools"
 import { TOOL_TABS, workTabLabel, type WorkTab } from "@/components/cases/work-tabs"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
 import { Button } from "@/components/ui/button"
@@ -73,60 +76,10 @@ const TOOL_LABELS: Record<string, string> = {
 }
 
 export type ChatPanelProps = {
-  caseId: string
-  /** 変換が済んで送れるか */
-  ready: boolean
-  /** 案件にまだファイルが無い（入力欄の📎を「アップロード」と書いて目立たせる。ファイルのアップロードの入口は📎だけ） */
-  empty: boolean
-  /** 送る直前に今の表と文脈を作る（送るまでの手直しも入れる。大きいので送るときだけ呼ぶ） */
-  request: () => Omit<ChatRequest, "id" | "text"> | null
-  proposals: readonly Proposal[]
-  /** 開いている変更案の中身 */
-  changes: ReadonlyMap<string, readonly ChatChange[]>
-  view: TableView | null
-  actions: Omit<ProposalActions, "canSend">
-  busy: boolean
-  /** ドル円（取れなければ null で、円は出さない） */
-  fx: UsdJpy | null
-  /**
-   * 同じ顧客の前の年度の案件があれば「去年のやり方で直す」を出す。ready は去年との違いを文脈に入れられるようになったか
-   * （去年の Excel を読み終えた）、names は去年の Excel の配置技術者（去年のコードから個人名を消す）、headers は去年と今年の見出し（伏せない語）
-   */
-  carryover: { fiscalYear: number; ready: boolean; names: () => string[]; headers: () => string[] } | null
-  onProposal: (p: { proposal: Proposal; changes: ChatChange[] }) => void
-  onCaseCost: (usd: number) => void
-  /** 工事場所の一括調査（返事の「調べ始める」は案件の画面と同じものを動かす） */
-  location: LocationSearch
   /** 会話の最初に出す変換の報告（案件の作業から作る。保存しない）。chat で報告から決まった質問を送れる（聞き返しの「AI に聞く」） */
   report: (chat: ReportChat) => React.ReactNode
   /** 会話の最後に出すもの（表の「直す」から頼んだ AI の案。案件の作業から作る） */
   tail?: React.ReactNode
-  /** 📎でアップロードしたファイル（種類は案件の画面が見分ける。画面にドラッグしたファイルも案件の画面が受け取る） */
-  onFiles: (files: File[]) => void
-  /** 返事のボタン（ダウンロードの前の確認・問い合わせ） */
-  onAction: (action: ChatAction) => void
-  /**
-   * 作業の画面のタブを開く。道具の結果が届いたとき（auto。保存した会話を読んだときは開かない）と、
-   * 道具の行の「…を開く」を押したとき（click）
-   */
-  onOpenTab: (tab: WorkTab, how: "auto" | "click") => void
-  /** 作業の画面（表ができてから）。閉じているときは見出しに「表を開く」を出す */
-  work: { shown: boolean; open: () => void } | null
-  /** 今の列の対応（列の対応の変更案を「今 → 案」で出す） */
-  plan: MappingPlan<KojiFieldId> | null
-  /**
-   * AI に頼むとよいこと（返ってきた Excel〔印付き・記入用Excel〕の、色付きの欄で読めなかった記入〔ファイルごと。fileName はそのファイル〕と、案件を完了にしたときの振り返り）。
-   * 押すと prompt を送り、送れたら onSuggestionSent。会話の最後に出す
-   */
-  suggestions: readonly Suggestion[]
-  onSuggestionSent: (id: string) => void
-  /** 指示を送れるかが変わったとき（報告の「AI に聞く」と同じ条件。ダウンロードの前の確認の「AI に聞く」に使う） */
-  onCanSendChange?: (canSend: boolean) => void
-  /**
-   * 送る前に作業を保存し終える（サーバーが保存した作業を読む道具のため。例: 振り返り）。保存できなければ false。
-   * 保存の要る案内（needsSaved）は false なら送らない。ほかの指示は保存できなくても送る（表は画面が送る）
-   */
-  beforeSend: () => Promise<boolean>
 }
 
 /** チャットの案内。needsSaved は送る前に作業を保存し終える要るもの、once は会話に同じ指示があればもう出さないもの */
@@ -137,12 +90,40 @@ export type Suggestion = { id: string; fileName?: string; text: string; label: s
  * 会話は案件に保存し（R2）、開き直すと続きから。「会話を終える」で AI に渡したファイルを消す
  */
 export function ChatPanel(props: ChatPanelProps) {
-  const { caseId, proposals, changes, view, actions, busy, fx, carryover, work } = props
+  const session = useCaseSession()
+  const { actions } = session
+  const caseId = session.config.caseId
+  /** 変換が済んで送れるか（変換した、または変換の元の表が無い） */
+  const chatReady = useCaseView((v) => v.chatReady)
+  /** 案件にまだファイルが無い（入力欄の📎を「アップロード」と書いて目立たせる。ファイルのアップロードの入口は📎だけ） */
+  const empty = useCase((s) => s.runtime.files.length === 0)
+  const proposals = useCase((s) => s.work.proposals)
+  /** 開いている変更案の中身 */
+  const changes = useCase((s) => s.contents)
+  const view = useTable((t) => t.view)
+  /** ルールの追記・工事場所を保存している間（変更案の承認を止める） */
+  const busy = useCase((s) => s.runtime.busy.rule)
+  /** 今の列の対応（列の対応の変更案を「今 → 案」で出す） */
+  const plan = useCase((s) => s.work.plan?.plan ?? null)
+  /** 作業の画面（表ができてから）。閉じているときは見出しに「表を開く」を出す */
+  const hasTable = useTable((t) => t.hasTable)
+  const workShown = useCaseView((v) => v.layout.workShown)
+  const fx = useFx()
+  const location = useLocationTool()
+  const proposalBase = useProposalActions()
+  /**
+   * 同じ顧客の前の年度の案件があれば「去年のやり方で直す」を出す。ready は去年との違いを文脈に入れられるようになったか
+   * （去年の Excel を読み終えた）、names は去年の Excel の配置技術者（去年のコードから個人名を消す）、headers は去年と今年の見出し（伏せない語）
+   */
+  const carryover = useCarryover()
+  /**
+   * AI に頼むとよいこと（返ってきた Excel〔印付き・記入用Excel〕の、色付きの欄で読めなかった記入〔ファイルごと。fileName はそのファイル〕と、案件を完了にしたときの振り返り）。
+   * 押すと prompt を送り、送れたら案内を消す。会話の最後に出す
+   */
+  const suggestions = useChatSuggestions()
   const fileInput = useRef<HTMLInputElement>(null)
   const [input, setInput] = useState("")
   const [ending, setEnding] = useState(false)
-  const live = useRef(props)
-  live.current = props
   const inputRef = useRef<HTMLTextAreaElement>(null)
   /** 送った指示がサーバーに断られたか（send が回答済みにしてよいかを決める） */
   const failed = useRef(false)
@@ -154,15 +135,17 @@ export function ChatPanel(props: ChatPanelProps) {
       prepareSendMessagesRequest: ({ messages, body: options }) => {
         const last = messages.at(-1)!
         const text = last.parts.map((p) => (p.type === "text" ? p.text : "")).join("")
-        const body: ChatRequest = { id: last.id, text, ...live.current.request()!, ...(options?.carryover === true ? { carryover: true, carryoverNames: live.current.carryover?.names() ?? [], carryoverHeaders: live.current.carryover?.headers() ?? [] } : {}) }
+        // 表と文脈は送る瞬間の状態から作る（送るまでの手直しも入れる。大きいので送るときだけ）
+        const body: ChatRequest = { id: last.id, text, ...session.chatRequest()!, ...(options?.carryover === true ? { carryover: true, carryoverNames: session.carryoverNames(), carryoverHeaders: session.carryoverHeaders() } : {}) }
         return { body }
       },
     }),
     onData: (part) => {
-      if (part.type === "data-proposal-content") live.current.onProposal(part.data)
+      if (part.type === "data-proposal-content") actions.receiveChat(part.data)
     },
     onFinish: ({ message }) => {
-      if (message.metadata) live.current.onCaseCost(message.metadata.caseUsd)
+      // 案件の費用の合計（D1）。返事のたびに合計で置き換える
+      if (message.metadata) actions.setCost(message.metadata.caseUsd)
       // 去年のコードを添えたかはサーバーの会話の記録の印に従う（止めた・失敗した回は添えたことにならない）
       if (message.metadata?.carryover !== undefined) setCarried(message.metadata.carryover)
     },
@@ -192,7 +175,7 @@ export function ChatPanel(props: ChatPanelProps) {
     }
     // 読むのは開いたときの1回だけ（あとは指示の返事で会話が進む）
   }, [caseId])
-  const ready = props.ready && history === "loaded"
+  const ready = chatReady && history === "loaded"
 
   /**
    * 道具の結果が届いたら、その道具の作業のタブを開く（同じ道具の呼び出しで二度開かない）。
@@ -208,7 +191,8 @@ export function ChatPanel(props: ChatPanelProps) {
         const tab = TOOL_TABS[p.type.slice(5)]
         if (!tab || !call.toolCallId || call.state !== "output-available" || openedTools.current.has(call.toolCallId)) continue
         openedTools.current.add(call.toolCallId)
-        live.current.onOpenTab(tab, "auto")
+        // 道具の結果が届いた（保存した会話を読んだときは開かない）
+        actions.openTab(tab, "auto")
       }
     }
   }, [messages])
@@ -218,16 +202,18 @@ export function ChatPanel(props: ChatPanelProps) {
   /** 送る前の保存を待っている間（続けて押しても二度送らない） */
   const [preparing, setPreparing] = useState(false)
   const canSend = ready && !working && !preparing
-  const onCanSendChange = props.onCanSendChange
+  // 送れるかを案件の画面に知らせる（報告の「AI に聞く」と同じ条件。ダウンロードの前の確認の「AI に聞く」に使う）
   useEffect(() => {
-    onCanSendChange?.(canSend)
-  }, [canSend, onCanSendChange])
+    actions.setChatCanSend(canSend)
+  }, [canSend, actions])
   async function send(text = input.trim(), options: { carryover?: true; keepInput?: true; needsSaved?: true } = {}) {
     if (!text || working || preparing || !ready) return false
     setPreparing(true)
     let saved: boolean
     try {
-      saved = await live.current.beforeSend()
+      // 送る前に作業を保存し終える（サーバーが保存した作業を読む道具のため。例: 振り返り）。保存の要る案内は保存できなければ送らない。
+      // ほかの指示は保存できなくても送る（表は画面が送る）
+      saved = await session.settle()
     } finally {
       setPreparing(false)
     }
@@ -268,23 +254,23 @@ export function ChatPanel(props: ChatPanelProps) {
 
   const byId = new Map(proposals.map((p) => [p.id, p]))
   const proposalActions: ProposalActions = {
-    decide: actions.decide,
+    decide: proposalBase.decide,
     // 変更案の無い聞き返しは、答えを AI に送って続けさせる（送れたときだけ回答済みにする。送れない間は答えるボタンを押せない）。
     // 変更案があれば「はい」で承認できるようになるだけ
     answer: (id, a) => {
       const p = byId.get(id)
       if (!p || p.state !== "open") return
       if (p.count > 0) {
-        actions.answer(id, a)
+        proposalBase.answer(id, a)
         if (a === "no") inputRef.current?.focus()
         return
       }
-      void send(a === "yes" ? "はい" : "いいえ").then((sent) => sent && actions.answer(id, a))
+      void send(a === "yes" ? "はい" : "いいえ").then((sent) => sent && proposalBase.answer(id, a))
     },
     canSend: ready && !working,
-    undo: actions.undo,
-    undoState: actions.undoState,
-    awaiting: actions.awaiting,
+    undo: proposalBase.undo,
+    undoState: proposalBase.undoState,
+    awaiting: proposalBase.awaiting,
   }
 
   return (
@@ -293,8 +279,8 @@ export function ChatPanel(props: ChatPanelProps) {
         <MessageSquare className="size-4 text-violet-600" />
         {/* 費用は返事ごとと、案件の合計（見出しの「…」）に出す */}
         <div className="min-w-0 flex-1 text-sm font-semibold">チャット</div>
-        {work && !work.shown && (
-          <Button size="sm" variant="outline" onClick={work.open} data-testid="work-open">
+        {hasTable && !workShown && (
+          <Button size="sm" variant="outline" onClick={() => actions.setWorkShown(true)} data-testid="work-open">
             <PanelRightOpen /> 表を開く
           </Button>
         )}
@@ -348,10 +334,10 @@ export function ChatPanel(props: ChatPanelProps) {
                     actions={proposalActions}
                     busy={busy}
                     fx={fx}
-                    location={props.location}
-                    onAction={props.onAction}
-                    onOpenTab={work ? (t) => props.onOpenTab(t, "click") : null}
-                    plan={props.plan}
+                    location={location}
+                    onAction={actions.chatAction}
+                    onOpenTab={hasTable ? (t) => actions.openTab(t, "click") : null}
+                    plan={plan}
                   />
                 </MessageScrollerItem>
               ))}
@@ -367,7 +353,7 @@ export function ChatPanel(props: ChatPanelProps) {
               )}
               {props.tail}
               {history === "loaded" &&
-                props.suggestions.filter((sg) => !(sg.once && sentTexts.has(sg.prompt))).map((sg) => (
+                suggestions.filter((sg) => !(sg.once && sentTexts.has(sg.prompt))).map((sg) => (
                   <div key={sg.id} className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-suggestion" data-suggestion={sg.id} data-file-name={sg.fileName}>
                     <span className="text-muted-foreground">{sg.text}</span>
                     <Button
@@ -375,7 +361,7 @@ export function ChatPanel(props: ChatPanelProps) {
                       variant="outline"
                       className="w-fit"
                       disabled={!ready || working || preparing}
-                      onClick={() => void send(sg.prompt, { keepInput: true, ...(sg.needsSaved ? { needsSaved: true } : {}) }).then((sent) => sent && live.current.onSuggestionSent(sg.id))}
+                      onClick={() => void send(sg.prompt, { keepInput: true, ...(sg.needsSaved ? { needsSaved: true } : {}) }).then((sent) => sent && actions.suggestionSent(sg.id))}
                       data-testid="chat-suggestion-send"
                     >
                       <MessageSquareText /> {sg.label}
@@ -406,14 +392,14 @@ export function ChatPanel(props: ChatPanelProps) {
                 void send()
               }
             }}
-            placeholder={ready ? "例: 金額は税込の列で（⌘+Enter で送る）" : props.empty ? "Excel をアップロードすると送れます" : "変換が済むと送れます"}
+            placeholder={ready ? "例: 金額は税込の列で（⌘+Enter で送る）" : empty ? "Excel をアップロードすると送れます" : "変換が済むと送れます"}
             disabled={!ready}
             className="min-h-16 text-sm"
             data-testid="chat-input"
           />
           <InputGroupAddon align="block-end" className="justify-between">
             {/* ファイルのアップロードの入口はここだけ（画面のどこにドラッグしても同じ） */}
-            {props.empty ? (
+            {empty ? (
               <InputGroupButton size="sm" variant="default" onClick={() => fileInput.current?.click()} data-testid="chat-attach">
                 <Paperclip /> アップロード
               </InputGroupButton>
@@ -430,7 +416,8 @@ export function ChatPanel(props: ChatPanelProps) {
               className="sr-only"
               data-testid="chat-file-input"
               onChange={(e) => {
-                if (e.target.files?.length) props.onFiles([...e.target.files])
+                // 種類は案件の画面の action が見分ける（画面にドラッグしたファイルも同じ）
+                if (e.target.files?.length) void actions.attach([...e.target.files])
                 e.target.value = ""
               }}
             />
