@@ -400,7 +400,7 @@ async function takenRules(db: store.Db, customerId: string, caseId: string, save
   const s = await saved()
   const proposals = new Map((s?.work.proposals ?? []).map((p) => [p.id, p]))
   const closed = new Set([...proposals.values()].filter((p) => p.state === "closed").map((p) => p.id))
-  const [rules, records] = await Promise.all([store.listRuleItems(db, { scope: "customer", customerId }), readOpenProposals(caseId, closed)])
+  const [rules, { records }] = await Promise.all([store.listRuleItems(db, { scope: "customer", customerId }), readOpenProposals(caseId, closed)])
   const pending = records.flatMap((r) => {
     const p = proposals.get(r.proposal.id)
     return r.changes.flatMap((c, i) => (c.kind === "rule" && c.source === "review" && (!p || (p.state === "open" && decisionOf(p, i) === "pending")) ? [c.text] : []))
@@ -499,19 +499,26 @@ async function putProposal(caseId: string, record: ProposalRecord) {
 export const putProposalRecord = putProposal
 export const deleteProposalRecord = (caseId: string, proposalId: string) => env.CSV_FILES.delete(proposalKey(caseId, proposalId))
 
-/** 変更案の記録（R2）を1つ読む。読めないものは無いのと同じに扱う（その変更案は出さない。ページ全体は開ける） */
-export async function readProposal(caseId: string, proposalId: string): Promise<ProposalRecord | undefined> {
+/** 変更案の記録（R2）を1つ読む。missing は記録が無い、unreadable は記録はあるが形が合わず読めない */
+async function readRecord(caseId: string, proposalId: string): Promise<ProposalRecord | "missing" | "unreadable"> {
   const object = await env.CSV_FILES.get(proposalKey(caseId, proposalId))
-  if (!object) return undefined
+  if (!object) return "missing"
   const parsed = proposalRecordSchema.safeParse(tryParseJson(await object.text()))
-  return parsed.success ? parsed.data : undefined
+  return parsed.success ? parsed.data : "unreadable"
+}
+
+/** 変更案の記録（R2）を1つ読む。無い・読めないものは undefined（その変更案は出さない。ページ全体は開ける） */
+export async function readProposal(caseId: string, proposalId: string): Promise<ProposalRecord | undefined> {
+  const r = await readRecord(caseId, proposalId)
+  return typeof r === "string" ? undefined : r
 }
 
 /**
  * 案件の画面に渡す変更案の記録: 案件の作業で開いているものと、作業にまだ無いもの（返事を受け取り損ねたもの）だけを読む。
- * 作業で決め終わった変更案の記録はもう要らないので消す（読むたびに溜まらない。消し損ねても次に開いたときにまた消す）
+ * 作業で決め終わった変更案の記録はもう要らないので消す（読むたびに溜まらない。消し損ねても次に開いたときにまた消す）。
+ * unreadable は記録はあるが読めなかった変更案の id（画面は閉じずに知らせる。記録は消さない）。記録の無い変更案はどちらにも入らない
  */
-export async function readOpenProposals(caseId: string, closed: ReadonlySet<string>): Promise<ProposalRecord[]> {
+export async function readOpenProposals(caseId: string, closed: ReadonlySet<string>): Promise<{ records: ProposalRecord[]; unreadable: string[] }> {
   const ids: string[] = []
   let cursor: string | undefined
   do {
@@ -521,8 +528,9 @@ export async function readOpenProposals(caseId: string, closed: ReadonlySet<stri
   } while (cursor)
   const done = ids.filter((id) => closed.has(id))
   if (done.length) await env.CSV_FILES.delete(done.map((id) => proposalKey(caseId, id)))
-  const read = await Promise.all(ids.filter((id) => !closed.has(id)).map((id) => readProposal(caseId, id)))
-  return read.filter((r) => r !== undefined)
+  const open = ids.filter((id) => !closed.has(id))
+  const read = await Promise.all(open.map((id) => readRecord(caseId, id)))
+  return { records: read.filter((r) => typeof r !== "string"), unreadable: open.filter((_, i) => read[i] === "unreadable") }
 }
 
 /** 画面に出す会話（GET /api/csv/cases/<caseId>/chat。チャット欄を開いたときに読む。画面は validateUIMessages で形を確かめる） */

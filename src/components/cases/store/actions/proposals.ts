@@ -1,7 +1,7 @@
 import type { ValueFilter } from "@/lib/convert/plan"
 import type { CaseWork } from "@/lib/cases/state"
 import { canUndo, pushUndo, undo, undoEntry, type UndoEntry, type UndoKind } from "@/lib/cases/undo"
-import { withUndone, type ProposalRecord } from "@/lib/chat/proposals"
+import { withLogged, withUndone, type ProposalRecord } from "@/lib/chat/proposals"
 import type { CaseState, CaseStore } from "../create-case-store"
 
 /**
@@ -24,12 +24,15 @@ export function receiveProposal(store: CaseStore, record: ProposalRecord, how: "
  */
 export type CommitMeta = { group: string; kind: UndoKind; items?: number[]; external?: UndoEntry["external"]; exclusions?: ValueFilter[] }
 
+/** 入れた変更の取り消し: undoable は取り消せる、tooLarge は記録が大きすぎて取り消せない、none は記録が無い（変わったものが無かった） */
+export type Committed = "undoable" | "tooLarge" | "none"
+
 /**
  * 取り消せる変更（承認・聞き返しの答え・画面の操作）を入れる。next はその時点の状態から次の作業を作り、前後の差分を取り消しの記録にして同じ1回で積む
- * （取り消しの記録を積むのはここだけ）。記録が積めたか（変わったものがあったか）を返す（積めたときだけ「取り消す」を出す）
+ * （取り消しの記録を積むのはここだけ）。変更案の承認なら、記録に残した項目を変更案にも書く（logged）。取り消せるかを返す（取り消せるときだけ「取り消す」を出す）
  */
-export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) => CaseWork): boolean {
-  let pushed = false
+export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) => CaseWork): Committed {
+  let result: Committed = "none"
   store.setState((s) => {
     const before = s.work
     const after = next(s)
@@ -43,10 +46,14 @@ export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) 
       external: meta.external,
       exclusions: meta.exclusions,
     })
-    pushed = entry !== null
-    return { work: entry ? { ...after, undo: pushUndo(after.undo, entry) } : after }
+    if (!entry) return { work: after }
+    const undo = pushUndo(after.undo, entry)
+    result = undo.at(-1)!.tooLarge ? "tooLarge" : "undoable"
+    const items = meta.items ?? []
+    const proposals = meta.kind === "approval" && items.length ? after.proposals.map((p) => (p.id === meta.group ? withLogged(p, items) : p)) : after.proposals
+    return { work: { ...after, undo, proposals } }
   })
-  return pushed
+  return result
 }
 
 export type UndoSummary = { reverted: number; kept: number; planChanged: boolean }

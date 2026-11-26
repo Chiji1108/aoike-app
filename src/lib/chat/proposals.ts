@@ -80,6 +80,11 @@ export type Proposal = {
    * この項目より前の変更案には無い）
    */
   undone?: number[]
+  /**
+   * 承認した項目のうち、取り消しの記録に残した項目の番号（表を変えなかった承認は記録が無いので入らない）。logged がすべて undone にあれば
+   * 承認をすべて取り消した（cases/undo.ts の記録が上限で捨てられても、変更案だけで分かる）。この項目より前の変更案には無い
+   */
+  logged?: number[]
 } & (
   | { state: "open"; count: number; applied: number[]; rejected: number[] }
   | { state: "closed"; applied: number; rejected: number }
@@ -119,15 +124,32 @@ export function approvedChange(p: Pick<Proposal, "origin">, c: ChatChange): Chat
 }
 
 /** 閉じた形に残す項目（id・出どころ・聞き返し・取り消した項目） */
-const closedBase = (p: Proposal) => ({ id: p.id, origin: p.origin, question: p.question, ...(p.undone ? { undone: p.undone } : {}) })
+const closedBase = (p: Proposal) => ({ id: p.id, origin: p.origin, question: p.question, ...(p.undone ? { undone: p.undone } : {}), ...(p.logged ? { logged: p.logged } : {}) })
 
 /** 決める前に要らなくなった変更案（変換の元を変えたなど）を閉じる。未決は却下にする */
 export const discard = (p: Proposal): Proposal => (p.state === "open" ? { ...closedBase(p), state: "closed", applied: p.applied.length, rejected: p.count - p.applied.length } : p)
 
-/** 承認を取り消した項目を書き足す（開いていても閉じていても。もう書いた番号は重ねない） */
-export function withUndone(p: Proposal, items: readonly number[]): Proposal {
-  const undone = [...new Set([...(p.undone ?? []), ...items])].sort((a, b) => a - b)
-  return undone.length === (p.undone?.length ?? 0) ? p : { ...p, undone }
+/** 番号を書き足す（開いていても閉じていても。もう書いた番号は重ねない） */
+function withItems(p: Proposal, key: "undone" | "logged", items: readonly number[]): Proposal {
+  const next = [...new Set([...(p[key] ?? []), ...items])].sort((a, b) => a - b)
+  return next.length === (p[key]?.length ?? 0) ? p : { ...p, [key]: next }
+}
+/** 承認を取り消した項目を書き足す */
+export const withUndone = (p: Proposal, items: readonly number[]) => withItems(p, "undone", items)
+/** 取り消しの記録に残した承認の項目を書き足す */
+export const withLogged = (p: Proposal, items: readonly number[]) => withItems(p, "logged", items)
+
+/**
+ * 承認をすべて取り消した変更案か。取り消しの記録に残した承認の項目（logged）がすべて取り消し済みで、取り消していない記録も無いとき
+ * （表を変えなかった承認の項目は記録が無いので数えない。ルールの追記など戻せない記録が残れば取り消していない）。
+ * logged の無い前の変更案は、記録だけで見る（その変更案の記録がすべて取り消し済み）
+ */
+export function approvalsUndone(p: Proposal, undo: readonly { proposalId: string; undone?: true }[]): boolean {
+  const records = undo.filter((e) => e.proposalId === p.id)
+  if (records.some((e) => !e.undone)) return false
+  if (!p.logged) return records.length > 0
+  const undone = new Set(p.undone ?? [])
+  return p.logged.length > 0 && p.logged.every((i) => undone.has(i))
 }
 
 export function newProposal(id: string, origin: ProposalOrigin, changes: readonly ChatChange[], question: string | null): Proposal {
@@ -296,6 +318,7 @@ export const proposalSchema: z.ZodType<Proposal> = (() => {
     ]),
     question: z.object({ text: z.string(), answer: z.enum(["yes", "no"]).nullable() }).nullable(),
     undone: z.array(z.number().int().min(0)).optional(),
+    logged: z.array(z.number().int().min(0)).optional(),
   }
   return z.discriminatedUnion("state", [
     z.object({ ...base, state: z.literal("open"), count: z.number().int().min(0), applied: z.array(z.number().int()), rejected: z.array(z.number().int()) }),

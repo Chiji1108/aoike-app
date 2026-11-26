@@ -156,9 +156,9 @@ describe("承認の取り消し", () => {
   })
 
   test("操作の枠の大きさを超えたら操作の古い記録から捨て、承認の記録は大きさの枠も別", () => {
-    // 1件が約 7KB の操作の記録（日本語 80 文字 × 30 セル）
+    // 1件が約 70KB の操作の記録（日本語 80 文字 × 300 セル）
     const opEntry = (i: number) => {
-      const changes = Array.from({ length: 30 }, (_, j): ChatChange => ({ kind: "cell", rowKey: `o${i}-${j}`, field: "workName", edit: chat("あ".repeat(80)) }))
+      const changes = Array.from({ length: 300 }, (_, j): ChatChange => ({ kind: "cell", rowKey: `o${i}-${j}`, field: "workName", edit: chat("あ".repeat(80)) }))
       return undoEntry(base, applyChanges(base, [], changes), { id: `o${i}`, proposalId: `${RANGE_UNDO}${i}`, kind: "op", label: "", at: i })!
     }
     let list = [entryOf("p0", "approval", 0)]
@@ -169,6 +169,19 @@ describe("承認の取り消し", () => {
     expect(bytes(ops)).toBeLessThanOrEqual(UNDO_LIMITS.op.bytes)
     expect(ops.at(-1)!.at).toBe(9)
     expect(list[0]!.id).toBe("p0#0")
+  })
+
+  test("300行の業種をまとめて決めた1回（前後に AI の案の注意書き 120 文字）と240行の範囲の入れ外しは、1件で枠に入り取り消せる", () => {
+    const key = (i: number) => `工事経歴一覧（令和6年度）!${i + 3}`
+    const note = "あ".repeat(120)
+    const before: CaseWork = { ...base, edits: new Map(Array.from({ length: 300 }, (_, i) => [editKey(key(i), "gyoshu"), { value: "08", by: "chat", status: "warning", guessed: true, message: `AI の案（ほかの工事の傾向）: ${note}` }])) }
+    const after: CaseWork = { ...before, edits: new Map(Array.from({ length: 300 }, (_, i) => [editKey(key(i), "gyoshu"), { value: "08", by: "chat", message: `AI の案（工事名）: ${note}` }])) }
+    const gyoshu = pushUndo([], undoEntry(before, after, { id: "g", proposalId: `${GYOSHU_UNDO}x`, kind: "op", label: "", at: 0 })!).at(-1)!
+    expect(gyoshu.tooLarge).toBeUndefined()
+    expect(canUndo(gyoshu)).toBe(true)
+    const ranged: CaseWork = { ...base, manual: new Map(Array.from({ length: 240 }, (_, i) => [key(i), true])) }
+    const range = pushUndo([], undoEntry(base, ranged, { id: "r", proposalId: `${RANGE_UNDO}x`, kind: "op", label: "", at: 0 })!).at(-1)!
+    expect(canUndo(range)).toBe(true)
   })
 
   test("kind の無い前の記録は、操作の印から枠を決める", () => {

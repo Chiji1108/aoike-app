@@ -6,7 +6,10 @@ import { saveCaseStateFn } from "@/server/cases"
 
 export type { SaveStatus }
 
-/** 案件の作業を変わるたびに保存する（lib/cases/autosave.ts）。saved は読んだときの作業（まだ保存が無ければ null）。settle は今の作業まで保存し終えるのを待つ */
+/**
+ * 案件の作業を変わるたびに保存する（lib/cases/autosave.ts）。saved は読んだときの作業（まだ保存が無ければ null）。
+ * 最初の作業が saved と違えば（開いたときに直したもの）、すぐに保存する。settle は今の作業まで保存し終えるのを待つ
+ */
 export function useCaseAutosave(caseId: string, initial: { version: number; saved: CaseWork | null }, work: CaseWork) {
   const [status, setStatus] = useState<SaveStatus>({ kind: "saved" })
   const autosave = useRef<ReturnType<typeof createAutosave>>(null)
@@ -16,7 +19,7 @@ export function useCaseAutosave(caseId: string, initial: { version: number; save
     onStatus: setStatus,
     errorMessage: (e) => errorMessage(e, "保存できませんでした"),
   })
-  const loaded = useRef(work)
+  const loaded = useRef(initial.saved ?? work)
 
   useEffect(() => {
     if (work !== loaded.current) autosave.current!.change(work)

@@ -5,7 +5,7 @@ import { callsServerFn, deleteCustomer, openNewCase, openTab, reload, showAllRow
 
 /**
  * 変更案と取り消しの決まり: チャットの承認のあとに画面の操作（載せる工事の切り替え）を何度しても、承認を取り消せる（操作は別の枠で数える）。
- * 中身（サーバーの記録）の無い開いた変更案は、開き直すと閉じて報告に1行出す（もう一度開いても出さない）。
+ * 中身（サーバーの記録）の無い開いた変更案は、開き直すと閉じて報告に1行出し、すぐ保存する（もう一度開いても出さない）。
  * 列の対応は見出しからの推定にし（計画の AI を断る）、チャットは決まった返事にする（サーバーに変更案の記録を置かない）
  */
 
@@ -112,23 +112,25 @@ test("承認のあとに載せる工事を15回切り替えても承認を取り
   })
 })
 
-test("中身（サーバーの記録）の無い開いた変更案は、開き直すと閉じて報告に1行出し、もう一度開き直すと出さない", async ({ page }) => {
+test("中身（サーバーの記録）の無い開いた変更案は、開き直すと閉じて報告に1行出し、すぐ保存するので何も変えずにもう一度開き直すと出さない", async ({ page }) => {
   const { key } = await convert(page)
   await fakeChat(page, [{ kind: "cell", rowKey: key, field: "workName", edit: { value: VALUE, by: "chat" } }])
   await ask(page)
   // 決めないまま保存する（決まった返事なので、サーバーに変更案の記録が無い）
   await saved(page)
   const before = await answers(page)
+  // 開き直すと、閉じた形をすぐ保存する（保存の要求を待つ）
+  const savedOnOpen = page.waitForResponse((res) => callsServerFn(res.url(), ["saveCaseStateFn"]) && res.ok(), { timeout: 60_000 })
   await reload(page)
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 60_000 })
-  await expect(page.getByTestId("closed-unreadable")).toContainText("中身を読めなかった変更案を 1 件閉じました")
+  await expect(page.getByTestId("closed-missing")).toContainText("中身の記録が無い変更案を 1 件閉じました")
   // 答えるものとして数えない
   await expect.poll(() => answers(page)).toBe(before - 1)
-  // 閉じた形は次の保存で作業に入る（何か変えて保存する）
-  await openTab(page, "selection")
-  await page.getByTestId("selection-all").click()
-  await saved(page)
+  // 閉じた形は開いた直後に保存したので、何も変えずに開き直しても出さない
+  await savedOnOpen
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
   await reload(page)
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 60_000 })
-  await expect(page.getByTestId("closed-unreadable")).toHaveCount(0)
+  await expect(page.getByTestId("closed-missing")).toHaveCount(0)
+  await expect.poll(() => answers(page)).toBe(before - 1)
 })

@@ -82,12 +82,13 @@ export type UndoEntry = {
 }
 
 /**
- * 枠ごとに残す記録の数と大きさ（案件の作業は D1 の1行に入れるので、取り消しの記録で埋めない。合わせて 200KB 以内）。
- * 操作は直前の数回を戻せれば足りる
+ * 枠ごとに残す記録の数と大きさ（案件の作業は D1 の1行〔MAX_STATE_BYTES〕に入れるので、取り消しの記録で埋めない。合わせて 600KB 以内）。
+ * 大きさは、どちらの枠も300行の業種をまとめて決めた1回（前後の値に AI の案の注意書き〔120文字まで〕が付くとき約 280KB）が1件で入るように決めた
+ * （240行の範囲の入れ外しは約 14KB）。操作は直前の数回を戻せれば足りる
  */
 export const UNDO_LIMITS: Record<UndoKind, { entries: number; bytes: number }> = {
-  approval: { entries: 30, bytes: 150_000 },
-  op: { entries: 10, bytes: 50_000 },
+  approval: { entries: 30, bytes: 300_000 },
+  op: { entries: 10, bytes: 300_000 },
 }
 
 /** 操作の記録の印（proposalId の前置き。1回の操作ごとに後ろに id を付ける） */

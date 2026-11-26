@@ -31,15 +31,19 @@ describe("去年のコード", () => {
     expect([...approvedChatProposals(proposals, [{ proposalId: "p1", undone: true }, { proposalId: "p3", undone: true }, { proposalId: "p3" }])].sort()).toEqual(["p3"])
   })
 
-  test("変更案に書いた取り消した項目（Proposal.undone）で見る（取り消しの記録が上限で捨てられても同じ）", () => {
-    const all: Proposal = { ...closed("p1", 2), undone: [0, 1] }
-    const part: Proposal = { ...closed("p2", 2), undone: [1] }
-    for (const undo of [[{ proposalId: "p1", undone: true as const, items: [0, 1] }, { proposalId: "p2", undone: true as const, items: [1] }], []]) {
-      expect([...approvedChatProposals([all, part], undo)]).toEqual(["p2"])
+  test("記録に残した承認の項目（logged）をすべて取り消した変更案は除く（記録が上限で捨てられても同じ・表を変えなかった承認の項目は数えない）", () => {
+    // 項目 0 は表を変えた承認（記録あり）、項目 1 は表を変えなかった承認（記録なし）。項目 0 を取り消せば承認をすべて取り消した
+    const noop: Proposal = { ...closed("p1", 2), logged: [0], undone: [0] }
+    // 一部だけ取り消したもの
+    const part: Proposal = { ...closed("p2", 2), logged: [0, 1], undone: [1] }
+    for (const undo of [[{ proposalId: "p1", undone: true as const }, { proposalId: "p2", undone: true as const }, { proposalId: "p2" }], []]) {
+      expect([...approvedChatProposals([noop, part], undo)]).toEqual(["p2"])
     }
-    // 開いている変更案の一部だけを取り消したものは残す
-    const reapproved: Proposal = { id: "p3", origin: { kind: "chat", messageId: "u3" }, question: null, state: "open", count: 3, applied: [0, 1], rejected: [], undone: [0] }
-    expect([...approvedChatProposals([reapproved], [{ proposalId: "p3", undone: true, items: [0] }, { proposalId: "p3", items: [1] }])]).toEqual(["p3"])
+    // 戻せない記録（ルールの追記）が残る変更案は、取り消したとみなさない
+    expect([...approvedChatProposals([{ ...closed("p3", 2), logged: [0, 1], undone: [0] }], [{ proposalId: "p3", undone: true }, { proposalId: "p3" }])]).toEqual(["p3"])
+    // logged の無い前の変更案は記録で見る（記録が無ければ承認したまま）
+    expect([...approvedChatProposals([closed("p4", 1)], [{ proposalId: "p4", undone: true }])]).toEqual([])
+    expect([...approvedChatProposals([closed("p4", 1)], [])]).toEqual(["p4"])
   })
 
   test("承認した変更案の付いた返事の、表を変える道具を呼ぶコードだけを会話の順に（読むだけ・bash・重なりは除く）", () => {

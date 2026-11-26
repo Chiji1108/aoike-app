@@ -73,10 +73,10 @@ export const getCasePageFn = createServerFn({ method: "GET" })
       state = { version: row.version, work: work.data, aiCache: aiCache.data }
     }
     // 変更案の記録（R2）のうち、案件の作業で決め終わっていないもの（作業にまだ無いもの＝画面が受け取り損ねたものも）
-    const [proposals, previous] = await Promise.all([readOpenProposals(kase.id, new Set(state?.work.proposals.filter((p) => p.state === "closed").map((p) => p.id))), previousOf(db, kase)])
+    const [{ records: proposals, unreadable: unreadableProposals }, previous] = await Promise.all([readOpenProposals(kase.id, new Set(state?.work.proposals.filter((p) => p.state === "closed").map((p) => p.id))), previousOf(db, kase)])
     // 最後の Excel の照合用の鍵（案件ごとにいつも同じ。lib/excel/excel-key.ts）
     const excelKey = await excelKeyOf(env.BETTER_AUTH_SECRET, kase.id)
-    return { kase, customer: customer!, files, state, chatEnabled: !!env.ANTHROPIC_API_KEY, proposals, previous, settings, excelKey }
+    return { kase, customer: customer!, files, state, chatEnabled: !!env.ANTHROPIC_API_KEY, proposals, unreadableProposals, previous, settings, excelKey }
   })
 
 /**

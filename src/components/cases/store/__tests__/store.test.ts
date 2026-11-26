@@ -10,7 +10,7 @@ import { createCaseStore, initialCaseState, setWork, type CaseStore } from "../c
 import { derive } from "../derive"
 
 const change: ChatChange = { kind: "inquiryMail", subject: "確認のお願い", intro: "" }
-const store = () => createCaseStore(initialCaseState({ state: null, proposals: [], settings: { rule7Tax: "excluded" } }))
+const store = () => createCaseStore(initialCaseState({ state: null, proposals: [], unreadableProposals: [], settings: { rule7Tax: "excluded" } }))
 
 describe("案件のストア", () => {
   test("変更案は中身と一緒に1回で入り、派生は同じ状態なら同じ参照を返す", () => {
@@ -33,7 +33,7 @@ describe("案件のストア", () => {
   })
   test("サーバーが記録した変更案のうち作業に無いものは、中身と一緒に作業に入れる", () => {
     const p = newProposal("p1", { kind: "chat", messageId: "m" }, [change], null)
-    const init = initialCaseState({ state: null, proposals: [{ proposal: p, changes: [change] }], settings: { rule7Tax: "included" } })
+    const init = initialCaseState({ state: null, proposals: [{ proposal: p, changes: [change] }], unreadableProposals: [], settings: { rule7Tax: "included" } })
     expect(init.work.proposals).toEqual([p])
     expect(init.work.rule7Tax).toBe("included")
     expect(init.contents.get("p1")).toEqual([change])
@@ -56,10 +56,10 @@ test("派生の memo はストアごとに取り合わない（2つのストア�
 const cell = (rowKey: string, value: string): ChatChange => ({ kind: "cell", rowKey, field: "workName", edit: { value, by: "chat" } })
 const chatRecord = (id: string, changes: ChatChange[]): ProposalRecord => ({ proposal: newProposal(id, { kind: "chat", messageId: `m-${id}` }, changes, null), changes })
 /** 保存して開き直す（作業の JSON を通し、サーバーが読めた変更案の記録を渡す） */
-const reopen = (s: CaseStore, records: ProposalRecord[] = []) => {
+const reopen = (s: CaseStore, records: ProposalRecord[] = [], unreadable: string[] = []) => {
   const w = s.getState().work
   const work = savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(w))))
-  return createCaseStore(initialCaseState({ state: { work, aiCache: toSavedAiCache(w.aiCache) }, proposals: records, settings: { rule7Tax: "excluded" } }))
+  return createCaseStore(initialCaseState({ state: { work, aiCache: toSavedAiCache(w.aiCache) }, proposals: records, unreadableProposals: unreadable, settings: { rule7Tax: "excluded" } }))
 }
 /** 画面の承認と同じく、表に重ねる部分を承認の記録にして入れる */
 const approve = (s: CaseStore, id: string, items: number[]) =>
@@ -91,25 +91,44 @@ describe("変更案を足す（receiveProposal）", () => {
 })
 
 describe("開いたときの中身の無い変更案（reconcile）", () => {
-  test("開いているのに中身を読めなかった変更案は閉じて数え、保存して開き直しても開いた案に戻らない", () => {
+  test("開いているのに中身の記録が無い変更案は閉じて数え、保存して開き直しても開いた案に戻らない", () => {
     const s = store()
     receiveProposal(s, chatRecord("lost", [cell("r1", "x"), cell("r2", "y")]), "replace")
     const kept = chatRecord("kept", [change])
     receiveProposal(s, kept, "replace")
     approve(s, "lost", [0])
-    // R2 の記録が lost だけ読めなかった
+    // R2 に lost の記録が無い
     const r = reopen(s, [kept])
-    expect(r.getState().runtime.closedUnreadable).toBe(1)
+    expect(r.getState().runtime).toMatchObject({ closedMissing: 1, unreadable: 0 })
+    // 自動保存の基準は閉じる前の作業（開いた直後に閉じた形を保存する）
+    expect(r.getState().runtime.loaded!.proposals.find((p) => p.id === "lost")!.state).toBe("open")
+    expect(r.getState().runtime.loaded).not.toBe(r.getState().work)
     const lost = r.getState().work.proposals.find((p) => p.id === "lost")!
     expect(lost).toMatchObject({ state: "closed", applied: 1, rejected: 1 })
     expect(r.getState().work.proposals.find((p) => p.id === "kept")!.state).toBe("open")
     // 閉じた形が保存に入るので、次に開いたときは閉じたまま（数えない）
     const again = reopen(r, [kept])
-    expect(again.getState().runtime.closedUnreadable).toBe(0)
+    expect(again.getState().runtime.closedMissing).toBe(0)
+    // 閉じたものが無ければ基準は作業そのもの（開いただけでは保存しない）
+    expect(again.getState().runtime.loaded).toBe(again.getState().work)
     expect(again.getState().work.proposals.find((p) => p.id === "lost")!.state).toBe("closed")
     // 閉じた変更案の取り消しは中身が無くてもできる（表の値は取り消しの記録から戻す）
     expect(derive(again.getState()).undoStates.get("lost")?.can).toBe(true)
     expect(undoGroup(again, "lost")).toMatchObject({ reverted: 1, kept: 0 })
+  })
+
+  test("記録はあるが読めなかった変更案は閉じずに数える（記録を残し、直れば読める）", () => {
+    const s = store()
+    const broken = chatRecord("broken", [change])
+    receiveProposal(s, broken, "replace")
+    const r = reopen(s, [], ["broken"])
+    expect(r.getState().runtime).toMatchObject({ closedMissing: 0, unreadable: 1 })
+    expect(r.getState().work.proposals[0]!.state).toBe("open")
+    expect(r.getState().runtime.loaded).toBe(r.getState().work)
+    // 読めるようになれば中身と一緒に開いたまま
+    const fixed = reopen(r, [broken])
+    expect(fixed.getState().runtime).toMatchObject({ closedMissing: 0, unreadable: 0 })
+    expect(fixed.getState().contents.get("broken")).toEqual([change])
   })
 })
 
@@ -117,13 +136,41 @@ describe("取り消し（commit・undoGroup）", () => {
   test("積むのは commit の1か所。変わったときだけ記録を積み、枠（kind）を記録に書く", () => {
     const s = store()
     receiveProposal(s, chatRecord("p", [cell("r1", "x")]), "replace")
-    expect(approve(s, "p", [0])).toBe(true)
-    expect(op(s, 0)).toBe(true)
-    expect(commit(s, { group: `${GYOSHU_UNDO}none`, kind: "op" }, ({ work: w }) => w)).toBe(false)
+    expect(approve(s, "p", [0])).toBe("undoable")
+    expect(op(s, 0)).toBe("undoable")
+    expect(commit(s, { group: `${GYOSHU_UNDO}none`, kind: "op" }, ({ work: w }) => w)).toBe("none")
     expect(s.getState().work.undo.map((e) => [e.proposalId, e.kind, e.items])).toEqual([
       ["p", "approval", [0]],
       [`${GYOSHU_UNDO}0`, "op", []],
     ])
+    // 承認の記録に残した項目は変更案にも書く
+    expect(s.getState().work.proposals[0]!.logged).toEqual([0])
+  })
+
+  test("記録が大きすぎて取り消せない変更は tooLarge を返す", () => {
+    const s = store()
+    const huge = commit(s, { group: `${GYOSHU_UNDO}huge`, kind: "op" }, ({ work: w }) => ({
+      ...w,
+      edits: new Map(Array.from({ length: 3000 }, (_, i) => [`r${i}:workName`, { value: "あ".repeat(80), by: "staff" as const }])),
+    }))
+    expect(huge).toBe("tooLarge")
+    expect(derive(s.getState()).undoStates.get(`${GYOSHU_UNDO}huge`)).toMatchObject({ can: false, tooLarge: true })
+    expect(undoGroup(s, `${GYOSHU_UNDO}huge`)).toBeNull()
+  })
+
+  test("表を変えなかった承認の項目は記録に残らず、記録に残した項目をすべて取り消せば去年のやり方に添えない", () => {
+    const s = store()
+    // 項目 1 は今の値と同じ include（表は変わらない）
+    receiveProposal(s, chatRecord("p", [cell("r1", "x"), { kind: "include", rowKey: "r2", include: true }]), "replace")
+    setWork(s, (w) => ({ ...w, manual: new Map([["r2", true]]) }))
+    approve(s, "p", [0])
+    expect(approve(s, "p", [1])).toBe("none")
+    expect(s.getState().work.proposals[0]).toMatchObject({ state: "closed", applied: 2, logged: [0] })
+    expect([...approvedChatProposals(s.getState().work.proposals, s.getState().work.undo)]).toEqual(["p"])
+    undoGroup(s, "p")
+    expect([...approvedChatProposals(s.getState().work.proposals, s.getState().work.undo)]).toEqual([])
+    // 記録が捨てられても同じ
+    expect([...approvedChatProposals(reopen(s).getState().work.proposals, [])]).toEqual([])
   })
 
   test("承認 → 業種の一覧で50回決める → 承認を取り消せる（操作が承認の記録を押し出さない）", () => {

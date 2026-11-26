@@ -21,7 +21,7 @@ import { FixSuggestionPanel, useGyoshuSuggestion } from "@/components/convert/fi
 import { NextSteps, type StepId } from "@/components/cases/next-steps"
 import { CaseStoreContext, useCase, useCaseStore } from "@/components/cases/store/context"
 import { createCaseStore, initialCaseState, setWork as setStoreWork } from "@/components/cases/store/create-case-store"
-import { commit, receiveProposal, undoGroup } from "@/components/cases/store/actions/proposals"
+import { commit, receiveProposal, undoGroup, type Committed } from "@/components/cases/store/actions/proposals"
 import { derive } from "@/components/cases/store/derive"
 import { GyoshuSummaryTable, RoundingNote } from "@/components/convert/summary-panel"
 import type { ProposalActions, UndoState } from "@/components/chat/proposal-card"
@@ -242,8 +242,9 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const contents = useCase((s) => s.contents)
   /** 欄に出す変更案・未決の有無（ストアの派生。描画でも action でも同じもの） */
   const derived = useCase(derive)
-  /** 開いたときに中身を読めずに閉じた変更案の数（報告に出す） */
-  const closedUnreadable = useCase((s) => s.runtime.closedUnreadable)
+  /** 開いたときに中身の記録が無く閉じた変更案・記録を読めなかった変更案の数（報告に出す） */
+  const closedMissing = useCase((s) => s.runtime.closedMissing)
+  const unreadableProposals = useCase((s) => s.runtime.unreadable)
   /** 作業を変える（next はその時点の作業から作る。値をそのまま入れるときも、その時点の作業に重ねない値だけ） */
   const setWork = (next: CaseWork | ((w: CaseWork) => CaseWork)) => setStoreWork(store, typeof next === "function" ? next : () => next)
   /** 最新の作業（待っている間に変わったかを確かめる。前の描画の値を使わない） */
@@ -295,7 +296,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     return ++conversionGeneration.current
   }
 
-  const { status: saveStatus, settle: settleSave } = useCaseAutosave(kase.id, { version: state?.version ?? 0, saved: state ? work : null }, work)
+  const { status: saveStatus, settle: settleSave } = useCaseAutosave(kase.id, { version: state?.version ?? 0, saved: store.getState().runtime.loaded }, work)
 
   const shownPlan = work.plan ?? planDraft
   const plan = shownPlan?.plan ?? null
@@ -729,6 +730,12 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   const locationSearch = useLocationSearch({ caseId: kase.id, view, table: tableWire, undecided: undecidedLocation, onRecord: addRecorded, onCaseCost: setCostUsd })
   const gyoshuSuggestion = useGyoshuSuggestion({ caseId: kase.id, onRecord: addRecorded, onCaseCost: addCost })
 
+  /** 取り消せる操作をした通知（取り消せるときだけ「取り消す」を出す。記録が大きすぎて取り消せないときはそう伝える） */
+  function notifyCommitted(text: string, committed: Committed, onUndo: () => void) {
+    if (committed === "tooLarge") toast.warning(`${text}（変更が大きすぎて取り消しの記録に残せないので、取り消せません）`)
+    else toast.success(text, committed === "undoable" ? { action: { label: "取り消す", onClick: onUndo } } : undefined)
+  }
+
   /**
    * 業種の一覧で決める（1回の操作を1つの取り消しの記録に）。値は職員が決めた手直し（表で選んだのと同じ staffEdit）。
    * 案が AI の案の変更案の未決の項目なら、案のまま決めた行はその項目を承認（承認と同じ値・注意書き）、違う値を選んだ行はその項目を却下にする。
@@ -737,7 +744,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   function decideGyoshu(decisions: readonly GyoshuDecision[], how: "plan" | "pick") {
     if (!decisions.length) return
     const id = `${GYOSHU_UNDO}${crypto.randomUUID()}`
-    const pushed = commit(store, { group: id, kind: "op" }, ({ work: w, contents }) => {
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w, contents }) => {
       const pending = pendingGyoshuItems(w.proposals, contents)
       const edits = new Map(w.edits)
       const decided = new Map<string, { applied: number[]; rejected: number[] }>()
@@ -760,7 +767,7 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       return { ...w, edits, proposals }
     })
     const text = how === "plan" ? `${decisions.length} 行の業種を案のまま決めました` : "業種を決めました"
-    toast.success(text, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "業種の決定") } } : undefined)
+    notifyCommitted(text, committed, () => undoProposal(id, "業種の決定"))
   }
   /** 直前に業種の一覧で決めたもの・「これでよい」にしたもの（取り消せるもの） */
   const { gyoshu: lastGyoshuUndo, confirm: lastConfirmUndo } = derived.lastOp
@@ -773,8 +780,8 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
     if (!cell) return
     const session = editSession(cell, letters)
     const id = `${CONFIRM_UNDO}${crypto.randomUUID()}`
-    const pushed = commit(store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, edits: new Map(w.edits).set(editKey(rowKey, field), session.read(session.text)) }))
-    toast.success(`${shortLabel(field)}を確かめた値にしました`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, `「${CONFIRM_LABEL}」`) } } : undefined)
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, edits: new Map(w.edits).set(editKey(rowKey, field), session.read(session.text)) }))
+    notifyCommitted(`${shortLabel(field)}を確かめた値にしました`, committed, () => undoProposal(id, `「${CONFIRM_LABEL}」`))
   }
 
   /**
@@ -784,8 +791,8 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   function changeSelection(mode: SelectionMode) {
     if (latestWork().selection === mode) return
     const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
-    const pushed = commit(store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode }))
-    toast.success(`載せる工事を${SELECTION_LABELS[mode]}にしました`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "載せる工事の切り替え") } } : undefined)
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode }))
+    notifyCommitted(`載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, () => undoProposal(id, "載せる工事の切り替え"))
   }
   /** 表の Shift＋クリックで範囲をまとめて入れ外しする（1回の操作を1つの取り消しの記録に） */
   function toggleRange(keys: readonly string[], included: boolean, skippedExcluded: number) {
@@ -795,12 +802,12 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
       return
     }
     const id = `${RANGE_UNDO}${crypto.randomUUID()}`
-    const pushed = commit(store, { group: id, kind: "op" }, ({ work: w }) => {
+    const committed = commit(store, { group: id, kind: "op" }, ({ work: w }) => {
       const manual = new Map(w.manual)
       for (const k of keys) manual.set(k, included)
       return { ...w, manual }
     })
-    toast.success(`${keys.length} 行を${included ? "載せました" : "外しました"}${skipped}`, pushed ? { action: { label: "取り消す", onClick: () => undoProposal(id, "まとめての入れ外し") } } : undefined)
+    notifyCommitted(`${keys.length} 行を${included ? "載せました" : "外しました"}${skipped}`, committed, () => undoProposal(id, "まとめての入れ外し"))
   }
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
   const manualIncluded = useMemo(() => manualIncludedCount(inclusion), [inclusion])
@@ -923,7 +930,10 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
    */
   function undoProposal(proposalId: string, what = "承認") {
     const r = undoGroup(store, proposalId)
-    if (!r) return
+    if (!r) {
+      toast.info(`${what}を取り消せません（取り消しの記録がもう無いか、取り消し済みです）`)
+      return
+    }
     const { reverted, kept } = r
     if (r.planChanged) supersedeConversion()
     if (kept) toast.warning(`${what}を取り消しました（${reverted} 件を戻し、${what}のあとに変えた ${kept} 件はそのままにしました）`)
@@ -1216,8 +1226,11 @@ function CaseWorkspaceBody({ kase, customer, files: initialFiles, state, chatEna
   })
   const sourceSheets = work.plan?.plan.sheets ?? []
   const reportNotes: ReportProps["notes"] = [
-    ...(closedUnreadable
-      ? [{ text: `中身を読めなかった変更案を ${closedUnreadable} 件閉じました（未決の項目は却下にしました。要るものはチャットでもう一度頼んでください）。`, tone: "warning" as const, testId: "closed-unreadable" }]
+    ...(closedMissing
+      ? [{ text: `中身の記録が無い変更案を ${closedMissing} 件閉じました（未決の項目は却下にしました。要るものはチャットでもう一度頼んでください）。`, tone: "warning" as const, testId: "closed-missing" }]
+      : []),
+    ...(unreadableProposals
+      ? [{ text: `中身の記録を読めない変更案が ${unreadableProposals} 件あります（記録は残しています。決められないので、続くときは管理者に知らせてください）。`, tone: "warning" as const, testId: "unreadable-proposals" }]
       : []),
     ...(work.plan?.notice ? [{ text: work.plan.notice, tone: "warning" as const }] : []),
     // 計画が税込・税抜を決めたら聞き返さない。決めたことと直し方だけ伝える

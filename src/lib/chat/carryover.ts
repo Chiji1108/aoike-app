@@ -9,7 +9,7 @@ import { CODE_SETS } from "../spec/code-sets"
 import { KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
 import { GYOSHU_WORK_LABELS } from "../spec/work-name"
 import type { ChatMessage } from "./messages"
-import type { Proposal } from "./proposals"
+import { approvalsUndone, type Proposal } from "./proposals"
 
 /**
  * 2年目以降の最初の指示に添える、去年の案件のコード。去年のチャットで AI が書き、職員が承認した変更案（1項目でも）につながった
@@ -34,13 +34,6 @@ const changeCode = (input: unknown) => {
 
 const unique = (codes: readonly string[]) => [...new Set(codes)]
 
-/** 承認を取り消した変更案（取り消しの記録だけで見る前の読み方: その変更案の承認の記録がすべて取り消し済み） */
-export function undoneProposals(undo: readonly Pick<UndoEntry, "proposalId" | "undone">[]): Set<string> {
-  const undone = new Set(undo.filter((e) => e.undone).map((e) => e.proposalId))
-  for (const e of undo) if (!e.undone) undone.delete(e.proposalId)
-  return undone
-}
-
 /** 変更案の項目のうち承認した数 */
 export const appliedCount = (p: Proposal) => (p.state === "closed" ? p.applied : p.applied.length)
 
@@ -54,14 +47,9 @@ export function undoneItems(p: Proposal, undo: readonly Pick<UndoEntry, "proposa
   return items
 }
 
-/**
- * 職員が1項目でも承認したチャットの変更案（承認を取り消した変更案は、承認につながらなかったものとして扱う）。
- * 変更案に取り消した番号があれば、承認した項目をすべて取り消したかをそれで見る。無ければ（前の変更案）取り消しの記録で見る
- */
-export function approvedChatProposals(proposals: readonly Proposal[], undo: readonly Pick<UndoEntry, "proposalId" | "undone" | "items">[] = []): Set<string> {
-  const byRecord = undoneProposals(undo)
-  const undone = (p: Proposal) => (p.undone ? undoneItems(p, undo).size >= appliedCount(p) : byRecord.has(p.id))
-  return new Set(proposals.filter((p) => p.origin.kind === "chat" && appliedCount(p) > 0 && !undone(p)).map((p) => p.id))
+/** 職員が1項目でも承認したチャットの変更案（承認をすべて取り消した変更案〔proposals.ts の approvalsUndone〕は、承認につながらなかったものとして扱う） */
+export function approvedChatProposals(proposals: readonly Proposal[], undo: readonly Pick<UndoEntry, "proposalId" | "undone">[] = []): Set<string> {
+  return new Set(proposals.filter((p) => p.origin.kind === "chat" && appliedCount(p) > 0 && !approvalsUndone(p, undo)).map((p) => p.id))
 }
 
 /** 画面の会話から、承認した変更案の付いた返事のコード（表を変える道具を呼ぶもの）を、会話の順に */
