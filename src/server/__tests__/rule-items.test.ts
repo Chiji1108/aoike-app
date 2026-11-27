@@ -1,7 +1,7 @@
 import Database from "better-sqlite3"
 import { beforeEach, describe, expect, test } from "vitest"
 import { readFileSync } from "node:fs"
-import { DEFAULT_GLOBAL_RULE_ITEMS, MAX_RULE_ITEM_LENGTH, MAX_RULE_ITEMS, MAX_RULES_TOTAL, originLabel, rulesText, ruleTextSchema } from "@/lib/chat/rules"
+import { DEFAULT_GLOBAL_RULE_ITEMS, MAX_RULE_ITEM_LENGTH, MAX_RULE_ITEMS, MAX_RULES_TOTAL, rulesText, ruleTextSchema } from "@/lib/chat/rules"
 import {
   UnknownRuleSourceError,
   addRuleItem,
@@ -137,7 +137,7 @@ describe("ルールの項目", () => {
     const customer = await createCustomer(db, "合成建設")
     const c = await createCase(db, customer.id, 2026)
     const t: RuleTarget = { scope: "customer", customerId: customer.id }
-    const add = (item: number, text: string) => appendRuleOnce(db, t, { caseId: c.id, proposalId: "p1", item, text, source: "chat" })
+    const add = (item: number, text: string) => appendRuleOnce(db, t, { caseId: c.id, proposalId: "p1", item, text })
     expect(await add(0, "工事名の読点は取る")).toBe("added")
     expect(await add(0, "工事名の読点は取る")).toBe("already")
     expect((await Promise.all([add(1, "A"), add(1, "A")])).sort()).toEqual(["added", "already"])
@@ -148,7 +148,7 @@ describe("ルールの項目", () => {
     ])
     expect(sqlite.prepare("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 2 })
 
-    expect(await appendRuleOnce(db, GLOBAL, { caseId: c.id, proposalId: "p1", item: 2, text: "注文者の株式会社は㈱", source: "chat" })).toBe("added")
+    expect(await appendRuleOnce(db, GLOBAL, { caseId: c.id, proposalId: "p1", item: 2, text: "注文者の株式会社は㈱" })).toBe("added")
     expect((await texts(GLOBAL)).at(-1)).toBe("注文者の株式会社は㈱")
     expect((await texts(GLOBAL)).length).toBe(DEFAULT_GLOBAL_RULE_ITEMS.length + 1)
 
@@ -159,19 +159,6 @@ describe("ルールの項目", () => {
       ["A", null],
     ])
     expect(sqlite.prepare("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 0 })
-  })
-
-  test("振り返りの変更案の承認は、由来を「振り返り」にして足す（由来の言葉も）", async () => {
-    const customer = await createCustomer(db, "合成建設")
-    const c = await createCase(db, customer.id, 2026)
-    const t: RuleTarget = { scope: "customer", customerId: customer.id }
-    expect(await appendRuleOnce(db, t, { caseId: c.id, proposalId: "r1", item: 0, text: "完成年月は引渡日の列", source: "review" })).toBe("added")
-    const [item] = await listRuleItems(db, t)
-    expect(item).toMatchObject({ text: "完成年月は引渡日の列", source: "review" })
-    expect(originLabel(item!, false)).toBe("2026年度の案件の振り返りから")
-    expect(originLabel(item!, true)).toBe("合成建設 2026年度の案件の振り返りから")
-    await deleteCase(db, bucket, c.id)
-    expect(originLabel((await listRuleItems(db, t))[0]!, false)).toBe("振り返りから（案件は削除済み）")
   })
 
   test("D1 の由来が知らない値なら、別の由来にせず、どの項目かを知らせて止める", async () => {
@@ -187,9 +174,9 @@ describe("ルールの項目", () => {
     const c = await createCase(db, customer.id, 2026)
     const t: RuleTarget = { scope: "customer", customerId: customer.id }
     await addRuleItem(db, t, "あ".repeat(MAX_RULES_TOTAL - 2))
-    await expect(appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "長い追記", source: "chat" })).rejects.toBeInstanceOf(RulesTooLongError)
+    await expect(appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "長い追記" })).rejects.toBeInstanceOf(RulesTooLongError)
     expect(sqlite.prepare("select count(*) as n from csv_rule_appends").get()).toEqual({ n: 0 })
-    expect(await appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "a", source: "chat" })).toBe("added")
+    expect(await appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "a" })).toBe("added")
   })
 
   test("顧客を消すと顧客ルールの項目も消える（全体ルールの項目は残り、由来だけ外れる）", async () => {
@@ -197,7 +184,7 @@ describe("ルールの項目", () => {
     const c = await createCase(db, customer.id, 2026)
     const t: RuleTarget = { scope: "customer", customerId: customer.id }
     await addRuleItem(db, t, "A")
-    await appendRuleOnce(db, GLOBAL, { caseId: c.id, proposalId: "p", item: 0, text: "全体へ", source: "chat" })
+    await appendRuleOnce(db, GLOBAL, { caseId: c.id, proposalId: "p", item: 0, text: "全体へ" })
     await deleteCustomer(db, bucket, customer.id)
     expect(sqlite.prepare("select count(*) as n from csv_rule_items where scope = 'customer'").get()).toEqual({ n: 0 })
     expect((await listRuleItems(db, GLOBAL)).at(-1)).toMatchObject({ text: "全体へ", origin: null })

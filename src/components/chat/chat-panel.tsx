@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport, validateUIMessages } from "ai"
 import { z } from "zod"
-import { Brain, Code2, Download, History, Lightbulb, Loader2, MessageSquare, MessageSquareText, PanelRightOpen, Paperclip, Send, Square, Table2, Trash2 } from "lucide-react"
+import { Brain, Code2, Download, Lightbulb, Loader2, MessageSquare, MessageSquareText, PanelRightOpen, Paperclip, Send, Square, Table2, Trash2 } from "lucide-react"
 import { Link } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { Markdown } from "@/components/chat/markdown"
 import { ProposalCard, type ProposalActions } from "@/components/chat/proposal-card"
 import { LocationSearchStatus, type LocationSearch } from "@/components/convert/location-panel"
 import { useCase, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
-import { useCarryover, useChatSuggestions, useProposalActions } from "@/components/cases/workspace/hooks"
+import { useChatSuggestions, useProposalActions } from "@/components/cases/workspace/hooks"
 import { useFx, useLocationTool } from "@/components/cases/workspace/tools"
 import { TOOL_TABS, workTabLabel, type WorkTab } from "@/components/cases/work-tabs"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -30,26 +30,22 @@ import { errorMessage } from "@/lib/errors"
 import { ATTACH_ACCEPT } from "@/lib/cases/types"
 import { endChatFn, stopChatFn } from "@/server/chat-fns"
 
-const historySchema = z.object({ messages: z.array(z.unknown()), carryover: z.boolean() })
+const historySchema = z.object({ messages: z.array(z.unknown()) })
 
-/** 保存した会話を読み、形を確かめる（サーバーの R2 の会話。変更案の部品は id だけ）。carried はこの会話で去年のコードを添えたか */
-async function loadHistory(caseId: string): Promise<{ messages: ChatMessage[]; carried: boolean }> {
+/** 保存した会話を読み、形を確かめる（サーバーの R2 の会話。変更案の部品は id だけ） */
+async function loadHistory(caseId: string): Promise<ChatMessage[]> {
   const res = await fetch(`/api/csv/cases/${caseId}/chat`)
   if (!res.ok) throw new Error((await res.text()) || "会話を読めませんでした")
   const history = historySchema.parse(await res.json())
   // validateUIMessages は空の並びを受け付けない
-  const messages = history.messages.length
+  return history.messages.length
     ? await validateUIMessages<ChatMessage>({
         messages: history.messages,
         metadataSchema: chatMetadataSchema.optional(),
-        dataSchemas: { proposal: chatDataSchemas.proposal, carryover: chatDataSchemas.carryover, "location-offer": chatDataSchemas["location-offer"], action: chatDataSchemas.action, feedback: chatDataSchemas.feedback },
+        dataSchemas: { proposal: chatDataSchemas.proposal, "location-offer": chatDataSchemas["location-offer"], action: chatDataSchemas.action, feedback: chatDataSchemas.feedback },
       })
     : []
-  return { messages, carried: history.carryover }
 }
-
-/** 「去年のやり方で直す」で送る指示 */
-const CARRYOVER_TEXT = "顧客ルールどおりに表を直して"
 
 /** コードから呼ぶ道具の、画面での呼び名 */
 const TOOL_LABELS: Record<string, string> = {
@@ -64,8 +60,6 @@ const TOOL_LABELS: Record<string, string> = {
   offer_action: "ボタンを出す",
   ask_staff: "聞き返し",
   propose_rule: "ルールの項目の案",
-  get_review: "今年の作業を振り返る",
-  propose_review: "顧客ルールの案（振り返り）",
   find_location: "工事場所を調べる",
   get_inquiries: "問い合わせを読む",
   record_answers: "顧客の回答の変更案",
@@ -81,8 +75,8 @@ export type ChatPanelProps = {
   tail?: React.ReactNode
 }
 
-/** チャットの案内。needsSaved は送る前に作業を保存し終える要るもの、once は会話に同じ指示があればもう出さないもの */
-export type Suggestion = { id: string; fileName?: string; text: string; label: string; prompt: string; needsSaved?: true; once?: true }
+/** チャットの案内。once は会話に同じ指示があればもう出さないもの */
+export type Suggestion = { id: string; fileName?: string; text: string; label: string; prompt: string; once?: true }
 
 /**
  * 案件の画面のチャット（画面の主。表などの作業の画面はチャットの右か、狭い画面では上に重ねて開く）。AI の変更は変更案として返事に付け、職員が承認したものだけを表に入れる。
@@ -111,12 +105,7 @@ export function ChatPanel(props: ChatPanelProps) {
   const location = useLocationTool()
   const proposalBase = useProposalActions()
   /**
-   * 同じ顧客の前の年度の案件があれば「去年のやり方で直す」を出す。ready は去年の Excel を読み終えたか、
-   * names は去年の Excel の配置技術者（去年のコードから個人名を消す）、headers は去年と今年の見出し（伏せない語）
-   */
-  const carryover = useCarryover()
-  /**
-   * AI に頼むとよいこと（返ってきた Excel〔印付き・記入用Excel〕の、色付きの欄で読めなかった記入〔ファイルごと。fileName はそのファイル〕と、案件を完了にしたときの振り返り）。
+   * AI に頼むとよいこと（返ってきた Excel〔印付き・記入用Excel〕の、色付きの欄で読めなかった記入〔ファイルごと。fileName はそのファイル〕と）。
    * 押すと prompt を送り、送れたら案内を消す。会話の最後に出す
    */
   const suggestions = useChatSuggestions()
@@ -131,11 +120,11 @@ export function ChatPanel(props: ChatPanelProps) {
     id: caseId,
     transport: new DefaultChatTransport({
       api: `/api/csv/cases/${caseId}/chat`,
-      prepareSendMessagesRequest: ({ messages, body: options }) => {
+      prepareSendMessagesRequest: ({ messages }) => {
         const last = messages.at(-1)!
         const text = last.parts.map((p) => (p.type === "text" ? p.text : "")).join("")
         // 表と文脈は送る瞬間の状態から作る（送るまでの手直しも入れる。大きいので送るときだけ）
-        const body: ChatRequest = { id: last.id, text, ...session.chatRequest()!, ...(options?.carryover === true ? { carryover: true, carryoverNames: session.carryoverNames(), carryoverHeaders: session.carryoverHeaders() } : {}) }
+        const body: ChatRequest = { id: last.id, text, ...session.chatRequest()! }
         return { body }
       },
     }),
@@ -147,8 +136,6 @@ export function ChatPanel(props: ChatPanelProps) {
       if (!isAbort) actions.chatArrived(isError || isDisconnect ? "error" : "new")
       // 案件の費用の合計（D1）。返事のたびに合計で置き換える
       if (message.metadata) actions.setCost(message.metadata.caseUsd)
-      // 去年のコードを添えたかはサーバーの会話の記録の印に従う（止めた・失敗した回は添えたことにならない）
-      if (message.metadata?.carryover !== undefined) setCarried(message.metadata.carryover)
     },
     onError: () => {
       failed.current = true
@@ -157,16 +144,13 @@ export function ChatPanel(props: ChatPanelProps) {
   const working = status === "submitted" || status === "streaming"
   /** 保存した会話。読み終えるまで送れない */
   const [history, setHistory] = useState<"loading" | "loaded" | { error: string }>("loading")
-  /** この会話で去年のコードを添えたか（サーバーの会話の記録の印。会話を読んだとき・返事のたびに受け取る） */
-  const [carried, setCarried] = useState(false)
   useEffect(() => {
     let live = true
     void loadHistory(caseId).then(
-      (h) => {
+      (loaded) => {
         if (!live) return
-        for (const m of h.messages) for (const p of m.parts) if ("toolCallId" in p) openedTools.current.add(p.toolCallId)
-        setMessages(h.messages)
-        setCarried(h.carried)
+        for (const m of loaded) for (const p of m.parts) if ("toolCallId" in p) openedTools.current.add(p.toolCallId)
+        setMessages(loaded)
         setHistory("loaded")
         actions.setChatLoaded(true)
       },
@@ -205,21 +189,16 @@ export function ChatPanel(props: ChatPanelProps) {
    * 送る。送れなかった（返事の途中・会話の読み込み中、またはサーバーが断った）なら false。keepInput なら入力欄の書きかけを残す（決まった指示を送るボタン）。
    * 送り始めるその場でストアの sending を立て（送る前の保存を待つ間も。続けて押しても二度送らない）、返事が終わったら下ろす。書くのはここだけ
    */
-  async function send(text = input.trim(), options: { carryover?: true; keepInput?: true; needsSaved?: true } = {}) {
+  async function send(text = input.trim(), options: { keepInput?: true } = {}) {
     if (!text || !session.view(session.store.getState()).chatCanSend) return false
     actions.setChatSending(true)
     try {
-      // 送る前に作業を保存し終える（サーバーが保存した作業を読む道具のため。例: 振り返り）。保存の要る案内は保存できなければ送らない。
-      // ほかの指示は保存できなくても送る（表は画面が送る）
-      const saved = await session.settle()
-      if (!saved && options.needsSaved) {
-        toast.error("作業を保存できていないので送りませんでした（保存の状態を確かめてから、もう一度押してください）")
-        return false
-      }
-      if (!options.carryover && !options.keepInput) setInput("")
+      // 送る前に作業を保存し終える（サーバーが保存した作業から個人名を集めるため）。保存できなくても送る（表は画面が送る）
+      await session.settle()
+      if (!options.keepInput) setInput("")
       failed.current = false
       // 返事が終わるまで待つ（止めた・失敗したときも返る）
-      await sendMessage({ text }, options.carryover ? { body: { carryover: true } } : undefined)
+      await sendMessage({ text })
       return !failed.current
     } finally {
       actions.setChatSending(false)
@@ -255,8 +234,6 @@ export function ChatPanel(props: ChatPanelProps) {
       const ended = await endChatFn({ data: { caseId } })
       if (ended) {
         setMessages((ms) => [...ms, { id: ended.id, role: "system", parts: [{ type: "text", text: ended.text }] }])
-        // 会話を終えるとサーバーは会話の記録を捨てる（印も無くなる）
-        setCarried(false)
       }
     } catch (e) {
       toast.error(errorMessage(e, "会話を終えられませんでした"))
@@ -308,24 +285,6 @@ export function ChatPanel(props: ChatPanelProps) {
           <MessageScrollerViewport>
             <MessageScrollerContent className="gap-4 px-4 py-3" data-testid="chat-messages">
               {props.report}
-              {carryover && history === "loaded" && !carried && (
-                <div className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-carryover">
-                  <span className="text-muted-foreground">
-                    {carryover.fiscalYear}年度の案件があります。顧客ルールと去年承認したコードを添えて直します。
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-fit"
-                    disabled={!ready || working || !carryover.ready}
-                    title={carryover.ready ? undefined : "去年の Excel を読んでいます"}
-                    onClick={() => void send(CARRYOVER_TEXT, { carryover: true })}
-                    data-testid="chat-carryover-send"
-                  >
-                    <History /> 去年のやり方で直す
-                  </Button>
-                </div>
-              )}
               {history === "loading" && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="size-3.5 animate-spin" /> 会話を読んでいます…
@@ -374,7 +333,7 @@ export function ChatPanel(props: ChatPanelProps) {
                       variant="outline"
                       className="w-fit"
                       disabled={!canSend}
-                      onClick={() => void send(sg.prompt, { keepInput: true, ...(sg.needsSaved ? { needsSaved: true } : {}) }).then((sent) => sent && actions.suggestionSent(sg.id))}
+                      onClick={() => void send(sg.prompt, { keepInput: true }).then((sent) => sent && actions.suggestionSent(sg.id))}
                       data-testid="chat-suggestion-send"
                     >
                       <MessageSquareText /> {sg.label}
@@ -502,17 +461,6 @@ function ChatMessageView({
                 <div className="text-xs whitespace-pre-wrap text-muted-foreground">{p.text}</div>
               </Step>
             ) : null
-          // 去年のコードを添えた印は、その返事で会話の記録に添えた印が立ったときだけ出す（止めた・失敗した返事の部品は出さない。同じ印を2回描かない）
-          if (p.type === "data-carryover" && meta?.carryover === true)
-            return (
-              <p key={i} className="text-xs text-muted-foreground" data-testid="chat-carryover-note">
-                {p.data.skipped
-                  ? `${p.data.skipped}。顧客ルールだけで直します。`
-                  : p.data.codes
-                    ? `${p.data.fiscalYear}年度の案件で承認につながったコード ${p.data.codes} 件と、顧客ルールを添えました。`
-                    : `${p.data.fiscalYear}年度の案件に承認につながったコードは無かったので、顧客ルールだけで直します。`}
-              </p>
-            )
           if (p.type === "data-location-offer")
             return (
               <div key={i} className="rounded-lg border bg-muted/20 p-2" data-testid="chat-location-offer">

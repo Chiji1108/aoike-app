@@ -13,7 +13,7 @@ function work(): CaseWork {
   const plan = heuristicPlan(KOJI_KEIREKI, KOJI_PLAN_HINTS, { name: "s", rows: [["工事名"]], hidden: [false] })
   return { ...newWork("f", "excluded"), plan: { plan: { ...plan, asks: [ASK_B, ASK_C] }, source: "ai" } }
 }
-const entry = (proposalId: string, answers: [string, string | null, string | null][]): UndoEntry => ({ id: proposalId, proposalId, kind: "approval", items: [], label: proposalId, at: 0, edits: [], manual: [], added: [], external: [], reportAnswers: answers })
+const entry = (proposalId: string, answers: [string, string | null, string | null][]): UndoEntry => ({ id: proposalId, proposalId, kind: "approval", label: proposalId, at: 0, edits: [], manual: [], added: [], external: [], reportAnswers: answers })
 
 test("前の形（並び順の id）の答えと取り消しの記録は、保存した計画のその順の聞き返しの鍵に読み替える", () => {
   const w: CaseWork = {

@@ -6,7 +6,7 @@ import { personalChecker } from "../location-guard"
 import { migratedDb } from "./sqlite"
 
 describe("保存した作業から個人名を集める", () => {
-  test("まだ保存が無ければ null（名前は空。振り返り・ルールの案は表の人だけで確かめる）。工事場所の調査は前のとおり送らない", async () => {
+  test("まだ保存が無ければ null（名前は空。ルールの案は表の人だけで確かめる）。工事場所の調査は前のとおり送らない", async () => {
     const { db } = migratedDb()
     const c = await createCase(db, (await createCustomer(db, "合成建設")).id, 2026)
     expect(await readSavedCase(db, c.id)).toBeNull()

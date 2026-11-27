@@ -189,7 +189,7 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
         leaving.set(options.caseId, settled)
       }
     },
-    /** 今の作業まで保存し終えるのを待つ（lib/cases/autosave.ts の settle。チャットの送る前・振り返り） */
+    /** 今の作業まで保存し終えるのを待つ（lib/cases/autosave.ts の settle。チャットの送る前） */
     settle: () => autosave.settle(),
   }
 }

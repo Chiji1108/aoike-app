@@ -12,7 +12,7 @@ import { planExcerpt, previousPlanContext } from "@/lib/convert/prompt"
 import { errorMessage } from "@/lib/errors"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { setRuntime, setWork, type CaseState, type Source } from "../create-case-store"
-import type { CaseEnv, PreviousCase } from "../env"
+import type { CaseEnv } from "../env"
 import { chatArrived } from "./ui"
 
 const SPEC = KOJI_KEIREKI
@@ -20,14 +20,6 @@ type Plan = MappingPlan<KojiFieldId>
 
 /** 列の計画の前に、去年の Excel を読み終えるのを待つ長さ */
 export const PREVIOUS_WAIT_MS = 3_000
-
-/** 去年の元の Excel の工事のシートと見出しの行（去年の計画のもの。計画が無い・シートが無ければ見出しから推定する）。シートが無ければ null */
-export function previousSideOf(previous: PreviousCase, sheets: SheetGrid[]) {
-  const prevGrid = sheetByNames(SPEC, KOJI_PLAN_HINTS, sheets, previous.sheet)
-  if (!prevGrid) return null
-  const headerRow = prevGrid.name === previous.sheet && previous.headerRow !== null ? previous.headerRow : heuristicPlan(SPEC, KOJI_PLAN_HINTS, prevGrid).headerRow
-  return { sheets, sheet: prevGrid.name, headerRow }
-}
 
 /**
  * 計画をやり直すとき（元のファイルの変更）: 行の作業と AI の結果は捨て、ファイル全体の設定は残す。開いている変更案は閉じる。
@@ -98,7 +90,7 @@ export function supersedeConversion(env: CaseEnv) {
   return next
 }
 
-/** 去年の Excel を1回だけ読む（読めなければ null。理由は runtime.previous に） */
+/** 去年の Excel を1回だけ読む（読めなければ null） */
 export function loadPreviousSheets(env: CaseEnv): Promise<SheetGrid[] | null> {
   const file = env.config.previous?.source
   if (!file) return Promise.resolve(null)
@@ -106,12 +98,9 @@ export function loadPreviousSheets(env: CaseEnv): Promise<SheetGrid[] | null> {
   env.previousLoad.current ??= (async () => {
     try {
       const { readWorkbook } = await import("@/lib/convert/workbook")
-      const sheets = readWorkbook(file.name, await env.deps.fetchFile(file.id))
-      setRuntime(env.store, () => ({ previous: sheets }))
-      return sheets
-    } catch (e) {
+      return readWorkbook(file.name, await env.deps.fetchFile(file.id))
+    } catch {
       env.previousLoad.current = null
-      setRuntime(env.store, () => ({ previous: { error: errorMessage(e, "去年の Excel を読めませんでした") } }))
       return null
     }
   })()

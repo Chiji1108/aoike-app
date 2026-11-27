@@ -51,8 +51,6 @@ export type UndoEntry = {
   proposalId: string
   /** 記録の枠（この項目より前の記録には無い。kindOf が印から決める） */
   kind?: UndoKind
-  /** 承認した変更案の項目の番号（振り返りで、取り消した項目を数える。この項目より前の記録には無い） */
-  items?: number[]
   label: string
   at: number
   /** [手直しの鍵, 前, 後]（null は無かった） */
@@ -110,7 +108,7 @@ const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.s
 export function undoEntry(
   before: Undoable,
   after: Undoable,
-  meta: { id: string; proposalId: string; kind: UndoKind; items?: number[]; label: string; at: number; external?: UndoEntry["external"]; exclusions?: ValueFilter[] },
+  meta: { id: string; proposalId: string; kind: UndoKind; label: string; at: number; external?: UndoEntry["external"]; exclusions?: ValueFilter[] },
 ): UndoEntry | null {
   const edits: UndoEntry["edits"] = []
   for (const [k, v] of after.edits) if (before.edits.get(k) !== v) edits.push([k, before.edits.get(k) ?? null, v])
@@ -161,7 +159,7 @@ export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntr
   const limit = UNDO_LIMITS[kind]
   const kept: UndoEntry =
     sizeOf(entry) > limit.bytes
-      ? { id: entry.id, proposalId: entry.proposalId, kind, ...(entry.items ? { items: entry.items } : {}), label: entry.label, at: entry.at, edits: [], manual: [], added: [], external: entry.external, tooLarge: true }
+      ? { id: entry.id, proposalId: entry.proposalId, kind, label: entry.label, at: entry.at, edits: [], manual: [], added: [], external: entry.external, tooLarge: true }
       : entry
   const next = [...list, kept]
   /** この枠の記録の位置（古い順） */
@@ -281,7 +279,6 @@ export const undoEntrySchema: z.ZodType<UndoEntry> = z.object({
   id: z.string(),
   proposalId: z.string(),
   kind: z.enum(["approval", "op"]).optional(),
-  items: z.array(z.number().int().min(0)).optional(),
   label: z.string(),
   at: z.number(),
   edits: z.array(z.tuple([z.string(), cellEditSchema.nullable(), cellEditSchema.nullable()])),

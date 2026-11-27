@@ -108,7 +108,7 @@ describe("待つ処理（偽の deps）", () => {
   })
 
   test("ルールの書き込みが途中で失敗したら、書けた分だけ承認する（承認の記録も書けた分）", async () => {
-    const rule = (text: string): ChatChange => ({ kind: "rule", scope: "customer", text, source: "chat" })
+    const rule = (text: string): ChatChange => ({ kind: "rule", scope: "customer", text })
     const approveRule = vi.fn<CaseDeps["approveRule"]>().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("書けませんでした"))
     const s = createCaseSession(page(), fakeDeps({ approveRule }), noChannel)
     const changes = [rule("一"), rule("二"), rule("三")]
@@ -120,11 +120,11 @@ describe("待つ処理（偽の deps）", () => {
     if (p.state !== "open") throw new Error("開いたままのはず")
     expect([0, 1, 2].map((i) => decisionOf(p, i))).toEqual(["applied", "pending", "pending"])
     expect(approveRule.mock.calls.map(([, item]) => item)).toEqual([0, 1])
-    expect(s.store.getState().work.undo.map((e) => [e.proposalId, e.items, e.external])).toEqual([["p", [0], ["rule"]]])
+    expect(s.store.getState().work.undo.map((e) => [e.proposalId, e.external])).toEqual([["p", ["rule"]]])
     expect(s.store.getState().runtime.busy.rule).toBe(false)
   })
 
-  test("状態の変更が失敗したら、その後に変えていなければ元に戻す。完了にしたら振り返りを案内する", async () => {
+  test("状態の変更が失敗したら、その後に変えていなければ元に戻す", async () => {
     const failing = deferred<unknown>()
     const updateStatus = vi.fn<CaseDeps["updateStatus"]>().mockReturnValueOnce(failing.promise).mockResolvedValue(undefined)
     const s = createCaseSession(page(), fakeDeps({ updateStatus }), noChannel)
@@ -133,7 +133,6 @@ describe("待つ処理（偽の deps）", () => {
     failing.reject(new Error("送れませんでした"))
     await first
     expect(s.store.getState().runtime.status).toBe("done")
-    expect(s.store.getState().runtime.hints.review).toBe(true)
   })
 })
 
@@ -338,7 +337,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
       site: { key: "k", workName: "合成の工事", client: "合成の会社" },
       rowKeys: ["add-1"],
     } satisfies ChatChange
-    const changes: ChatChange[] = [location, { kind: "rule", scope: "customer", text: "一", source: "chat" }]
+    const changes: ChatChange[] = [location, { kind: "rule", scope: "customer", text: "一" }]
     receiveProposal(s.store, { proposal: newProposal("p", { kind: "chat", messageId: "m" }, changes, null), changes }, "replace")
     const deciding = s.actions.decideProposal("p", [0, 1], "applied")
     await vi.waitFor(() => expect(approveLocations).toHaveBeenCalled())

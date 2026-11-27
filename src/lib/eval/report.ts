@@ -15,7 +15,7 @@ export type RunSummary = {
   /** done でないときの理由 */
   reason?: string
   case: string
-  /** baseline | edit | rules | nextyear | location-<n>（location の n 回目。2回目からは覚えた結果を使う） */
+  /** baseline | edit | rules | location-<n>（location の n 回目。2回目からは覚えた結果を使う） */
   variant: string
   score: {
     /** 職員の CSV の行（載せた行） */
@@ -101,13 +101,13 @@ export function spread(values: number[]): Spread {
   return { mean: values.reduce((a, b) => a + b, 0) / values.length, min: Math.min(...values), max: Math.max(...values), values }
 }
 
-const VARIANT_ORDER = ["baseline", "edit", "rules", "nextyear"]
+const VARIANT_ORDER = ["baseline", "edit", "rules"]
 const variantRank = (v: string) => {
   const i = VARIANT_ORDER.indexOf(v)
   return i >= 0 ? i : VARIANT_ORDER.length + (Number(/^location-(\d+)$/.exec(v)?.[1]) || 0)
 }
 
-/** runs は回の名前と、その回の要約。案件は caseOrder の順（無い案件は名前順で後ろ）、variant は baseline → edit → rules → nextyear → location-n の順 */
+/** runs は回の名前と、その回の要約。案件は caseOrder の順（無い案件は名前順で後ろ）、variant は baseline → edit → rules → location-n の順 */
 export function buildReport(runs: RunData[], caseOrder: string[] = []): Report {
   const groups = new Map<string, RunSummary[]>()
   for (const run of runs)

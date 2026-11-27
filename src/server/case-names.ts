@@ -1,4 +1,4 @@
-import { namesOfCase } from "@/lib/chat/carryover"
+import { namesOfCase } from "@/lib/chat/names"
 import { savedAiCacheSchema, savedWorkSchema, type SavedAiCache, type SavedWork } from "@/lib/cases/state"
 import { tryParseJson } from "@/lib/json"
 import { getCaseState, type Db } from "./case-store"
@@ -21,7 +21,7 @@ export async function readSavedCase(db: Db, caseId: string): Promise<{ work: Sav
 }
 
 /**
- * 保存した作業から分かっている個人名（手直し・置換・匿名化の AI の結果 persons・氏名の区切りの AI。去年のコードと同じ集め方）。
+ * 保存した作業から分かっている個人名（手直し・置換・匿名化の AI の結果 persons・氏名の区切りの AI）。
  * 画面から届いた表の印だけに頼らないために使う（工事場所の調査に送る文字列・ルールの案の確かめ）。まだ保存が無ければ空
  */
 export const namesOfSaved = (saved: { work: SavedWork; aiCache: SavedAiCache } | null) => (saved ? namesOfCase(saved.work, saved.aiCache) : new Set<string>())

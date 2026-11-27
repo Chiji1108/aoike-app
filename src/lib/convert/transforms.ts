@@ -11,7 +11,7 @@ import { collapseSpaces, matchKey, nfkc, removeSpaces, toFullWidth } from "./tex
 /** 金額の千円未満の扱い（切り捨て・四捨五入）。並びは作業の画面の選ぶ欄の順 */
 export const ROUNDINGS = ["floor", "round"] as const
 export type Rounding = (typeof ROUNDINGS)[number]
-/** 千円未満の端数の扱いの名前（作業の画面・チャットの変更案・振り返りで同じ言葉） */
+/** 千円未満の端数の扱いの名前（作業の画面・チャットの変更案で同じ言葉） */
 export const ROUNDING_LABELS: Record<Rounding, string> = { floor: "切り捨て", round: "四捨五入" }
 export type TransformContext = {
   rounding: Rounding

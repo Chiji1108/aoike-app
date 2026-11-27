@@ -11,19 +11,15 @@ export { RULE7_TAX_LABELS, rule7TaxSchema, type Rule7Tax }
  */
 
 /**
- * 一覧の種類（全体ルール・顧客ルール）と、誰が足したか（staff: 職員が画面で・前の文章から移した、chat: チャットの変更案の承認、
- * review: 案件を終えるときの振り返りの変更案の承認）
+ * 一覧の種類（全体ルール・顧客ルール）と、誰が足したか（staff: 職員が画面で・前の文章から移した、chat: チャットの変更案の承認）
  */
 export const RULE_SCOPES = ["global", "customer"] as const
-export const RULE_SOURCES = ["staff", "chat", "review"] as const
+export const RULE_SOURCES = ["staff", "chat"] as const
 export type RuleScope = (typeof RULE_SCOPES)[number]
 export type RuleSource = (typeof RULE_SOURCES)[number]
 export const ruleScopeSchema = z.enum(RULE_SCOPES)
 /** 由来（D1 から読むときに確かめる） */
 export const ruleSourceSchema = z.enum(RULE_SOURCES)
-/** 変更案から足す項目の由来（職員が画面で足す項目は変更案を通らない） */
-export const proposedRuleSourceSchema = ruleSourceSchema.exclude(["staff"])
-export type ProposedRuleSource = z.infer<typeof proposedRuleSourceSchema>
 /** どの一覧か（顧客ルールは顧客ごと） */
 export type RuleTarget = { scope: "global" } | { scope: "customer"; customerId: string }
 
@@ -77,10 +73,9 @@ export const DEFAULT_GLOBAL_RULE_ITEMS: readonly string[] = [
 const ORIGIN_WORDS: Record<RuleSource, { alone: string; ofCase: string }> = {
   staff: { alone: "職員", ofCase: "で職員" },
   chat: { alone: "チャットから", ofCase: "でチャットから" },
-  review: { alone: "振り返りから", ofCase: "の振り返りから" },
 }
 
-/** 項目の由来の短い説明（例「2026年度の案件でチャットから」「2026年度の案件の振り返りから」）。withCustomer は全体ルールの一覧で顧客名も出すとき */
+/** 項目の由来の短い説明（例「2026年度の案件でチャットから」）。withCustomer は全体ルールの一覧で顧客名も出すとき */
 export function originLabel(item: Pick<RuleItem, "source" | "origin">, withCustomer: boolean): string {
   const words = ORIGIN_WORDS[item.source]
   if (!item.origin) return item.source === "staff" ? words.alone : `${words.alone}（案件は削除済み）`

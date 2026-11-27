@@ -35,7 +35,7 @@ export const approveRuleFn = createServerFn({ method: "POST" })
     const target: store.RuleTarget = change.scope === "global" ? { scope: "global" } : { scope: "customer", customerId: kase.customerId }
     const text = ruleTextSchema.safeParse(change.text)
     if (!text.success) throw new Error(text.error.issues[0]?.message ?? "ルールの追記の形が正しくありません")
-    return store.appendRuleOnce(db, target, { caseId: kase.id, proposalId: data.proposalId, item: data.item, text: text.data, source: change.source })
+    return store.appendRuleOnce(db, target, { caseId: kase.id, proposalId: data.proposalId, item: data.item, text: text.data })
   })
 
 /** 画面が作った変更案（上げ直した最後の Excel の差分・「AI で案を出す」の案）を置く。形はここと recordProposal で確かめる */

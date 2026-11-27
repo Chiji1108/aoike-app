@@ -4,7 +4,6 @@ import { z } from "zod"
 import { getCsvDb } from "@/db"
 import { MAX_STATE_BYTES, savedAiCacheSchema, savedWorkSchema, type SavedAiCache, type SavedWork } from "@/lib/cases/state"
 import { CASE_STATUSES, isSheetFile, type Case } from "@/lib/cases/types"
-import { planColumns } from "@/lib/convert/plan"
 import { excelKeyOf } from "@/lib/excel/excel-key"
 import { tryParseJson } from "@/lib/json"
 import { closeUnrecorded } from "@/lib/chat/proposals"
@@ -92,8 +91,7 @@ export const getCasePageFn = createServerFn({ method: "GET" })
   })
 
 /**
- * 同じ顧客の前の年度の案件（列の計画の参考・「去年のやり方で直す」に使う）。source は去年の変換の元のファイル（無ければ届いた表のファイルの最初）、
- * sheet・headerRow は去年の計画の元のシートと見出しの行、engineerColumns は配置技術者の列（計画が無ければ null・空。画面が見出しから推定する）。
+ * 同じ顧客の前の年度の案件（列の計画の参考と、載せる工事のおすすめに使う）。source は去年の変換の元のファイル（無ければ届いた表のファイルの最初）。
  * 去年の作業が読めなくても今年の案件は開ける（去年の分は参考なので、読めるところだけ返す）
  */
 async function previousOf(db: store.Db, kase: Case) {
@@ -104,14 +102,10 @@ async function previousOf(db: store.Db, kase: Case) {
   const saved = work.success ? work.data : undefined
   const source = files.find((f) => f.id === saved?.sourceFileId) ?? files.find((f) => f.kind === "source" && isSheetFile(f.name)) ?? null
   const plan = source && saved?.sourceFileId === source.id ? saved.plan?.plan : undefined
-  const engineer = plan?.fields.engineer
   return {
     caseId: prev.id,
     fiscalYear: prev.fiscalYear,
     source,
-    sheet: plan?.sheets[0] ?? null,
-    headerRow: plan?.headerRow ?? null,
-    engineerColumns: engineer ? planColumns(engineer) : [],
     /** 去年の列の対応（列の計画の AI に参考として渡す） */
     plan: plan ?? null,
     /**

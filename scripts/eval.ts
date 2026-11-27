@@ -3,12 +3,9 @@
  *
  *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<結果を書くフォルダ> pnpm exec tsx scripts/eval.ts <case> <variant>
  *   variant: baseline（チャットなし）| edit（案件定義の指示を順に）| rules（edit で承認した顧客ルールを入れて「顧客ルールどおりに表を直して」の1回）
- *            | nextyear（翌年分: rules に加えて、edit の会話で書いたコードを去年のコードとして添える。画面の「去年のやり方で直す」と同じ）
  *            | plan（列の対応を直す指示: 案件定義の planInstructions を順に。set_plan の変更案は画面と同じく今の計画に重ねて変換し直し、ほかの変更案はその上に重ねる）
  *            | answers（顧客の回答: 案件定義の answerSheet があれば記入用Excelを作って「備考」の列に答えを書き、画面と同じく決まった欄を先に読んでから
  *              「AI で読む」と同じ指示を送る。answerInstructions があればメールの本文として順に送る。聞いていたセルの答えを answerTruth と比べる）
- *            | review（案件を終えるときの振り返り: 指示のうち顧客ルールに足させる指示を除いて送り、新しい会話で振り返りの指示を送って毎年の決まりの案を出させ、
- *              その決まりだけを顧客ルールにして、去年のコード無しで rules と同じ1回。rules と比べる）
  *            | inquiry（問い合わせの文面: 変換の結果に画面の「AI で文面を作る」と同じ指示を送り、質問の文とメールの下書きの案を全部承認したものとして、
  *              問い合わせのうち AI の文で聞く数・まとめた質問の数・決まった言葉や個人名・工事名・ほかの案件の顧客名が文に入っていないかを数える）
  *            | location（工事場所の調査: 変換の結果から調べる現場を集め、画面の一括調査と同じ手順で調べ、変更案を全部承認して都道府県・場所名を比べる。
@@ -30,11 +27,8 @@ import { withPlanTax } from "../src/lib/cases/tax"
 import { deriveTable, type CaseTable } from "../src/lib/cases/view"
 import { caseContext } from "../src/lib/chat/context"
 import { applyChanges, type ChatChange } from "../src/lib/chat/proposals"
-import { QUIET_TOOLS, REVIEW_PROMPT, type ReviewTurn } from "../src/lib/chat/review"
-import { describeSettings } from "../src/lib/chat/describe"
-import { carryoverPrompt, cleanCarryoverCodes, codesFromModel, knownWords, namesForCarryover } from "../src/lib/chat/carryover"
 import { DEFAULT_GLOBAL_RULE_ITEMS, rulesText, ruleTextSchema } from "../src/lib/chat/rules"
-import { checkReport, newTurnState, startTurn, systemPrompt, type InquiryDeps, type ReviewDeps, type TurnState } from "../src/lib/chat/turn"
+import { checkReport, newTurnState, startTurn, systemPrompt, type InquiryDeps, type TurnState } from "../src/lib/chat/turn"
 import { memoryFeedback } from "../src/lib/feedback/memory"
 import type { RowResult } from "../src/lib/convert/convert"
 import { heuristicPlan, planSheets, sheetByNames } from "../src/lib/convert/heuristic-plan"
@@ -60,10 +54,10 @@ const [caseId = "", variant = "baseline"] = process.argv.slice(2)
 const OUT = process.env.EVAL_OUT
 const CASES_FILE = process.env.EVAL_CASES
 if (!OUT || !CASES_FILE) throw new Error("EVAL_CASES（案件定義の JSON）と EVAL_OUT（結果のフォルダ）を指定（顧客データを含むのでリポジトリの外）")
-if (!["baseline", "edit", "rules", "nextyear", "location", "plan", "answers", "review", "inquiry"].includes(variant)) throw new Error("variant: baseline | edit | rules | nextyear | location | plan | answers | review | inquiry")
+if (!["baseline", "edit", "rules", "location", "plan", "answers", "inquiry"].includes(variant)) throw new Error("variant: baseline | edit | rules | location | plan | answers | inquiry")
 mkdirSync(OUT, { recursive: true })
 const BUDGET_USD = 5
-/** 顧客ルールだけで直す1回の指示（rules・nextyear・review の翌年分） */
+/** 顧客ルールだけで直す1回の指示（rules） */
 const RULES_TURN = "顧客ルールどおりに表を直して"
 /** 全体ルールは初期値の項目（新しい事務所と同じ）。7割の計算は事務所の初期値（税抜） */
 const GLOBAL_RULES = rulesText(DEFAULT_GLOBAL_RULE_ITEMS.map((text) => ({ text })))
@@ -88,9 +82,9 @@ type CaseDef = {
   files?: string[]
   /** scripts/eval-run.ts で順に流す variant（location を2つ書くと、1回目は調べ、2回目は覚えた結果を使う） */
   variants?: string[]
-  /** 翌年分（nextyear）で去年として使う案件（その edit の結果と baseline の計画）。無ければこの案件 */
+  /** 去年として使う案件（rules はその edit の顧客ルール、計画の AI にはその baseline の計画を添える）。無ければこの案件 */
   editFrom?: string
-  /** 去年の年度（翌年分の照合で要る） */
+  /** 去年の年度（去年の計画を添えるときに要る） */
   previousFiscalYear?: number
   /** 去年の Excel（無ければ editFrom の案件の Excel） */
   previousXlsx?: string
@@ -168,7 +162,7 @@ function lastYear() {
   if (lastYearCache) return lastYearCache
   const from = def!.editFrom ?? caseId
   const fiscalYear = def!.previousFiscalYear
-  if (fiscalYear === undefined) throw new Error("翌年分には案件定義の previousFiscalYear（去年の年度）が要る")
+  if (fiscalYear === undefined) throw new Error("去年の計画を添えるには案件定義の previousFiscalYear（去年の年度）が要る")
   const last = JSON.parse(readFileSync(join(OUT!, `${from}-baseline.json`), "utf8")) as Baseline
   const prevPath = def!.previousXlsx ?? CASES[from]!.xlsx
   lastYearCache = { fiscalYear, last, prevSheets: readWorkbook(prevPath, new Uint8Array(readFileSync(path(prevPath)))) }
@@ -276,40 +270,23 @@ try {
 
   if (variant === "location") await locationEval()
   else if (variant === "answers") await answersEval()
-  else if (variant === "review") await reviewEval()
   else if (variant === "inquiry") await inquiryEval()
   else if (variant !== "baseline") {
     /** 顧客ルールの項目（画面の箇条書き）。案件定義の customerRules は1行1項目 */
     let customerItems = def.customerRules.split("\n").map((t) => t.trim()).filter(Boolean)
-    /** 翌年分: 去年のコードの文（最初の指示の前に添える） */
-    let carryText: string | null = null
     const lastYearId = def.editFrom ?? caseId
-    if (variant === "rules" || variant === "nextyear") {
-      const edit = JSON.parse(readFileSync(join(OUT, `${lastYearId}-edit.json`), "utf8")) as { log: { rules: string[] }[]; messages?: ModelMessage[] }
+    if (variant === "rules") {
+      const edit = JSON.parse(readFileSync(join(OUT, `${lastYearId}-edit.json`), "utf8")) as { log: { rules: string[] }[] }
       // edit で承認した顧客ルールの項目（画面の承認と同じく1項目ずつ足す）
       customerItems = edit.log.flatMap((t) => t.rules).map((t) => ruleTextSchema.parse(t))
       if (!customerItems.length) throw new Error("edit の結果に顧客ルールの追記案が無い")
-      if (variant === "nextyear") {
-        if (!edit.messages) throw new Error("edit の結果に会話が無い（edit を流し直す）")
-        const last = JSON.parse(readFileSync(join(OUT, `${lastYearId}-baseline.json`), "utf8")) as Baseline
-        // 去年の表の個人名（印の人・配置技術者）をコードから消す（画面は去年の手直しと AI の結果から集める。照合は去年の変換の結果から）
-        const names = namesForCarryover({ current: { rows: last.rows, edits: [] } })
-        const { fiscalYear, prevSheets } = lastYear()
-        const header = (g: ReturnType<typeof readWorkbook>[number] | undefined, row: number) => g?.rows[row] ?? []
-        const headers = [...header(prevSheets.find((s) => s.name === last.plan.sheets[0]), last.plan.headerRow), ...header(gridOf(base.plan), base.plan.headerRow)]
-        // 知っている語は画面と同じ: 今年の表（ここでは今年の変換の結果）・ルール・去年と今年の見出し
-        const words = knownWords({ rows: base.rows, edits: [] }, [GLOBAL_RULES, rulesText(customerItems.map((text) => ({ text })))], headers)
-        const codes = cleanCarryoverCodes(codesFromModel(edit.messages), names, words)
-        carryText = carryoverPrompt({ fiscalYear, codes }).text
-        console.log(`去年のコード ${codes.length} 件（${carryText.length} 字）`)
-      }
     }
-    const turns = variant === "rules" || variant === "nextyear" ? [RULES_TURN] : variant === "plan" ? (def.planInstructions ?? []) : def.instructions
+    const turns = variant === "rules" ? [RULES_TURN] : variant === "plan" ? (def.planInstructions ?? []) : def.instructions
     if (!turns.length) throw new Error(`${variant} の指示が案件定義に無い`)
     const t00 = Date.now()
-    const run = await chatPhase({ turns, table: tableOf(base), plan: base.plan, customerItems, carryText })
+    const run = await chatPhase({ turns, table: tableOf(base), plan: base.plan, customerItems })
     const final = compare(csvRows(run.table))
-    writeFileSync(join(OUT, `${caseId}-${variant}.json`), JSON.stringify({ status: run.status, reason: run.reason, total: run.total, ms: Date.now() - t00, turns: run.log.length, log: run.log, final: csvRows(run.table), score: final, messages: run.messages }, null, 1))
+    writeFileSync(join(OUT, `${caseId}-${variant}.json`), JSON.stringify({ status: run.status, reason: run.reason, total: run.total, ms: Date.now() - t00, turns: run.log.length, log: run.log, final: csvRows(run.table), score: final }, null, 1))
     writeSummary(variant, { status: run.status, ...(run.reason ? { reason: run.reason } : {}), score: final, turns: run.log.length, ms: Date.now() - t00, conversionUsd: base.usd, usd: run.total })
     console.log(`\nSUMMARY ${caseId} ${variant} (${run.status}): turns ${run.log.length} time ${Math.round((Date.now() - t00) / 1000)}s chat $${run.total.toFixed(3)} cellRate ${(final.cellRate * 100).toFixed(1)}%`)
     if (run.error) throw run.error
@@ -328,22 +305,19 @@ type TurnLogEntry = {
   question: string | null
   pending: ChatChange[]
   tools: TurnState["log"]
-  oneOff: string[]
   [k: string]: unknown
 }
 
 /**
  * チャットの指示を順に送る（1つの会話）。画面と同じく、案件のファイルを file-<n>.<拡張子> の名前でコンテナに置き（変換の元が1つ目）、
  * AI の変更案はすべて承認したものとして表に重ねる（set_plan は今の計画に重ねて変換し直す）。上げたファイルは落ちても必ず消す。
- * 費用が BUDGET_USD を超えたら次の指示を送らずに止める（status: stopped）。review はチャットの振り返りの道具に渡すもの
+ * 費用が BUDGET_USD を超えたら次の指示を送らずに止める（status: stopped）
  */
 async function chatPhase(p: {
   turns: string[]
   table: CaseTable
   plan: MappingPlan<KojiFieldId>
   customerItems: string[]
-  carryText?: string | null
-  review?: ReviewDeps
   inquiry?: InquiryDeps
 }) {
   /** 今の列の対応（set_plan を承認すると変わる。画面と同じく、変えたら変換し直す） */
@@ -385,7 +359,6 @@ async function chatPhase(p: {
           ...(containerId
             ? []
             : uploads.map((u) => ({ type: "file" as const, mediaType: u.mediaType, data: { type: "reference" as const, reference: { anthropic: u.id } }, providerOptions: { anthropic: { containerUpload: true } } }))),
-          ...(i === 0 && p.carryText ? [{ type: "text" as const, text: p.carryText }] : []),
           { type: "text", text },
         ],
       })
@@ -400,7 +373,7 @@ async function chatPhase(p: {
         undefined,
         { plan, shape: sheetShapeOf(gridOf(plan)) },
         { lookup: fileAddressLookup },
-        p.review ?? null,
+        null,
         p.inquiry ?? null,
         feedback,
         localViewer(anthropic, uploads),
@@ -451,7 +424,7 @@ async function chatPhase(p: {
       table = applyChanges(table, deriveTable(table).edited, state.pending)
       const rules = state.pending.flatMap((c) => (c.kind === "rule" && c.scope === "customer" ? [c.text] : []))
       const score = compare(csvRows(table))
-      log.push({ turn: i + 1, plan: planChanges, text, ms: Date.now() - t0, steps: steps.length, calls, toolCalls: state.toolCalls, usage, usd, pending: state.pending, question: state.question, rules, oneOff: state.oneOff, feedback: state.feedbackRecorded, tools: state.log, reply, report: checkReport(deriveTable(table), state.letters), score })
+      log.push({ turn: i + 1, plan: planChanges, text, ms: Date.now() - t0, steps: steps.length, calls, toolCalls: state.toolCalls, usage, usd, pending: state.pending, question: state.question, rules, feedback: state.feedbackRecorded, tools: state.log, reply, report: checkReport(deriveTable(table), state.letters), score })
       console.log(`\n# turn ${i + 1}「${text}」 ${Math.round((Date.now() - t0) / 1000)}s steps ${steps.length} tools ${state.toolCalls} [${calls.join(",")}] $${usd.toFixed(3)}`)
       if (state.question) console.log("  question:", state.question)
       console.log("  reply:", reply.replace(/\n+/g, " ").slice(0, 400))
@@ -468,52 +441,6 @@ async function chatPhase(p: {
     for (const id of [...uploads.map((u) => u.id), ...generated, ...viewStates.flatMap((v) => v.uploads)]) await anthropic.files.delete(id).catch((e) => console.log("delete failed", id, String(e).slice(0, 120)))
   }
   return { table, plan, log, messages, total, status, reason, error }
-}
-
-/**
- * 案件を終えるときの振り返りの照合（翌年分）。今年: 案件定義の指示のうち顧客ルールに足させる指示（「…顧客ルールに追加して」）を除いて順に送る
- * → 新しい会話で画面の振り返りと同じ指示を送り、今年の指示の記録から作った材料（get_review）で毎年の決まりの案を出させる（全部承認したものとする）
- * → 翌年分: その決まりだけを顧客ルールにして、去年のコード無しで変換の結果から「顧客ルールどおりに表を直して」の1回。
- * 比べる相手は rules（職員が頼んだ顧客ルールへの追記で同じ1回）
- */
-async function reviewEval() {
-  const t00 = Date.now()
-  const thisYear = def!.instructions.filter((t) => !/ルールに追加/.test(t))
-  if (!thisYear.length) throw new Error("review には案件定義の instructions（顧客ルールに追加させる指示のほか）が要る")
-  /** 段階ごとの記録（落ちた・止めた段階があれば、そこまでを書いて投げる） */
-  const phases: Record<string, Awaited<ReturnType<typeof chatPhase>>> = {}
-  const finish = (name: string, run: Awaited<ReturnType<typeof chatPhase>>) => {
-    phases[name] = run
-    if (run.status === "done") return run
-    const total = Object.values(phases).reduce((n, r) => n + r.total, 0)
-    writeFileSync(join(OUT!, `${caseId}-review.json`), JSON.stringify({ status: run.status, reason: run.reason, failedAt: name, total, logs: Object.fromEntries(Object.entries(phases).map(([k, r]) => [k, r.log])) }, null, 1))
-    writeSummary("review", { status: run.status, reason: `${name}: ${run.reason}`, score: compare(csvRows(run.table)), turns: 0, ms: Date.now() - t00, conversionUsd: base.usd, usd: total })
-    throw run.error ?? new Error(`${name} が終わらなかった: ${run.reason}`)
-  }
-  const year = finish("year", await chatPhase({ turns: thisYear, table: tableOf(base), plan: base.plan, customerItems: [] }))
-  // 照合では変更案をすべて承認したので、指示ごとに変更案の項目を全部承認した記録にする（聞き返しは「はい」）
-  const turns: ReviewTurn[] = year.log.map((l) => ({
-    instruction: l.text,
-    proposal: l.pending.length || l.question ? { applied: l.pending.length, undone: 0, undoneUnknown: false, count: l.pending.length, open: false } : null,
-    question: l.question ? { text: l.question, answer: "yes" } : null,
-    plan: l.plan.flatMap((p) => describePlanPatch(p)),
-    selection: l.pending.flatMap((c) => (c.kind === "settings" ? describeSettings(c) : [])),
-    tools: [...new Set(l.tools.map((t) => t.tool).filter((t) => !QUIET_TOOLS.has(t)))],
-  }))
-  const review = finish("review", await chatPhase({ turns: [REVIEW_PROMPT], table: year.table, plan: year.plan, customerItems: [], review: { turns: async () => turns, names: async () => [], taken: async () => ({ rules: [], pending: [] }) } }))
-  const reviewed = review.log.flatMap((l) => l.pending.flatMap((c) => (c.kind === "rule" && c.scope === "customer" ? [ruleTextSchema.parse(c.text)] : [])))
-  const oneOff = review.log.flatMap((l) => l.oneOff)
-  console.log(`\n振り返りの毎年の決まり ${reviewed.length} 項目:\n  ${reviewed.join("\n  ")}\n今年だけ ${oneOff.length} 件:\n  ${oneOff.join("\n  ")}`)
-  if (!reviewed.length) throw new Error("振り返りで毎年の決まりが出なかった")
-  const next = finish("next", await chatPhase({ turns: [RULES_TURN], table: tableOf(base), plan: base.plan, customerItems: reviewed }))
-  const total = year.total + review.total + next.total
-  const final = compare(csvRows(next.table))
-  writeFileSync(
-    join(OUT!, `${caseId}-review.json`),
-    JSON.stringify({ status: next.status, total, ms: Date.now() - t00, usd: { year: year.total, review: review.total, next: next.total }, yearScore: compare(csvRows(year.table)), rules: reviewed, oneOff, reviewLog: review.log, nextLog: next.log, score: final }, null, 1),
-  )
-  writeSummary("review", { status: next.status, ...(next.reason ? { reason: next.reason } : {}), score: final, turns: year.log.length + review.log.length + next.log.length, ms: Date.now() - t00, conversionUsd: base.usd, usd: total })
-  console.log(`\nSUMMARY ${caseId} review: 今年 $${year.total.toFixed(3)} 振り返り $${review.total.toFixed(3)} 翌年分 $${next.total.toFixed(3)} cellRate ${(final.cellRate * 100).toFixed(1)}%`)
 }
 
 /**
@@ -545,8 +472,8 @@ async function locationEval() {
   // EVAL_LOCATION_LIMIT で調べる現場を先頭から絞る（費用の上限に合わせた抜き取り。2回目も同じ現場になる）
   // 画面のサーバーと同じく、分かっている個人名を含む現場は送らない（照合には保存した作業が無いので、変換の結果の印の人で確かめる）
   const { guardPersonal } = await import("../src/lib/location/sites")
-  const { namesForCarryover, nameScrubber } = await import("../src/lib/chat/carryover")
-  const scrub = nameScrubber(namesForCarryover({ current: { rows: base.rows, edits: [] } }))
+  const { namesOfTable, nameScrubber } = await import("../src/lib/chat/names")
+  const scrub = nameScrubber(namesOfTable({ rows: base.rows, edits: [] }))
   const sites = guardPersonal(all.slice(0, Math.min(MAX_SITES_PER_RUN, Number(process.env.EVAL_LOCATION_LIMIT ?? MAX_SITES_PER_RUN))), (t) => scrub(t) !== t)
   const memorizedBefore = (await loc.memorized(db, customerId, sites.map((s) => s.key))).size
   console.log(`調べる現場 ${all.length}（この回 ${sites.length}、覚えた結果 ${memorizedBefore}、調べない ${sites.filter((s) => s.skip).length}）`)
@@ -745,7 +672,7 @@ async function answersEval() {
 async function inquiryEval() {
   const { collectInquiries } = await import("../src/lib/inquiry/inquiry")
   const { INQUIRY_TEXT_PROMPT, otherCustomerTest } = await import("../src/lib/inquiry/text")
-  const { reviewGuard } = await import("../src/lib/chat/review")
+  const { nameGuard } = await import("../src/lib/chat/names")
   const table = tableOf(base)
   const view = deriveTable(table)
   const inquiries = collectInquiries(view.output, { tax: table.tax })
@@ -755,7 +682,7 @@ async function inquiryEval() {
   // 変更案は画面の承認と同じく表に重ねてある（applyChanges が問い合わせの文面にも重ねる）
   const text = run.table.inquiryText
   const texts = [text.subject ?? "", text.intro ?? ""].filter(Boolean)
-  const guard = reviewGuard(table)
+  const guard = nameGuard(table)
   const otherNames = otherCustomerTest(others, def!.customerName)
   const values = [...new Set(view.output.flatMap((r) => [r.cells.workName.value, r.cells.client.value]).filter((v) => [...v].length >= 4 && !v.includes("〔")))]
   const FIXED_WORDS = ["データに無い", "推定に自信", "AI", "CSV", "変換", "列"]

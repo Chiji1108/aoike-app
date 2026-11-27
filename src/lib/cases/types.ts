@@ -12,7 +12,7 @@ export const FILE_KIND_LABELS: Record<FileKind, string> = { source: "届いた�
 /**
  * 届いた（received: アップロードしたもの。顧客から届いたファイル・返ってきた Excel・職員が直して上げ直した Excel）か、
  * 作った（made: この画面でダウンロードしたときに残した控え）か。届いたものは作業の画面の上のファイルの行に、作ったものは見出しの「…」のダウンロードの履歴に出す。
- * 控えはサーバーに残し続ける（翌年の「去年のやり方」が去年の最後の Excel を読む）
+ * 控えはサーバーに残し続ける（あとからそのときの中身をダウンロードできる）
  */
 export type FileOrigin = "received" | "made"
 export const FILE_ORIGINS: Record<FileKind, FileOrigin> = { source: "received", answer: "received", edit_sheet: "received", inquiry_sheet: "made", csv: "made", final_sheet: "made" }

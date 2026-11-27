@@ -526,8 +526,7 @@ test("本物の AI: 指示 → 変更案 → 承認 → CSV。会話は開き直
   await expect(page.getByTestId("chat-assistant")).toHaveCount(1)
   await expect(page.getByTestId("proposal-closed")).toContainText("反映")
   // 保存した会話には変更案の id だけを残す（中身は proposals/<id>.json）
-  const saved = (await (await page.request.get(`${new URL(caseUrl).pathname.replace("/csv/cases/", "/api/csv/cases/")}/chat`)).json()) as { messages: { parts: { type: string; data?: object }[] }[]; carryover: boolean }
-  expect(saved.carryover).toBe(false)
+  const saved = (await (await page.request.get(`${new URL(caseUrl).pathname.replace("/csv/cases/", "/api/csv/cases/")}/chat`)).json()) as { messages: { parts: { type: string; data?: object }[] }[] }
   const proposalParts = saved.messages.flatMap((m) => m.parts.filter((p) => p.type.startsWith("data-proposal")))
   expect(proposalParts.map((p) => [p.type, Object.keys(p.data ?? {})])).toEqual([["data-proposal", ["id"]]])
 

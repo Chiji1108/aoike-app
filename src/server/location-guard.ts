@@ -1,4 +1,4 @@
-import { namesForCarryover, personalNameTest } from "@/lib/chat/carryover"
+import { namesOfTable, personalNameTest } from "@/lib/chat/names"
 import type { CaseTableWire } from "@/lib/chat/wire"
 import type { Db } from "./case-store"
 import { namesOfSaved, readSavedCase, UnreadableCaseError } from "./case-names"
@@ -14,6 +14,6 @@ export async function personalChecker(db: Db, caseId: string, table: Pick<CaseTa
   const saved = await readSavedCase(db, caseId)
   if (!saved) throw new UnreadableCaseError()
   const names = namesOfSaved(saved)
-  if (table) for (const n of namesForCarryover({ current: table })) names.add(n)
+  if (table) for (const n of namesOfTable(table)) names.add(n)
   return personalNameTest(names)
 }
