@@ -81,7 +81,8 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await expect.poll(() => csvCount(page)).toBeGreaterThan(rule7)
     const all = await csvCount(page)
     await showAllRows(page)
-    expect(await page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]').count()).toBe(all)
+    // 表はほかの段から戻ると描き直すので、描き終えるまで待つ
+    await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]')).toHaveCount(all)
     await openTab(page, "selection")
     await page.getByTestId("selection-rule7").click()
     await expect.poll(() => csvCount(page)).toBe(rule7)
