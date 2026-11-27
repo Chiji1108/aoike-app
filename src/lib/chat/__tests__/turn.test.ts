@@ -184,11 +184,14 @@ describe("チャットの道具（決まった入力で）", () => {
     ])
   })
 
-  test("set_selection は今と同じ値なら変更案にしない。変更案の言葉は「載せる工事: ◯◯」", async () => {
-    const state = newTurnState({ ...table, selection: "rule7" })
-    expect(await call(chatTools(state), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
-    expect(state.pending).toEqual([])
-    expect(describeSettings({ selection: "all" })).toEqual(["載せる工事: 全件"])
+  test("set_selection は、同じ選び方にもう答えていれば変更案にしない。まだ答えていなければ同じ値でも変更案にし、文は「載せる工事を◯◯に決める」", async () => {
+    const answered = newTurnState({ ...table, selection: "rule7", selectionAnswered: true })
+    expect(await call(chatTools(answered), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
+    expect(answered.pending).toEqual([])
+    const unanswered = newTurnState({ ...table, selection: "rule7", selectionAnswered: false })
+    await call(chatTools(unanswered), "set_selection", { selection: "rule7" })
+    expect(unanswered.pending).toEqual([{ kind: "settings", selection: "rule7" }])
+    expect(describeSettings({ selection: "rule7" })).toEqual(["載せる工事を7割ルールに決める"])
   })
 
   test(`道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで。超えたら動かさずに返す`, async () => {

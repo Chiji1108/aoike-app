@@ -304,6 +304,19 @@ describe("段（済んでも勝手に移らない）", () => {
 })
 
 describe("道具と段の並び", () => {
+  test("問い合わせの段の上に道具を開いている間は、問い合わせの段は見えていないので、メールの下書きの案内を出さない", async () => {
+    const s = await converted(true)
+    await settle()
+    s.actions.showTab("inquiry")
+    s.actions.showTab("location")
+    s.store.setState((st) => ({ runtime: { ...st.runtime, hints: { ...st.runtime.hints, inquiry: "hidden" } } }))
+    await settle()
+    expect(s.store.getState().runtime.hints.inquiry).toBe("hidden")
+    s.actions.closeTool()
+    await settle()
+    expect(s.store.getState().runtime.hints.inquiry).toBe("shown")
+  })
+
   test("道具は ui.tool に開き、段・表を選ぶと閉じる。閉じると選んでいた段に戻る", async () => {
     const s = await converted(true)
     await settle()
@@ -311,8 +324,14 @@ describe("道具と段の並び", () => {
     s.actions.showTab("replace")
     expect(s.store.getState().ui).toMatchObject({ tab: "gyoshu", tool: "replace" })
     expect(s.view(s.store.getState())).toMatchObject({ view: "gyoshu", tool: "replace" })
+    // 今目に見えているのは道具（段の並びは業種のまま）
+    expect(s.view(s.store.getState()).visible).toBe("replace")
     s.actions.closeTool()
     expect(s.store.getState().ui).toMatchObject({ tab: "gyoshu", tool: null })
+    expect(s.view(s.store.getState()).visible).toBe("gyoshu")
+    s.actions.setWorkShown(false)
+    expect(s.view(s.store.getState()).visible).toBeNull()
+    s.actions.setWorkShown(true)
     s.actions.showTab("location")
     s.actions.goStep("fix")
     expect(s.store.getState().ui).toMatchObject({ tab: "fix", tool: null })

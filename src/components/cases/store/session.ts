@@ -129,7 +129,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
   const tableWire = () => {
     const { work: w } = store.getState()
     const { rows } = env.table(store.getState())
-    return rows ? toWire({ rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }) : null
+    return rows ? toWire({ rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, selectionAnswered: w.selectionAnswered, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }) : null
   }
 
   /** チャットに送る表と文脈（送る瞬間の状態から作る。送れないときは null） */
@@ -257,9 +257,11 @@ function watch(env: CaseEnv): () => void {
         if (watching) ui.pinCurrentStep(env)
       })
     // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
-    if (s.runtime.hints.inquiry === "hidden" && env.view(s).view === "inquiry" && env.view(s).layout.workShown)
+    if (s.runtime.hints.inquiry === "hidden" && env.view(s).visible === "inquiry")
       queueMicrotask(() => {
-        if (watching && store.getState().runtime.hints.inquiry === "hidden") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
+        const now = store.getState()
+        // 始める前に、まだ問い合わせの段が見えているかを確かめ直す（同じ操作の中で道具を開いた・閉じたときに出さない）
+        if (watching && now.runtime.hints.inquiry === "hidden" && env.view(now).visible === "inquiry") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
       })
   }
   // つないだときの状態でも確かめる（外していた間に決まった計画も変換する）

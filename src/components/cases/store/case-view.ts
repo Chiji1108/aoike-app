@@ -2,7 +2,7 @@ import { rowFix } from "@/components/convert/status"
 import { askFacts, askImpact, askPrompt, askWording } from "@/lib/cases/ask-impact"
 import { layoutOf } from "@/lib/cases/layout"
 import { selectionAdvice } from "@/lib/cases/selection-advice"
-import { activeView } from "@/lib/cases/steps"
+import { activeView, type WorkView } from "@/lib/cases/steps"
 import { caseTodo, reportQuestionStates } from "@/lib/cases/todo"
 import { onlyNonSheetSources } from "@/lib/cases/types"
 import { editKey, type RowResult } from "@/lib/convert/convert"
@@ -192,9 +192,12 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       layout: layoutOfInput(s.ui.wide, t.hasTable, !!t.output && !!t.shown, s.ui.workChoice, s.ui.chat.collapsed),
       view: "table",
       tool: null,
+      visible: null,
     }
     out.view = activeView(s.ui.tab, out.todo)
     out.tool = s.ui.tool
+    // 今目に見えている画面（作業の画面を開いていなければ無し。道具を開いていれば道具、なければ段か表）
+    out.visible = out.layout.workShown ? (out.tool ?? out.view) : null
     // チャットに指示を送れるか（1つの真実: 送る準備ができ、会話を読み終え、送っている途中でない）。「答える」の段の「AI に聞く」とチャットの欄が同じ値を読む
     out.chatCanSend = out.chatReady && s.ui.chatTurn.loaded && !s.ui.chatTurn.sending
     // 中身が前と同じ参照なら前の結果を返す（selector が描画ごとに新しいものを返さない）
@@ -230,4 +233,6 @@ export type CaseView = {
   view: ReturnType<typeof activeView>
   /** 開いている道具（段の並びの外に重ねて開く。ui.tool） */
   tool: CaseState["ui"]["tool"]
+  /** 今目に見えている画面（道具を開いていれば道具、なければ段か表。作業の画面を閉じていれば null）。表の測り方・問い合わせの案内が読む */
+  visible: WorkView | null
 }

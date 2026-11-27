@@ -8,7 +8,7 @@ import { pendingGyoshuItems } from "@/lib/cases/todo"
 import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
-import { setSelection } from "@/lib/cases/selection"
+import { selectionSettled, setSelection } from "@/lib/cases/selection"
 import { SELECTION_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
 import { askKey, hasExclusion, type ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
@@ -146,9 +146,8 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
  * 取り消しの記録に残し、通知の「取り消す」で戻せる。職員が選んだので「答える」の載せる工事にも答えたことにする
  */
 export function changeSelection(env: CaseEnv, mode: SelectionMode) {
-  // 同じ選び方にもう答えているときだけ何もしない（既定値と同じ値を選んでも、答えたことになる）
-  const now = env.store.getState().work
-  if (now.selection === mode && now.selectionAnswered) return
+  // 同じ選び方にもう答えているときだけ何もしない（既定値と同じ値を選んでも、答えたことになる。lib/cases/selection.ts）
+  if (selectionSettled(env.store.getState().work, mode)) return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
   // 選び方と一緒に「答えた」を書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
   const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, true))

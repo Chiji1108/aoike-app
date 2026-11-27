@@ -14,5 +14,11 @@ export function setSelection<T extends { selection: SelectionMode; selectionAnsw
   return t.selection === selection && t.selectionAnswered === answered ? t : { ...t, selection, selectionAnswered: answered }
 }
 
+/**
+ * もう答えた同じ選び方か（何もしなくてよい）。選び方が同じでも、まだ答えていなければ選ぶと答えたことになる。
+ * 7割と金額・表の見出しの切り替え（changeSelection）とチャットの set_selection が同じ判定を使う
+ */
+export const selectionSettled = (now: { selection: SelectionMode; selectionAnswered?: boolean }, mode: SelectionMode) => now.selection === mode && now.selectionAnswered === true
+
 /** 取り消しの記録に残す選び方と答えたか（今の形だけ。前の版の値だけの記録は読まない〔移行 drizzle/csv/0011 で空にした〕） */
 export const selectionSettingSchema = z.object({ selection: selectionSchema, selectionAnswered: z.boolean() })
