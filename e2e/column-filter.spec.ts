@@ -52,6 +52,24 @@ test("表の見出しの ▼ で、値・色で絞り、並べ替え、じょう
     await expect(page.getByTestId("column-filters")).toContainText("絞り込み中: 業種")
   })
 
+  await test.step("検索で一覧が狭まっているときに外した値だけが隠れ、一覧に無かった値は隠れない", async () => {
+    await page.getByTestId("column-filters-clear").click()
+    await expect(page.locator(ROWS)).toHaveCount(all)
+    const row = page.locator(ROWS).first()
+    const origin = (await row.getByTestId("origin-cell").getAttribute("title"))!
+    const code = (await row.locator('td[data-field="gyoshu"] [data-code]').getAttribute("data-code").catch(() => null)) ?? ""
+    const sameCode = await page.locator(`${ROWS} td[data-field="gyoshu"]`).evaluateAll((tds, code) => tds.filter((td) => (td.querySelector("[data-code]")?.getAttribute("data-code") ?? "") === code).length, code)
+    await page.getByLabel("表の中を検索").fill(origin)
+    await expect(page.locator(ROWS)).toHaveCount(1)
+    await menu(page, "gyoshu").click()
+    await expect(panel(page).getByTestId("filter-value")).toHaveCount(1)
+    await panel(page).getByTestId("filter-value").getByRole("checkbox").click()
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("no-match")).toBeVisible()
+    await page.getByLabel("表の中を検索").fill("")
+    await expect(page.locator(ROWS)).toHaveCount(all - sameCode)
+  })
+
   await test.step("色で絞る: その列にある色だけ出し、選ぶとその色のセルの行だけ（ほかの列の絞り込みと重なる）", async () => {
     await page.getByTestId("column-filters-clear").click()
     await expect(page.locator(ROWS)).toHaveCount(all)
@@ -124,21 +142,22 @@ test("表の見出しの ▼ で、値・色で絞り、並べ替え、じょう
 
   await test.step("手直しで絞り込みから外れた行は、「更新」を押すまで残る（止めた並び）。直すの段でも同じ絞り込みが効く", async () => {
     await menu(page, "place").click()
+    // 1つの値を外し、見えている行の場所名をその値に直す
     const value = panel(page).getByTestId("filter-value").first()
+    const excluded = (await value.getAttribute("data-value"))!
     const count = Number(await value.locator(".num").textContent())
-    await panel(page).getByTestId("filter-all").click()
     await value.getByRole("checkbox").click()
     await page.keyboard.press("Escape")
-    await expect(page.locator(ROWS)).toHaveCount(count)
+    await expect(page.locator(ROWS)).toHaveCount(all - count)
     const row = page.locator(ROWS).first()
     const key = (await row.getAttribute("data-row-key"))!
     await row.locator('td[data-field="place"] button').click()
-    await page.getByLabel("セルの値").fill("テスト絞り込み外")
+    await page.getByLabel("セルの値").fill(excluded)
     await page.getByLabel("セルの値").press("Enter")
     await expect(page.locator(`${ROWS}[data-row-key="${key}"]`).getByTestId("row-unmatched")).toBeVisible()
     await page.getByTestId("outdated").getByRole("button", { name: "更新" }).click()
     await expect(page.locator(`${ROWS}[data-row-key="${key}"]`)).toHaveCount(0)
-    await expect(page.locator(ROWS)).toHaveCount(count - 1)
+    await expect(page.locator(ROWS)).toHaveCount(all - count - 1)
     await openTab(page, "fix")
     await expect(page.getByTestId("column-filters")).toContainText("場所名")
     await page.getByTestId("column-filters-clear").click()

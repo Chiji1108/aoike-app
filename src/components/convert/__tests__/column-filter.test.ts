@@ -5,16 +5,16 @@ import { BLANK_LABEL, EMPTY_GRID, facetItems, matchesColumnFilter, toneCounts, w
 const cell = (status: CellResult["status"], message = ""): CellResult => ({ value: "x", original: "x", source: "x", status, message })
 
 describe("列のフィルター", () => {
-  test("値で絞るは残す値に入っているか（空白は \"\"）、色で絞るはセルの色（AI が補った値は要確認の黄色）", () => {
-    expect(matchesColumnFilter("", undefined, { values: ["", "08"] })).toBe(true)
-    expect(matchesColumnFilter("09", undefined, { values: ["08"] })).toBe(false)
+  test("値で絞るは外す値に入っていないか（空白は \"\"）、色で絞るはセルの色（AI が補った値は要確認の黄色）", () => {
+    expect(matchesColumnFilter("", undefined, { exclude: ["08"] })).toBe(true)
+    expect(matchesColumnFilter("08", undefined, { exclude: ["", "08"] })).toBe(false)
     expect(matchesColumnFilter("x", cell("ai", "補った"), { tone: "warning" })).toBe(true)
     expect(matchesColumnFilter("x", cell("ai"), { tone: "warning" })).toBe(false)
     expect(matchesColumnFilter("x", undefined, { tone: "ai" })).toBe(false)
   })
 
   test("差しかえは足した順を保ち、null で外す", () => {
-    let f = withColumnFilter([], "a", { values: ["1"] })
+    let f = withColumnFilter([], "a", { exclude: ["1"] })
     f = withColumnFilter(f, "b", { tone: "error" })
     f = withColumnFilter(f, "a", { tone: "ai" })
     expect(f).toEqual([{ id: "a", value: { tone: "ai" } }, { id: "b", value: { tone: "error" } }])
@@ -22,7 +22,7 @@ describe("列のフィルター", () => {
   })
 
   test("隠した列の絞り込みは外す", () => {
-    const g = { ...EMPTY_GRID, columnFilters: withColumnFilter(withColumnFilter([], "a", { values: [] }), "b", { values: [] }) }
+    const g = { ...EMPTY_GRID, columnFilters: withColumnFilter(withColumnFilter([], "a", { exclude: [] }), "b", { exclude: [] }) }
     expect(withColumnVisibility(g, { a: false, b: true }).columnFilters.map((f) => f.id)).toEqual(["b"])
   })
 

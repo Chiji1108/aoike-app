@@ -3,9 +3,10 @@ import { cellTone, LEGEND_TONES } from "./status"
 
 /**
  * 表の列のフィルター（Excel の見出しの ▼ と同じ）。1つの列は「値で絞る」か「色で絞る」のどちらか（Excel と同じ。両方は持たない）。
- * values は残す値（表示の値ではなく、セルの値。選ぶ欄の項目はコード。空白は ""）、tone は残すセルの色（cellTone）
+ * exclude は外す値（表示の値ではなく、セルの値。選ぶ欄の項目はコード。空白は ""）。残す値ではなく外す値で持つのは、値の一覧が
+ * ほかの列・表の中の検索・直すの段で狭まっていても、一覧に無かった値を黙って隠さないため。tone は残すセルの色（cellTone）
  */
-export type ColumnFilterValue = { values: readonly string[] } | { tone: CellStatus }
+export type ColumnFilterValue = { exclude: readonly string[] } | { tone: CellStatus }
 
 /** 列のフィルターの一覧（TanStack Table の columnFilters と同じ形。保存しない） */
 export type ColumnFilters = { id: string; value: ColumnFilterValue }[]
@@ -29,7 +30,7 @@ export const BLANK_LABEL = "（空白）"
 /** その列のセルがフィルターに合うか（value はその列のセルの値。cell は色を見る。元の行の列は色を持たない） */
 export function matchesColumnFilter(value: string, cell: CellResult | undefined, filter: ColumnFilterValue) {
   if ("tone" in filter) return !!cell && cellTone(cell) === filter.tone
-  return filter.values.includes(value)
+  return !filter.exclude.includes(value)
 }
 
 /** 列のフィルターを1つ差しかえる（null は外す）。並びは足した順（「絞り込み中」に出す順） */

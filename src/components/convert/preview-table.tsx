@@ -289,8 +289,6 @@ export function PreviewTable({
     return rows.filter((r) => inFilter(filter, fixes.get(r.key) ?? NO_FIX, inclusion.get(r.key)?.included ?? false, asked, r.key) && (!needle || hasText(r)))
   }, [rows, fixes, inclusion, filter, asks, needle, columnVisibility, spec])
   const activeAsk = asks.find((a) => a.id === filter.ask)
-  /** まとめて頼める直し方: 今の絞り込み（理由・検索）で見えている行だけ（件数もその行で） */
-  const fixGroups = useMemo(() => (filter.kind === "fix" && !filter.ask ? fixActionGroups(data, inclusion, fixes, filter.reason) : []), [data, inclusion, fixes, filter])
 
   const table = useTable({
     features,
@@ -305,7 +303,13 @@ export function PreviewTable({
     },
     state: { sorting, columnVisibility, columnFilters },
   })
+  const filtered = table.getFilteredRowModel().rows
   const live = table.getRowModel().rows.map((r) => r.original)
+  /** まとめて頼める直し方: 今の絞り込み（理由・検索・列の絞り込み）で見えている行だけ（件数もその行で） */
+  const fixGroups = useMemo(
+    () => (filter.kind === "fix" && !filter.ask ? fixActionGroups(filtered.map((r) => r.original), inclusion, fixes, filter.reason) : []),
+    [filtered, inclusion, fixes, filter],
+  )
   const liveKeys = new Set(live.map((r) => r.key))
   const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows])
   const shown = pinned ? pinned.flatMap((k) => byKey.get(k) ?? []) : live
@@ -796,11 +800,26 @@ function ColumnFilterPanel({
   const tones = useMemo(() => (column.id === "origin" ? [] : toneCounts(facetRows.map((r) => r.original.cells[column.id as KojiFieldId]))), [facetRows, column.id])
   const needle = search.trim().toLowerCase()
   const matched = needle ? items.filter((i) => i.label.toLowerCase().includes(needle) || i.value.toLowerCase().includes(needle)) : items
-  const selected = filter && "values" in filter ? new Set(filter.values) : new Set(items.map((i) => i.value))
+  /**
+   * チェックの付いた値。値で絞っているときは外した値のほか、色で絞っているときはその色のセルの値
+   * （色から値に切り替えると、今見えている行から始まる）
+   */
+  const selected = useMemo(() => {
+    if (filter && "tone" in filter) return new Set(facetRows.filter((r) => matchesColumnFilter("", r.original.cells[column.id as KojiFieldId], filter)).map((r) => String(r.getValue(column.id) ?? "")))
+    const excluded = new Set(filter?.exclude)
+    return new Set(items.filter((i) => !excluded.has(i.value)).map((i) => i.value))
+  }, [filter, facetRows, items, column])
   const allOn = matched.every((i) => selected.has(i.value))
   const someOn = matched.some((i) => selected.has(i.value))
-  /** 残す値を決める（すべての値なら絞り込みを外す） */
-  const choose = (next: Set<string>) => onFilter(items.every((i) => next.has(i.value)) ? null : { values: items.filter((i) => next.has(i.value)).map((i) => i.value) })
+  /**
+   * 外す値を決める（チェックの無い値。一覧に無い値〔ほかの列・検索・段で今は見えない値〕で前に外したものは外したまま。外す値が無ければ絞り込みを外す）
+   */
+  const choose = (next: Set<string>) => {
+    const listed = new Set(items.map((i) => i.value))
+    const kept = filter && "exclude" in filter ? filter.exclude.filter((v) => !listed.has(v)) : []
+    const exclude = [...kept, ...items.filter((i) => !next.has(i.value)).map((i) => i.value)]
+    onFilter(exclude.length ? { exclude } : null)
+  }
   const toggle = (value: string, on: boolean) => {
     const next = new Set(selected)
     if (on) next.add(value)
