@@ -1,7 +1,6 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
 import { describeSettings } from "../describe"
 import { inquiryNumbers } from "../../inquiry/email"
-import { collectInquiries } from "../../inquiry/inquiry"
 import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { kojiRow } from "../../convert/__tests__/helpers"
@@ -397,7 +396,7 @@ describe("顧客の回答を読む（get_inquiries・record_answers）", () => {
       ],
     })
     expect(out).toMatchObject({ ok: true, applied: 4, answered: [{ key: "s!2", field: "engineer" }, { key: "s!3", field: "prefecture" }, { key: "s!3", field: "place" }], corrected: [{ key: "s!3", field: "workName" }] })
-    expect(out.invalid).toEqual([{ key: "s!2", field: "endYm", answer: "そのうち", message: "年月として読めません（例: 2024年4月）" }])
+    expect(out.invalid).toEqual([{ no: 1, key: "s!2", field: "endYm", answer: "そのうち", message: "年月として読めません（例: 2024年4月）" }])
     expect(asked).toEqual(["鈴木一郎様邸改修工事"])
     expect(state.pending).toEqual([
       { kind: "cell", rowKey: "s!2", field: "engineer", edit: { value: "試験　次郎", by: "customer" } },
@@ -444,7 +443,7 @@ describe("問い合わせの文面（propose_inquiry）", () => {
 
   test("get_inquiries は理由の id と推定の根拠と、メールと同じ工事の番号を返す", async () => {
     const out = await call(chatTools(newTurnState(asked)), "get_inquiries", {})
-    const numbers = inquiryNumbers(collectInquiries(deriveTable(asked).output, { tax: asked.tax }), deriveTable(asked).shown)
+    const numbers = inquiryNumbers(asked)
     for (const c of out.cells as { key: string; no: number }[]) expect(c.no).toBe(numbers.get(c.key))
     expect(out.cells.find((c: { field: string }) => c.field === "endYm")).toMatchObject({ key: "s!3", reasonId: "needsReview", note: "引渡日から推定" })
     expect(out.cells.find((c: { field: string }) => c.field === "engineer")).toMatchObject({ reasonId: "missing" })

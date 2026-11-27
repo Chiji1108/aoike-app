@@ -15,6 +15,8 @@ import { ADDRESSEE_PLACEHOLDER, DEFAULT_SUBJECT, inquiryEmail, inquiryNumbers } 
 import { EMPTY_INQUIRY_TEXT } from "../text"
 import { collectInquiries, CORRECTION_MESSAGE, readAiAnswers, type AiAnswer, type AnswerReport, type Inquiry } from "../inquiry"
 
+/** 工事の番号（足した行の無い表） */
+const numbersOf = (rows: Parameters<typeof inquiryNumbers>[0]["rows"]) => inquiryNumbers({ rows, added: [] })
 const full = {
   gyoshu: "8", client: "株式会社テスト", motoukeShitauke: "1", jv: "0", workName: "テストビル電気工事", prefecture: "東京都",
   place: "千代田区", engineer: "試験　太郎", amount: "5000", specialAmount: "0", startYm: "202404", endYm: "202409",
@@ -121,42 +123,54 @@ describe("問い合わせのメール", () => {
   const qs = collectInquiries(rows, { tax: "unknown" })
 
   test("宛名の空欄・税込税抜の質問と、工事ごとに聞く項目を並べる。推定の値は読んだ値を添えて確かめてもらう", () => {
-    const { subject, body } = inquiryEmail(qs, rows, EMPTY_INQUIRY_TEXT)
+    const { subject, body } = inquiryEmail(qs, rows, numbersOf(rows), EMPTY_INQUIRY_TEXT)
     expect(subject).toBe(DEFAULT_SUBJECT)
     expect(body.startsWith(`${ADDRESSEE_PLACEHOLDER} 様`)).toBe(true)
     expect(body).toContain("1. いただいた資料の請負代金は、税込・税抜のどちらでしょうか。")
     expect(body).toContain("2. 次の工事について、分かる範囲でお知らせください（3件）。")
     expect(body).toContain(
       [
-        "■ 1. テストビル電気工事（株式会社テスト）",
+        "■ 2. テストビル電気工事（株式会社テスト）",
         "　（着工 2024年4月・完成 2024年9月・請負代金 5,000千円）",
         "　・配置技術者",
         "",
-        "■ 2. テスト倉庫改修工事（株式会社テスト）",
+        "■ 3. テスト倉庫改修工事（株式会社テスト）",
         "　（着工 2024年4月・完成 2024年9月・請負代金 5,000千円）",
         "　・工事場所: 資料から「東京都港区」と読みました。違っていればお知らせください",
         "",
-        "■ 3. テストビル電気工事（株式会社テスト）",
+        "■ 4. テストビル電気工事（株式会社テスト）",
         "　（完成 2024年9月・請負代金 5,000千円）",
         "　・着工年月",
         "　・工事場所",
       ].join("\n"),
     )
-    // 同じ工事名でも番号と見分ける値で見分け、答えに番号を添えてもらう。番号は get_inquiries の no と同じ
-    expect(body).toContain("ご回答の際は番号を添えてください")
-    expect([...inquiryNumbers(qs, rows)]).toEqual([
-      [noEngineer.key, 1],
-      [guessedPlace.key, 2],
-      [noLocation.key, 3],
-    ])
+    // 同じ工事名でも番号と見分ける値で見分け、一覧のすぐ上の決まった文で答えに番号を添えてもらう（前置きを書き換えても消えない）
+    expect(body).toContain("（3件）。\n　※工事ごとに番号を振っております。ご回答の際は番号を添えてください。")
+    expect(inquiryEmail(qs, rows, numbersOf(rows), { subject: null, intro: "職員の前置き" }).body).toContain("ご回答の際は番号を添えてください")
     // 答え方の説明は聞く項目のものだけ
     expect(body).toContain("　※着工・完成年月は「2024年4月」のようにお知らせください。")
     expect(body).toContain("　※工事場所は都道府県から市区町村までお知らせください（例: 東京都千代田区）。")
     expect(body).not.toContain("管理番号")
   })
 
+  test("工事の番号は元の行の順の通し番号（足した行は後ろ）。答えた・外した・並べ替えたでは変わらず、一覧は番号の順（飛び飛びでよい）", () => {
+    const numbers = inquiryNumbers({ rows, added: [{ key: "add-1" }] })
+    expect([...numbers]).toEqual([
+      [complete.key, 1],
+      [noEngineer.key, 2],
+      [guessedPlace.key, 3],
+      [noLocation.key, 4],
+      ["add-1", 5],
+    ])
+    // 並べ替えた表の行・一部を外した問い合わせでも、番号と並びは同じ
+    const reordered = [noLocation, guessedPlace, complete, noEngineer]
+    const withoutPlace = qs.filter((q) => !(q.kind === "cell" && q.rowKey === guessedPlace.key))
+    const body = inquiryEmail(withoutPlace, reordered, numbers, EMPTY_INQUIRY_TEXT).body
+    expect(body.match(/^■ \d+/gm)).toEqual(["■ 2", "■ 4"])
+  })
+
   test("聞く工事が無ければ工事の項は出さない", () => {
-    const { body } = inquiryEmail(collectInquiries([complete], { tax: "unknown" }), [complete], EMPTY_INQUIRY_TEXT)
+    const { body } = inquiryEmail(collectInquiries([complete], { tax: "unknown" }), [complete], numbersOf([complete]), EMPTY_INQUIRY_TEXT)
     expect(body).toContain("1. いただいた資料の請負代金は、税込・税抜のどちらでしょうか。")
     expect(body).not.toContain("次の工事について")
   })
@@ -286,7 +300,7 @@ describe("AI が読んだ回答を値にする", () => {
     guessedClient.cells.client = { value: yamada, status: "ai", source: "C列", original: "山田太郎", guessed: true }
     const sentRows = finalize([guessedClient])
     expect(sentRows[0]!.cells.client.value).toBe("Ａ")
-    const { body } = inquiryEmail(collectInquiries(sentRows, { tax: "included" }), sentRows, EMPTY_INQUIRY_TEXT)
+    const { body } = inquiryEmail(collectInquiries(sentRows, { tax: "included" }), sentRows, numbersOf(sentRows), EMPTY_INQUIRY_TEXT)
     expect(body).toContain("　・注文者: 資料から「山田太郎」と読みました。違っていればお知らせください")
     expect(body).not.toMatch(/Ａ/)
 
@@ -382,7 +396,7 @@ describe("AI が読んだ回答を値にする", () => {
     const rs = [complete, unsure, other, third]
     const qs = collectInquiries(rs, { tax: "included" })
     expect(cells(qs)).toEqual(["s!10:engineer:needsReview", "s!11:engineer:missing", "s!12:engineer:missing"])
-    expect(inquiryEmail(qs, rs, EMPTY_INQUIRY_TEXT).body).toContain("　・配置技術者: 資料から「仮名　次郎」と読みました。違っていればお知らせください")
+    expect(inquiryEmail(qs, rs, numbersOf(rs), EMPTY_INQUIRY_TEXT).body).toContain("　・配置技術者: 資料から「仮名　次郎」と読みました。違っていればお知らせください")
 
     const sent: string[] = []
     const callAi = async (req: AiBatchRequest) => {

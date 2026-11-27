@@ -98,7 +98,6 @@ ${fileLines || "（なし）"}
   - 聞いていない項目でも、顧客がはっきり訂正していれば送ってよい。答えの無い項目は送らない（推測で埋めない）。どの工事への答えか決めきれない答え（番号が無く工事名が似ている・番号と工事名が食い違う・2つの工事に当てはまる）は送らず、ask_staff で職員に聞く。税込・税抜の答えは set_selection の tax。
 - 職員が顧客への問い合わせのメールの下書きを頼んだら、await get_inquiries({}) で今の問い合わせを読み、propose_inquiry を直接呼ぶ。表は変えない。
   - 聞くこと（番号を振った工事ごとの項目・推定の値）・記入のしかた・宛名・挨拶・結びは画面がメールの本文に付ける。あなたが書くのは件名（subject）と本文の前置き（intro。1〜3文）だけ。
-  - 前置きには、工事ごとに番号を振ってあるので答えに番号を添えてほしいことを1文入れる。
   - 何についての確認か（今年度の工事経歴書の作成のため、資料で分からない点がある、など）が顧客に伝わるように書く。事務所の中の言葉（項目の id・列記号・変換・AI・CSV）は使わない。
   - 個人名・表の記号（〔Ａ〕など）・ほかの顧客の名前は書かない（入っていれば受け取らない）。
 - 職員が「顧客ルールに追加して」「全体ルールに追加して」と言ったら propose_rule で足す項目の案を出す（1つの決まりを1項目に。今のルールと同じ項目は出さない。保存は職員の承認後）。
@@ -592,8 +591,8 @@ export function chatTools(state: TurnState) {
         const v = view()
         const rowOf = new Map(v.output.map((r) => [r.key, r]))
         const qs = inquiriesOf(v)
-        // メールの本文と同じ番号（画面の表の行の順）
-        const numbers = inquiryNumbers(qs, v.shown)
+        // メールの本文と同じ工事の番号（元の行の順の通し番号）
+        const numbers = inquiryNumbers(state.current)
         state.log.push({ tool: "get_inquiries", summary: `${qs.length}件` })
         const text = (key: string, f: KojiFieldId) => editText(rowOf.get(key)!.cells[f], state.letters)
         // セルのメモは値と同じ記号で出し、分かっている個人名も伏せる（名前を確かめられないときはメモを出さない）
@@ -634,7 +633,7 @@ export function chatTools(state: TurnState) {
     record_answers: tool({
       description:
         "顧客の回答を表に入れる案を出す。items: [{key, field, answer} | {key, field, confirm:true}]。answer は顧客の答え（年月は「2024年4月」、工事場所は field=place で都道府県から市区町村まで、注文者・工事名・配置技術者は書いたまま）。" +
-        `${SOURCE_DOC}元データの値と同じ決まりで値にし（注文者・工事名は匿名化する）、JSON 文字列 {ok, applied, answered（問い合わせへの答え）, confirmed, corrected（聞いていない項目の訂正。送った項目だけ変える）, same, invalid:[{key, field, answer, message}], needsCheck, report} を返す（読めない答えは入れず invalid で返す）。返事では問い合わせへの答えと訂正を分けて職員に伝える。`,
+        `${SOURCE_DOC}元データの値と同じ決まりで値にし（注文者・工事名は匿名化する）、JSON 文字列 {ok, applied, answered（問い合わせへの答え。項目は no〔メールの工事の番号。get_inquiries と同じ〕・key・field）, confirmed, corrected（聞いていない項目の訂正。送った項目だけ変える）, same, invalid:[{key, field, answer, message}], needsCheck, report} を返す（読めない答えは入れず invalid で返す）。返事では問い合わせへの答えと訂正を分けて職員に伝える。`,
       inputSchema: z.strictObject({
         read_from: valueSourceSchema,
         items: z
@@ -669,7 +668,7 @@ export function chatTools(state: TurnState) {
           // 印を付けるのは顧客が答えた値だけ（今の値のとおりという確認 confirm:true は、読んだ値ではない）
           return { kind: "cell", rowKey: key.slice(0, at), field, edit: source === "image" && !confirmed.has(key) ? imageEdit(edit) : edit }
         })
-        const result = answerResult(report)
+        const result = answerResult(report, inquiryNumbers(state.current))
         if (!changes.length) {
           state.log.push({ tool: "record_answers", summary: "0セル" })
           return json({ ok: true, applied: 0, ...result })
@@ -854,7 +853,7 @@ export function chatTools(state: TurnState) {
     }),
     propose_inquiry: tool({
       description:
-        "顧客への問い合わせメールの件名と前置きの案を出す（表は変えない）。subject: メールの件名、intro: 本文の前置き（1〜3文）。聞くこと（番号を振った工事ごとの項目）・記入のしかた・宛名・挨拶・結びは画面が本文に付ける。前置きには、答えに工事の番号を添えてほしいことを1文入れる。" +
+        "顧客への問い合わせメールの件名と前置きの案を出す（表は変えない）。subject: メールの件名、intro: 本文の前置き（1〜3文）。聞くこと（番号を振った工事ごとの項目）・記入のしかた・宛名・挨拶・結びは画面が本文に付ける。" +
         "個人名・表の記号・ほかの顧客の名前は書かない（入っていれば受け取らない）。JSON 文字列 {ok} を返す。職員が承認するとメールの件名と前置きに使う。",
       inputSchema: z.strictObject({ subject: subjectSchema, intro: introSchema }),
       execute: counted<{ subject: string; intro: string }>(({ subject, intro }) =>
@@ -896,8 +895,9 @@ const textName = (i: number) => (i === 0 ? "subject" : "intro")
  * record_answers の結果（AI に返す）。answered は問い合わせへの答え、corrected は聞いていない項目の訂正（職員にも分けて伝える）。
  * 顧客の答えはそのまま返さず、読めなかった答えだけを返す（AI が送ったもの）
  */
-function answerResult(r: AiAnswerReport) {
-  const at = (q: { rowKey: string; field: KojiFieldId }) => ({ key: q.rowKey, field: q.field })
+/** record_answers の結果（no はメールの工事の番号。get_inquiries と同じ） */
+function answerResult(r: AiAnswerReport, numbers: ReadonlyMap<string, number>) {
+  const at = (q: { rowKey: string; field: KojiFieldId }) => ({ no: numbers.get(q.rowKey), key: q.rowKey, field: q.field })
   return {
     answered: r.applied.map(at),
     confirmed: r.confirmed.map(at),

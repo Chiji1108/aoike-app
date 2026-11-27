@@ -139,10 +139,10 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
      * 変換の元（作業の sourceFileId）を選んでいない案件のうち、AI に一から表を作らせるもの（noSheetSource: 届いたファイルに表のファイルが無いか、
      * もう AI が表を作っている〔足した行がある〕）と、届いた表のファイルから元を選んでもらうもの（sourceChoices）
      */
-    const unsourced = !w.sourceFileId && !rt.loading && !rt.sourceError
     const sheetFiles = sheetFilesOf(rt.files)
-    const noSheetSource = unsourced && rt.files.some((f) => f.kind === "source") && (!sheetFiles.length || w.added.length > 0)
-    const sourceChoices = unsourced && !noSheetSource ? sheetFiles : NO_FILES
+    const noSheetSource = !w.sourceFileId && rt.files.some((f) => f.kind === "source") && (!sheetFiles.length || w.added.length > 0)
+    // 読んでいる・読めなかった（報告がやり直しを出す）間は選んでもらわない
+    const sourceChoices = !w.sourceFileId && !noSheetSource && !rt.loading && !rt.sourceError ? sheetFiles : NO_FILES
     const out: CaseView = {
       rowFixes,
       inquiries,

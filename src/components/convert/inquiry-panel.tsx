@@ -31,6 +31,7 @@ export function InquiryPanel({
   inquiring,
   onSent,
   busy,
+  numbers,
 }: {
   inquiries: Inquiry[]
   allRows: Row[]
@@ -45,9 +46,11 @@ export function InquiryPanel({
   onSent: () => void
   /** 変換し直している間（表は前の行なので、本文のコピーと「送った」を押せない） */
   busy: boolean
+  /** 工事の番号（lib/inquiry/email.ts の inquiryNumbers） */
+  numbers: ReadonlyMap<string, number>
 }) {
   const active = useMemo(() => inquiries.filter((q) => !dismissed.has(inquiryKey(q))), [inquiries, dismissed])
-  const email = useMemo(() => inquiryEmail(active, allRows, text), [active, allRows, text])
+  const email = useMemo(() => inquiryEmail(active, allRows, numbers, text), [active, allRows, numbers, text])
   const byItem = useMemo(() => {
     const cases = active.flatMap((q) => (q.kind === "case" ? [{ label: CASE_TOPICS[q.topic].label, count: 1 }] : []))
     return [...cases, ...countsByItem(active)]

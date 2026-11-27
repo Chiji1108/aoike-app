@@ -1,8 +1,10 @@
+import { useMemo } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { useCase, useCaseActions, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
 import { derive } from "@/components/cases/store/derive"
 import { InquiryPanel } from "@/components/convert/inquiry-panel"
 import { Button } from "@/components/ui/button"
+import { inquiryNumbers } from "@/lib/inquiry/email"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
 
 /**
@@ -12,7 +14,9 @@ import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
 export function InquiryTab() {
   const actions = useCaseActions()
   const { config } = useCaseSession()
-  const { shown, reconverting } = useTable(useShallow((t) => ({ shown: t.shown, reconverting: t.reconverting })))
+  const { shown, rows, reconverting } = useTable(useShallow((t) => ({ shown: t.shown, rows: t.rows, reconverting: t.reconverting })))
+  const added = useCase((s) => s.work.added)
+  const numbers = useMemo(() => inquiryNumbers({ rows: rows ?? [], added }), [rows, added])
   const { inquiries, waiting, active, left, chatCanSend } = useCaseView(
     useShallow((v) => ({
       inquiries: v.inquiries,
@@ -70,6 +74,7 @@ export function InquiryTab() {
         inquiring={inquiring}
         onSent={() => void actions.changeStatus("inquiring")}
         busy={reconverting}
+        numbers={numbers}
       />
     </>
   )

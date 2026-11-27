@@ -1,5 +1,6 @@
 import { OFFICE_NAME } from "../constants"
 import { groupBy } from "../group-by"
+import { baseRows, type CaseTable } from "../cases/view"
 import type { RowResult } from "../convert/convert"
 import type { KojiFieldId } from "../spec/koji-keireki"
 import { ASK_COLUMNS, CASE_TOPICS, columnOf, namedOf, type AskColumn, type CellInquiry, type Inquiry } from "./inquiry"
@@ -13,7 +14,6 @@ export const DEFAULT_SUBJECT = `工事経歴書の作成についてのご確認
 export const DEFAULT_INTRO = [
   "工事経歴書の作成にあたり、お預かりした資料だけでは分からない点がございましたので、",
   "お手数をおかけしますが、以下についてご教示いただけますでしょうか。",
-  "工事ごとに番号を振っておりますので、ご回答の際は番号を添えてください。",
 ].join("\n")
 
 type KojiRow = RowResult<KojiFieldId>
@@ -43,13 +43,11 @@ function workDetail(row: KojiRow): string {
 }
 
 /**
- * メールで聞く工事の番号（1 から。画面の表の行の順で、セルの問い合わせのある行だけ）。メールの本文と、チャットの AI が顧客の答えを行に結びつける
- * get_inquiries の no で同じ番号を使う。inquiries は外していない問い合わせ
+ * 工事の番号（行の key → 1 から）。変換した表の全部の行を元の順（元の Excel の行の順。AI が足した行は後ろ）に並べた通し番号で、
+ * 問い合わせ・答え・外す・絞り込み・並べ替えでは変わらない（計画を変えて変換し直すと変わり得る）。メールの本文と、チャットの AI が顧客の答えを
+ * 行に結びつける get_inquiries・record_answers の no で同じ番号を使う
  */
-export function inquiryNumbers(inquiries: readonly Inquiry[], rows: readonly KojiRow[]): Map<string, number> {
-  const asked = new Set(inquiries.flatMap((q) => (q.kind === "cell" && columnOf(q.field) ? [q.rowKey] : [])))
-  return new Map(rows.filter((r) => asked.has(r.key)).map((r, i) => [r.key, i + 1]))
-}
+export const inquiryNumbers = (t: Pick<CaseTable, "rows" | "added">): Map<string, number> => new Map(baseRows(t).map((r, i) => [r.key, i + 1]))
 
 /**
  * 1つの工事で聞く項目の行。データに無い項目は名前だけ、推定に自信がない値は読んだ値を添えて確かめてもらう
@@ -66,28 +64,34 @@ function askLines(row: KojiRow, qs: readonly CellInquiry[]): string[] {
 }
 
 /**
- * 顧客への問い合わせメールの件名と本文。案件全体の質問（税込・税抜）は1つずつ、セルの問い合わせは工事ごとに番号を振って聞く項目を並べる
- * （画面の表の行の順。番号は inquiryNumbers。見出しの下に見分ける値の1行）。答え方の説明は聞く項目のものだけ。宛名・挨拶・結びは決まった文。rows は画面の表の行
+ * 顧客への問い合わせメールの件名と本文。案件全体の質問（税込・税抜）は1つずつ、セルの問い合わせは工事ごとに番号（inquiryNumbers）を付けて
+ * 番号の順に聞く項目を並べる（見出しの下に見分ける値の1行）。番号を添えて答えてもらう文と答え方の説明（聞く項目のものだけ）は決まった文。
+ * rows は画面の表の行（値を読む）、numbers は工事の番号
  */
-export function inquiryEmail(inquiries: readonly Inquiry[], rows: readonly KojiRow[], text: InquiryText): { subject: string; body: string } {
+export function inquiryEmail(inquiries: readonly Inquiry[], rows: readonly KojiRow[], numbers: ReadonlyMap<string, number>, text: InquiryText): { subject: string; body: string } {
   const sections: string[] = []
   const cases = inquiries.flatMap((q) => (q.kind === "case" ? [CASE_TOPICS[q.topic].question] : []))
   cases.forEach((t, i) => sections.push(`${i + 1}. ${t}`))
   const cells = inquiries.filter((q): q is CellInquiry => q.kind === "cell")
   const byRow = groupBy(cells, (q) => q.rowKey)
-  const numbers = inquiryNumbers(cells, rows)
-  const works = rows.flatMap((row) => {
-    const no = numbers.get(row.key)
-    if (!no) return []
-    const detail = workDetail(row)
-    return [[`■ ${no}. ${workTitle(row)}`, ...(detail ? [`　（${detail}）`] : []), ...askLines(row, byRow.get(row.key)!)].join("\n")]
-  })
+  const works = rows
+    .flatMap((row) => {
+      const qs = byRow.get(row.key)
+      const lines = qs ? askLines(row, qs) : []
+      return lines.length ? [{ no: numbers.get(row.key) ?? 0, row, lines }] : []
+    })
+    .sort((a, b) => a.no - b.no)
+    .map(({ no, row, lines }) => {
+      const detail = workDetail(row)
+      return [`■ ${no}. ${workTitle(row)}`, ...(detail ? [`　（${detail}）`] : []), ...lines].join("\n")
+    })
   if (works.length) {
     const asked = new Set(cells.map((q) => columnOf(q.field)))
     const hints = [...new Set(ASK_COLUMNS.flatMap((c) => (c.hint && asked.has(c) ? [c.hint] : [])))]
     sections.push(
       [
         `${cases.length + 1}. 次の工事について、分かる範囲でお知らせください（${works.length}件）。`,
+        "　※工事ごとに番号を振っております。ご回答の際は番号を添えてください。",
         ...hints.map((h) => `　※${h}`),
         "　※分からない項目は、その旨をお知らせください。",
         "",

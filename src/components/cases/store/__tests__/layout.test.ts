@@ -175,6 +175,16 @@ describe("並べ方と画面の action（ui）", () => {
     expect(withSheet.view(withSheet.store.getState())).toMatchObject({ noSheetSource: false, sourceChoices: [FILES[0]], chatReady: false })
   })
 
+  test("AI が足した行のある案件で、元を開くのに失敗してもチャットは使えるまま", async () => {
+    const pdf = { ...FILES[0]!, id: "p1", name: "合成.pdf" }
+    const s = createCaseSession({ ...page(), files: [pdf, FILES[0]!] }, fakeDeps({ fetchFile: async () => new Uint8Array(0) }), noChannel)
+    s.connect()
+    s.store.setState((st) => ({ work: { ...st.work, added: [{ key: "add-1" }] } }))
+    await s.actions.openSource(FILES[0]!, true)
+    expect(s.store.getState().runtime.sourceError).not.toBeNull()
+    expect(s.view(s.store.getState())).toMatchObject({ noSheetSource: true, chatReady: true })
+  })
+
   test("読めない表のファイル（壊れた zip）は保存せずに知らせる", async () => {
     const uploadFile = vi.fn(fakeDeps().uploadFile)
     const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ uploadFile }), noChannel)
@@ -184,23 +194,24 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.store.getState().runtime.notes.at(-1)).toMatchObject({ name: "壊れた.xlsx", tone: "error", text: expect.stringContaining("読めないファイルです") })
   })
 
-  test("壊れた Excel だけでは、表を一から作るチャットにならない", async () => {
-    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile: async () => new Uint8Array(0) }), noChannel)
+  test("元にできない表（シートが空）だけでは、表を一から作るチャットにならない", async () => {
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps(), noChannel)
     s.connect()
-    await s.actions.attach([new File([new Uint8Array(1)], "壊れた.xlsx")])
+    await s.actions.attach([new File([new Uint8Array(0)], "空の表.xlsx")])
     expect(s.store.getState().runtime.sourceError).not.toBeNull()
     expect(s.view(s.store.getState())).toMatchObject({ noSheetSource: false, chatReady: false })
   })
 
-  test("読めない表を付けたら元にせず、同じ回の次の表を元に試す", async () => {
-    let n = 0
-    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile: async () => (n++ === 0 ? new Uint8Array(0) : fixture("sample-messy.xlsx")) }), noChannel)
+  test("元にできない表を付けたら元にせず、同じ回の次の表を元に試す（付けたときに読んだシートを使い、取り直さない）", async () => {
+    const fetchFile = vi.fn(fakeDeps().fetchFile)
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile }), noChannel)
     s.connect()
     const bytes = fixture("sample-messy.xlsx")
-    await s.actions.attach([new File([new Uint8Array(1)], "壊れた.xlsx"), new File([bytes as BlobPart], "合成.xlsx")])
+    await s.actions.attach([new File([new Uint8Array(0)], "空の表.xlsx"), new File([bytes as BlobPart], "合成.xlsx")])
     const files = s.store.getState().runtime.files
     await vi.waitFor(() => expect(s.store.getState().work.sourceFileId).toBe(files.find((f) => f.name === "合成.xlsx")!.id))
     expect(s.store.getState().ui.dialogs.pendingSources).toEqual([])
+    expect(fetchFile).not.toHaveBeenCalled()
   })
 
   test("変換の元があるときに表を付けると、届いたファイルとして保存するだけで元は変えない（「変換の元にしますか」を出さない）", async () => {

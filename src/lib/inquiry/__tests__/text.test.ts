@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vitest"
 import { kojiRow } from "../../convert/__tests__/helpers"
-import { countsByItem, DEFAULT_SUBJECT, inquiryEmail } from "../email"
+import { countsByItem, DEFAULT_SUBJECT, inquiryEmail, inquiryNumbers } from "../email"
 import { collectInquiries } from "../inquiry"
 import { applyInquiryChange, diffInquiryText, EMPTY_INQUIRY_TEXT, inquiryTextDiffSchema, inquiryTextSchema, otherCustomerTest, revertInquiryText } from "../text"
 
+/** 工事の番号（足した行の無い表） */
+const numbersOf = (rows: Parameters<typeof inquiryNumbers>[0]["rows"]) => inquiryNumbers({ rows, added: [] })
 const full = { gyoshu: "8", client: "株式会社テスト", motoukeShitauke: "1", jv: "0", workName: "テストビル電気工事", prefecture: "東京都", place: "千代田区", engineer: "試験　太郎", amount: "5000", specialAmount: "0", startYm: "202404", endYm: "202409" }
 const guessedEnd = (n: number) => {
   const r = kojiRow({ ...full, workName: `テスト工事${n}` }, n)
@@ -16,17 +18,17 @@ const qs = collectInquiries(rows, { tax: "unknown" })
 describe("メールの件名と前置き", () => {
   test("年月の答え方は、着工年月・完成年月のどちらを聞くときも1回だけ添える", () => {
     const endOnly = [guessedEnd(2)]
-    const body = inquiryEmail(collectInquiries(endOnly, { tax: "included" }), endOnly, EMPTY_INQUIRY_TEXT).body
+    const body = inquiryEmail(collectInquiries(endOnly, { tax: "included" }), endOnly, numbersOf(endOnly), EMPTY_INQUIRY_TEXT).body
     expect(body.match(/「2024年4月」のようにお知らせください/g)).toHaveLength(1)
-    expect(inquiryEmail(qs, rows, EMPTY_INQUIRY_TEXT).body.match(/「2024年4月」のようにお知らせください/g)).toHaveLength(1)
+    expect(inquiryEmail(qs, rows, numbersOf(rows), EMPTY_INQUIRY_TEXT).body.match(/「2024年4月」のようにお知らせください/g)).toHaveLength(1)
   })
 
   test("承認した件名と前置きを使い、無ければ決まった文。前の作業の質問の文（questions）は読み捨てる", () => {
     const text = applyInquiryChange(EMPTY_INQUIRY_TEXT, { kind: "inquiryMail", subject: "工事経歴書のご確認", intro: "資料ありがとうございました。いくつか教えてください。" })
-    const mail = inquiryEmail(qs, rows, text)
+    const mail = inquiryEmail(qs, rows, numbersOf(rows), text)
     expect(mail.subject).toBe("工事経歴書のご確認")
     expect(mail.body).toContain("資料ありがとうございました。")
-    expect(inquiryEmail(qs, rows, EMPTY_INQUIRY_TEXT).subject).toBe(DEFAULT_SUBJECT)
+    expect(inquiryEmail(qs, rows, numbersOf(rows), EMPTY_INQUIRY_TEXT).subject).toBe(DEFAULT_SUBJECT)
     const legacy = { subject: "件名", intro: null, questions: [{ id: "a", text: "前の質問", targets: [{ field: "engineer" }], by: "ai" }] }
     expect(inquiryTextSchema.parse(legacy)).toEqual({ subject: "件名", intro: null })
   })
