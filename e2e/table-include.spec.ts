@@ -179,3 +179,21 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     await expect(page.getByTestId("all-hint")).toHaveCount(0)
   })
 })
+
+test("ほかの段を開いて表に戻っても、表のスクロールの位置はずれない（隠れている間は行の高さを測らない）", async ({ page }) => {
+  await convert(page)
+  const top = () => page.getByTestId("preview-table").evaluate((t) => t.parentElement!.scrollTop)
+  await expect(row(page, 0)).toBeVisible()
+  for (const view of ["gyoshu", "inquiry", "export", "answer"] as const) {
+    await openTab(page, view)
+    await openTab(page, "table")
+    await expect(row(page, 0)).toBeVisible()
+    expect(await top()).toBe(0)
+  }
+  // 下へスクロールしてから離れて戻っても、ほぼ同じ位置（下へずれていかない。1行の高さより小さい違いだけ）
+  await scrollTable(page, 1200)
+  const at = await top()
+  await openTab(page, "gyoshu")
+  await openTab(page, "table")
+  await expect.poll(async () => Math.abs((await top()) - at)).toBeLessThan(36)
+})

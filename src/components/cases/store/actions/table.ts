@@ -8,6 +8,7 @@ import { pendingGyoshuItems } from "@/lib/cases/todo"
 import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
+import { setSelection } from "@/lib/cases/selection"
 import { SELECTION_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
 import { askKey, hasExclusion, type ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
@@ -149,8 +150,8 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
 export function changeSelection(env: CaseEnv, mode: SelectionMode) {
   if (env.store.getState().work.selection === mode) return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
-  // 職員が選んだので「答える」の載せる工事の聞き返しにも答えたことにする（取り消すと一緒に戻る）
-  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode, reportAnswers: { ...w.reportAnswers, selection: mode } }))
+  // 職員が決めた値として出どころと一緒に書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
+  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, "staff"))
   notifyCommitted(env, `載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, id, "載せる工事の切り替え")
 }
 
@@ -195,7 +196,7 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
   if (id === "selection") {
     // 載せる工事（7割ルール／全件）。答えたあとも表の見出しのチェック・ダウンロードの段の7割と金額で変えられる
     if (value !== "rule7" && value !== "all") return
-    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...w, selection: value, reportAnswers: { ...w.reportAnswers, selection: value } }))
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => setSelection(w, value, "staff"))
     return
   }
   if (id === "tax") {

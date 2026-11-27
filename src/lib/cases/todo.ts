@@ -2,6 +2,7 @@ import { countFixes, fixActionGroups, gyoshuTodo, type FixActionGroup, type FixC
 import type { RowResult, CellEdit } from "@/lib/convert/convert"
 import type { Inclusion, TaxMode } from "@/lib/convert/koji-selection"
 import type { TaxBy } from "@/lib/cases/tax"
+import { selectionDecided, type SelectionBy } from "@/lib/cases/selection"
 import { decisionOf, pendingOf, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
 import { codeLabel } from "@/lib/spec/code-sets"
@@ -81,8 +82,10 @@ export type CaseTodo = {
  */
 export function reportQuestionStates(input: {
   hasTable: boolean
-  /** 載せる工事（7割ルール／全件）を聞くか（lib/cases/selection-advice.ts。去年で決まっていれば聞かない）。答えは reportAnswers.selection */
+  /** 載せる工事（7割ルール／全件）を聞くか（lib/cases/selection-advice.ts。去年で決まっていれば聞かない） */
   askSelection: boolean
+  /** 載せる工事を誰が決めたか（lib/cases/selection.ts）。答えたかはこれだけで決める（答える・表の見出し・7割と金額・変更案の承認のどれでも） */
+  selectionBy: SelectionBy | null
   tax: TaxMode
   taxBy: TaxBy | null
   reportAnswers: Readonly<Record<string, string>>
@@ -92,7 +95,7 @@ export function reportQuestionStates(input: {
   const { tax, taxBy, reportAnswers } = input
   const out: { id: string; answered: boolean }[] = []
   // 載せる工事は最初に聞く（業種を決める・直すの数が変わる）
-  if (input.askSelection || reportAnswers.selection) out.push({ id: "selection", answered: reportAnswers.selection === "rule7" || reportAnswers.selection === "all" })
+  if (input.askSelection) out.push({ id: "selection", answered: selectionDecided(input) })
   if ((tax === "unknown" && taxBy === null) || reportAnswers.tax) out.push({ id: "tax", answered: tax !== "unknown" || reportAnswers.tax === "ask" })
   // 計画の聞き返しの答えは、並び順の id ではなく聞き返しの鍵（lib/convert/plan.ts の askKey）で持つ
   for (const { id, key } of input.asks) out.push({ id, answered: reportAnswers[key] === "exclude" || reportAnswers[key] === "keep" })

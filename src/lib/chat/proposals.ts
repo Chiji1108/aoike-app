@@ -9,6 +9,7 @@ import { foundSchema, siteRefSchema, SOURCE_LABELS, type Found } from "../locati
 import { planPatchSchema, type PlanPatch } from "../convert/plan-patch"
 import { proposedRuleSourceSchema, ruleScopeSchema, type ProposedRuleSource, type RuleScope } from "./rules"
 import { setTax, type TaxBy } from "../cases/tax"
+import { setSelection, type SelectionBy } from "../cases/selection"
 import { applyInquiryChange, introSchema, subjectSchema, type InquiryText } from "../inquiry/text"
 
 /**
@@ -212,6 +213,8 @@ export type Overlay = {
   taxBy?: TaxBy | null
   basis: Basis
   selection: SelectionMode
+  /** 選び方の出どころ（案件の作業だけが持つ。cases/selection.ts） */
+  selectionBy?: SelectionBy | null
   /** 金額の千円未満の扱い（変えたら行を変換し直すのは重ねる側。案件の画面は作業から変換し直し、チャットの表は reroundRows） */
   rounding: Rounding
   added: readonly AddedRow[]
@@ -226,9 +229,10 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
   if (!changes.length) return target
   const edits = new Map(target.edits)
   const manual = new Map(target.manual)
-  let { basis, selection, rounding, inquiryText } = target
-  /** 承認した税の設定（職員が決めた値として、出どころと一緒に書く） */
+  let { basis, rounding, inquiryText } = target
+  /** 承認した税の設定・載せる工事の選び方（職員が決めた値として、出どころと一緒に書く） */
   let tax: TaxMode | undefined
+  let selection: SelectionMode | undefined
   const added = [...target.added]
   const rowOf = new Map(edited.map((r) => [r.key, r]))
   for (const c of changes) {
@@ -277,8 +281,9 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
         c satisfies never
     }
   }
-  const next = { ...target, edits, manual, basis, selection, rounding, added, inquiryText }
-  return tax === undefined ? next : setTax(next, tax, "staff")
+  const next = { ...target, edits, manual, basis, rounding, added, inquiryText }
+  const taxed = tax === undefined ? next : setTax(next, tax, "staff")
+  return selection === undefined ? taxed : setSelection(taxed, selection, "staff")
 }
 
 /** 調べた工事場所のセルに添える文（出どころ・根拠の URL・AI の迷った点） */

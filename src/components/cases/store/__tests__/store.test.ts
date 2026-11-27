@@ -15,7 +15,7 @@ const store = () => createCaseStore(initialCaseState({ kase: { status: "converti
 describe("案件のストア", () => {
   test("新しい案件の載せる工事は、去年の案件で決めた選び方（無ければ7割ルール）。保存した作業があればそちら", () => {
     const base = { kase: { status: "converting" as const, costUsd: 0 }, files: [], previousUnsaved: false, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" as const } }
-    expect(initialCaseState({ ...base, state: null, previous: { selection: "all" } }).work.selection).toBe("all")
+    expect(initialCaseState({ ...base, state: null, previous: { selection: "all" } }).work).toMatchObject({ selection: "all", selectionBy: "previous" })
     expect(initialCaseState({ ...base, state: null, previous: { selection: null } }).work.selection).toBe("rule7")
     expect(initialCaseState({ ...base, state: null }).work.selection).toBe("rule7")
   })

@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
 import type { KojiFieldId } from "../src/lib/spec/koji-keireki"
-import { callsServerFn, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
+import { fileBytes, callsServerFn, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
 
 /**
  * 顧客の回答を AI で読む流れ: 元の Excel が .xls（印を付けて返せない）なので記入用Excelにする → 色付きの欄に書かず、右に足した「備考」の列に書いて返ってきた → 決まった欄の取り込みでは入らない →
@@ -74,7 +74,7 @@ test("記入用Excelの色付きの欄の外に書いた答えは、チャット
     const downloading = page.waitForEvent("download")
     await page.getByTestId("download-inquiry-xlsx").click()
     const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(readFileSync((await (await downloading).path())!).buffer as ArrayBuffer)
+    await wb.xlsx.load(fileBytes((await (await downloading).path())!))
     const ws = wb.worksheets[0]!
     let headerRow = 0
     ws.eachRow((r, n) => {
@@ -141,7 +141,7 @@ test("本物の AI: 「備考」の列に書いた工事場所を読み、Worker
   const downloading = page.waitForEvent("download")
   await page.getByTestId("download-inquiry-xlsx").click()
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync((await (await downloading).path())!).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes((await (await downloading).path())!))
   const ws = wb.worksheets[0]!
   let headerRow = 0
   ws.eachRow((r, n) => {

@@ -157,6 +157,7 @@ export function PreviewTable({
   onConfirm,
   confirmUndo,
   onGoFix,
+  visible,
 }: {
   spec: CsvSpec<KojiFieldId>
   rows: Row[]
@@ -193,6 +194,8 @@ export function PreviewTable({
    * 直すの段を開く（すべての行の表だけ。表ではセルの色・凡例・ツールチップで直すセルは分かるが、行の理由と直し方〔業種を決める・これでよいなど〕は直すの段の列にだけ出すので、そこへの道）
    */
   onGoFix?: () => void
+  /** 表が画面に見えているか（隠れている間は行の高さを測らない） */
+  visible: boolean
 }) {
   const [editing, setEditing] = useState<Editing | null>(null)
   const setFilter = onFilterChange
@@ -322,10 +325,10 @@ export function PreviewTable({
     estimateSize: () => 36,
     overscan: 12,
     getItemKey: (i) => shown[i]!.key,
+    // 隠れている間（作業の画面でほかの段を開いている・作業の画面を閉じている）は行の高さを測らない（隠れた行は高さ 0 と測られ、
+    // 戻ったときの測り直しでスクロールの位置がずれる）。測った高さを使い続け、見えたら測る
+    useCachedMeasurements: !visible,
   })
-  // 作業の画面で表を隠す（ほかの段を開く）と、行の高さは 0 と測られる。表に戻って測り直したとき、高さ 0 の行は
-  // 「見えている所より上の行」と見なされてスクロールが下へずれていく（既定の判定）ので、高さのある行が上に並ぶときだけ合わせる
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => item.size > 0 && item.end <= (instance.scrollOffset ?? 0) && instance.scrollDirection !== "backward"
   const items = virtualizer.getVirtualItems()
   const padTop = items[0]?.start ?? 0
   const padBottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0)

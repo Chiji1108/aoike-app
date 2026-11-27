@@ -62,6 +62,7 @@ export function useReportQuestions(): ReportQuestion[] {
     useShallow((v) => ({ questionStates: v.questionStates, askRows: v.askRows, askEffects: v.askEffects, planAsks: v.planAsks, advice: v.selectionAdvice })),
   )
   const tax = useCase((s) => s.work.tax)
+  const selection = useCase((s) => s.work.selection)
   const reportAnswers = useCase((s) => s.work.reportAnswers)
   const undoStates = useCase((s) => derive(s).undoStates)
   return useMemo(() => {
@@ -72,13 +73,12 @@ export function useReportQuestions(): ReportQuestion[] {
       if (id === "selection") {
         // 載せる工事（lib/cases/selection-advice.ts の案を「おすすめ」に添える）。答えたあとも表の見出しのチェック・7割と金額で変えられる
         const recommended = advice.ask ? advice.recommended : null
-        const sel = reportAnswers.selection
         return {
           id,
           text: "載せる工事は？",
           detail: [advice.ask ? advice.reason : null, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でも変えられます"].filter(Boolean).join("。"),
           options: (["rule7", "all"] as const).map((v) => ({ value: v, label: `${SELECTION_LABELS[v]}${v === recommended ? "（おすすめ）" : ""}` })),
-          answered: answered && (sel === "rule7" || sel === "all") ? SELECTION_LABELS[sel] : null,
+          answered: answered ? SELECTION_LABELS[selection] : null,
           undo: answered ? undoAnswer(id) : null,
         }
       }
@@ -116,7 +116,7 @@ export function useReportQuestions(): ReportQuestion[] {
         undo: label !== null ? undoAnswer(r.key) : null,
       }
     })
-  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, reportAnswers, undoStates])
+  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, reportAnswers, undoStates])
 }
 
 /** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き・振り返り）。押すと決まった指示を送る */

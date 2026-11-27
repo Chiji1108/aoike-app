@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
-import { convertFixture, deleteCustomer, downloadCsv, open, openExport, openTab, showAllRows } from "./helpers"
+import { fileBytes, convertFixture, deleteCustomer, downloadCsv, open, openExport, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 const ROWS = '[data-testid="preview-table"] tbody tr[data-row-key]'
@@ -28,7 +27,7 @@ async function downloadFinal(page: Page) {
   await dialog.getByTestId("export-excel").click()
   const path = (await (await downloading).path())!
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync(path).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes(path))
   await openTab(page, "table")
   return wb
 }

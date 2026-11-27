@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
-import { attachAndConvert, callsServerFn, csvCount, deleteCustomer, open, openNewCase, openTab, showAllRows } from "./helpers"
+import { fileBytes, attachAndConvert, callsServerFn, csvCount, deleteCustomer, open, openNewCase, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
@@ -11,7 +10,7 @@ const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathna
  */
 async function nextYearWorkbook() {
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync(FIXTURE).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes(FIXTURE))
   const ws = wb.getWorksheet("工事経歴")!
   const header = ws.getRow(3)
   const col = (h: string) => (header.values as unknown[]).findIndex((v) => v === h)
@@ -43,8 +42,12 @@ test.afterEach(async ({ page }) => {
 test("同じ顧客の2年度目は去年の Excel との違いを出し、「去年のやり方で直す」は去年のコードを添える印と違いの文脈を送る。全件の切り替えで載る件数が変わる", async ({ page }) => {
   const { customer } = await openNewCase(page, "2025")
   created.push(customer)
-  await attachAndConvert(page, FIXTURE)
+  await attachAndConvert(page, FIXTURE, { table: false })
   await expect(page.getByTestId("format-diff")).toHaveCount(0)
+  // 2025年度は載せる工事を聞かれ、7割ルールと答える（決めた選び方だけを翌年に引き継ぐ。既定値のままなら翌年も聞く）
+  await page.locator('[data-testid="answer-section"] [data-question="selection"] [data-value="rule7"]').click()
+  await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveAttribute("data-answered", "7割ルール")
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
 
   await test.step("2026年度の案件で、形を変えた Excel を付けると去年との違いが出る", async () => {
     await page.getByRole("link", { name: customer }).click()

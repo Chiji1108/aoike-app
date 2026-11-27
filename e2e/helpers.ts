@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs"
 import { expect, type Locator, type Page } from "@playwright/test"
 
+/**
+ * ファイルの中身をちょうどその長さの ArrayBuffer で読む（ExcelJS に渡す）。readFileSync の Buffer の .buffer は、Node が大きめに確保した領域ごと返す
+ * ことがあり（後ろに余りが付く）、zip の終わりの印を余りの中で探して「壊れた zip」になる
+ */
+export function fileBytes(path: string): ArrayBuffer {
+  const b = readFileSync(path)
+  return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer
+}
+
 /** ページを開き、React が画面につながる（<html data-hydrated>）まで待つ。つながる前の入力や押下は効かない */
 export async function open(page: Page, url: string) {
   await page.goto(url)

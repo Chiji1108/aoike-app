@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
-import { callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
+import { fileBytes, callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 /**
  * 7割と金額のタブの表は見るだけ。基準が何かを表の上の1行で出し、「決算書の額を入れる」を押したときだけ業種ごとの欄を開く。
@@ -36,7 +35,7 @@ async function convert(page: Page, file: Parameters<Page["setInputFiles"]>[1]) {
 /** 元請の工事を全部下請にした Excel（元請が1件も無い案件） */
 async function noMotoukeWorkbook() {
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync(FIXTURE).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes(FIXTURE))
   const ws = wb.getWorksheet("工事経歴")!
   const col = (ws.getRow(3).values as unknown[]).findIndex((v) => v === "元請/下請")
   expect(col).toBeGreaterThan(0)

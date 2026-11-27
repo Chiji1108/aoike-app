@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { ChevronRight, CircleAlert, CircleCheck, Download, FileSpreadsheet, TriangleAlert } from "lucide-react"
+import { ChevronRight, CircleAlert, CircleCheck, Download, FileSpreadsheet, Loader2, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { fmt, fmtSigned } from "@/components/convert/summary-panel"
 import { remainingSteps, type StepId } from "@/components/cases/next-steps"
@@ -29,6 +29,8 @@ export function ExportPanel({
   onGo,
   onFixAction,
   unsettled,
+  busy,
+  active,
   children,
 }: {
   output: readonly RowResult<KojiFieldId>[]
@@ -42,10 +44,14 @@ export function ExportPanel({
   onFixAction: (action: FixActionId, keys: readonly string[]) => void
   /** 金額・7割・載せる行に関わる聞き返しが残っている・税込か税抜かが決まっていない（ボタンを控えめに。止めはしない） */
   unsettled: boolean
+  /** 変換し直している間（表は前の行なので、ダウンロードのボタンを押せなくする） */
+  busy: boolean
+  /** ダウンロードの段を開いているか（開いていない間は確かめ〔Shift_JIS の判定など〕を計算しない） */
+  active: boolean
   /** 7割と金額（設定・業種ごとの7割・決算書の額を入れる欄。確かめの下に置く） */
   children?: React.ReactNode
 }) {
-  const check = useMemo(() => exportCheck(output, summary), [output, summary])
+  const check = useMemo(() => (active ? exportCheck(output, summary) : null), [active, output, summary])
   const label = (kind: string) => (unsettled ? `このままダウンロード（${kind}）` : kind)
   return (
     <div className="grid max-w-3xl gap-3 text-sm" data-testid="export-dialog">
@@ -54,15 +60,33 @@ export function ExportPanel({
           ダウンロード（<span className="num" data-testid="export-rows">{output.length}</span> 件）
         </h2>
         <span className="flex gap-2 sm:ml-auto" data-testid="export-footer" data-unsettled={unsettled ? "1" : "0"}>
-          <Button variant="outline" onClick={onCsv} disabled={output.length === 0} data-testid="download-button">
+          <Button variant="outline" onClick={onCsv} disabled={busy || output.length === 0} data-testid="download-button">
             <Download /> {label("CSV")}
           </Button>
-          <Button variant={unsettled ? "outline" : "default"} onClick={onExcel} disabled={output.length === 0} data-testid="export-excel">
+          <Button variant={unsettled ? "outline" : "default"} onClick={onExcel} disabled={busy || output.length === 0} data-testid="export-excel">
             <FileSpreadsheet /> {label("Excel")}
           </Button>
         </span>
       </div>
-      <Remaining steps={steps} answers={null} onGo={onGo} onFixAction={onFixAction} />
+      {busy && (
+        <p className="flex items-center gap-2 text-muted-foreground" data-testid="export-busy">
+          <Loader2 className="size-4 animate-spin text-violet-600" /> 変換し直しています。終わるとダウンロードできます
+        </p>
+      )}
+      <Remaining steps={steps} onGo={onGo} onFixAction={onFixAction} />
+      {check && <Checks check={check} summary={summary} />}
+      {children}
+      <p className="text-xs text-muted-foreground" data-testid="export-note">
+        Excel で直したら、その Excel をチャットの📎でアップロードすると表に戻ります。取込は1回だけ（追加になる）、「1行目が項目行」は外す。
+      </p>
+    </div>
+  )
+}
+
+/** 確かめの行（7割・決算書の額・エラー・要確認・Shift_JIS）と内訳 */
+function Checks({ check, summary }: { check: ExportCheck; summary: readonly GyoshuSummary[] }) {
+  return (
+    <>
       <ul className="grid gap-1.5" data-testid="export-checks">
         <Rule7Line check={check} summary={summary} />
         <CheckLine ok={check.mismatches.length === 0} testId="export-basis">
@@ -85,7 +109,6 @@ export function ExportPanel({
             : `Shift_JIS で書けない文字 ${check.unencodable.length} セル（${[...new Set(check.unencodable.flatMap((u) => u.chars))].join(" ")}）。Excel の「CSV で保存」で「?」になります`}
         </CheckLine>
       </ul>
-      {children}
       {check.issues.length > 0 && (
         <details className="rounded-lg border bg-muted/20 px-3 py-2 text-xs" data-testid="export-issues">
           <summary className="cursor-pointer font-medium">内訳</summary>
@@ -98,30 +121,15 @@ export function ExportPanel({
           </ul>
         </details>
       )}
-      <p className="text-xs text-muted-foreground" data-testid="export-note">
-        Excel で直したら、その Excel をチャットの📎でアップロードすると表に戻ります。取込は1回だけ（追加になる）、「1行目が項目行」は外す。
-      </p>
-    </div>
+    </>
   )
 }
 
 /**
- * ダウンロードの前に残っていること（次にやることと同じ言葉）。答えるは上に1つずつ出すので、出していれば（answers が上の残りの数）除く。
- * 無ければ済みと出す（上に答えが残っていれば出さない）
+ * ダウンロードの前に残っていること（段の並びのツールチップと同じ言葉）。押すとその段へ移る（聞き返しは「答える」の段で答える）。無ければ済みと出す
  */
-function Remaining({
-  steps,
-  answers,
-  onGo,
-  onFixAction,
-}: {
-  steps: CaseTodo
-  answers: number | null
-  onGo: (id: StepId) => void
-  onFixAction: (action: FixActionId, keys: readonly string[]) => void
-}) {
-  const left = remainingSteps(steps).filter((r) => !(answers !== null && r.id === "answer"))
-  if (!left.length && answers) return null
+function Remaining({ steps, onGo, onFixAction }: { steps: CaseTodo; onGo: (id: StepId) => void; onFixAction: (action: FixActionId, keys: readonly string[]) => void }) {
+  const left = remainingSteps(steps)
   if (!left.length)
     return (
       <p className="flex items-center gap-2 text-emerald-800" data-testid="export-remaining" data-left="0">

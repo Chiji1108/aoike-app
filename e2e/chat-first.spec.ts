@@ -3,7 +3,7 @@ import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
-import { callsServerFn, csvCount, deleteCustomer, openExport, openNewCase, openTab, reload, showAllRows } from "./helpers"
+import { fileBytes, callsServerFn, csvCount, deleteCustomer, openExport, openNewCase, openTab, reload, showAllRows } from "./helpers"
 
 /**
  * チャット中心の流れ: ファイルをアップロードする → 自動で変換 → 変換の報告（知らせ・聞き返し）と次にやること → チャットで列の対応を直す変更案 →
@@ -160,7 +160,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     const xlsx = await excel
     expect(xlsx.suggestedFilename()).toMatch(/\.xlsx$/)
     const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(readFileSync((await xlsx.path())!).buffer as ArrayBuffer)
+    await wb.xlsx.load(fileBytes((await xlsx.path())!))
     // データのシートと、照合用の隠しシート（上げ直すと表に戻る）
     expect(wb.worksheets.map((w) => w.state)).toEqual(["visible", "veryHidden"])
     const ws = wb.worksheets[0]!

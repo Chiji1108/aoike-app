@@ -18,8 +18,8 @@ export function TableTab() {
   const { shown, inclusion, letters, output, reconverting } = useTable(
     useShallow((t) => ({ shown: t.shown, inclusion: t.inclusion, letters: t.letters, output: t.output, reconverting: t.reconverting })),
   )
-  const { rowFixes, todo, askRows, manualIncluded, view } = useCaseView(
-    useShallow((v) => ({ rowFixes: v.rowFixes, todo: v.todo, askRows: v.askRows, manualIncluded: v.manualIncluded, view: v.view })),
+  const { rowFixes, todo, askRows, manualIncluded, view, workShown } = useCaseView(
+    useShallow((v) => ({ rowFixes: v.rowFixes, todo: v.todo, askRows: v.askRows, manualIncluded: v.manualIncluded, view: v.view, workShown: v.layout.workShown })),
   )
   const selection = useCase((s) => s.work.selection)
   const allHintClosed = useCase((s) => s.work.allHintClosed)
@@ -74,6 +74,7 @@ export function TableTab() {
         onConfirm={actions.confirmCell}
         confirmUndo={lastConfirm ? () => actions.undoWithNotice(lastConfirm.proposalId, `「${CONFIRM_LABEL}」`) : null}
         onGoFix={() => actions.goStep("fix")}
+        visible={workShown && (view === "table" || view === "fix")}
       />
     </>
   )

@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
-import { callsServerFn, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
+import { fileBytes, callsServerFn, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
 
 /**
  * 印付きの Excel: 元の Excel（.xlsx）に印を付けて返す → 色付きのセル・推定のメモ・足した列がある → 顧客が記入してアップロードする →
@@ -79,7 +78,7 @@ test("元の Excel に印を付けてダウンロードし、記入して返す�
     const download = await downloading
     expect(download.suggestedFilename()).toMatch(/^確認のお願い_/)
     const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(readFileSync((await download.path())!).buffer as ArrayBuffer)
+    await wb.xlsx.load(fileBytes((await download.path())!))
     expect(wb.worksheets.map((w) => [w.name, w.state])).toEqual([
       ["工事経歴", "visible"],
       ["照合用（印付き）", "veryHidden"],
