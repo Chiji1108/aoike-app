@@ -99,7 +99,14 @@ export async function expectView(page: Page, view: WorkView) {
 /** 作業の画面の段・表・道具を開く（道具は「その他」から。作業の画面を閉じていれば開く） */
 export async function openTab(page: Page, view: WorkView) {
   // 作業の画面を閉じていれば（狭い画面・チャットへ移ったあと）、チャットの「表を開く」で開く
-  if (!(await page.getByTestId("next-steps").isVisible()) && (await page.getByTestId("work-open").isVisible())) await page.getByTestId("work-open").click()
+  // （表ができた直後は、作業の画面が自分で開く途中のことがあるので、開くまで確かめ直す）
+  const steps = page.getByTestId("next-steps")
+  const workOpen = page.getByTestId("work-open")
+  await expect(async () => {
+    if (await steps.isVisible()) return
+    if (await workOpen.isVisible()) await workOpen.click({ timeout: 1000 })
+    await expect(steps).toBeVisible({ timeout: 1000 })
+  }).toPass()
   if (view === "location" || view === "replace") {
     await page.getByTestId("more-tools").click()
     await page.getByTestId(`more-tool-${view}`).click()
