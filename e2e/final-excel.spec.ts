@@ -27,9 +27,9 @@ async function downloadFinal(page: Page) {
   const downloading = page.waitForEvent("download")
   await dialog.getByTestId("export-excel").click()
   const path = (await (await downloading).path())!
-  await openTab(page, "table")
   const wb = new ExcelJS.Workbook()
   await wb.xlsx.load(readFileSync(path).buffer as ArrayBuffer)
+  await openTab(page, "table")
   return wb
 }
 
