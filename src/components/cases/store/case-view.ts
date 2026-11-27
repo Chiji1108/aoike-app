@@ -1,6 +1,8 @@
 import { rowFix } from "@/components/convert/status"
 import { askFacts, askImpact, askPrompt, askWording } from "@/lib/cases/ask-impact"
 import { layoutOf } from "@/lib/cases/layout"
+import { selectionAdvice } from "@/lib/cases/selection-advice"
+import { activeView, type WorkView } from "@/lib/cases/steps"
 import { caseTodo, reportQuestionStates } from "@/lib/cases/todo"
 import { onlyNonSheetSources } from "@/lib/cases/types"
 import { editKey, type RowResult } from "@/lib/convert/convert"
@@ -95,10 +97,21 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       }),
   )
   const askIdsOf = memoLast((askRows: ReturnType<typeof askRowsOf>) => askRows.map((r) => ({ id: r.id, key: r.key })))
+  /** 載せる工事の既定の案（lib/cases/selection-advice.ts）。載せうる行は除外していない行 */
+  const selectionAdviceOf = memoLast((shown: TableDerived["shown"], inclusion: TableDerived["inclusion"], summary: ReturnType<typeof summaryOf>) => {
+    const rows = (shown ?? []).filter((r) => inclusion.get(r.key)?.reason !== "excluded").length
+    return selectionAdvice({ previous: config.previous ? { selection: config.previous.selection } : null, rows, summary })
+  })
   /** 報告の聞き返しと答えたか（lib/cases/todo.ts。報告・ダウンロードの前の確認・「答える」で同じもの） */
   const questionStatesOf = memoLast(
-    (hasTable: boolean, tax: CaseState["work"]["tax"], taxBy: CaseState["work"]["taxBy"], reportAnswers: CaseState["work"]["reportAnswers"], asks: readonly { id: string; key: string }[]) =>
-      reportQuestionStates({ hasTable, tax, taxBy, reportAnswers, asks }),
+    (
+      hasTable: boolean,
+      selectionAnswered: boolean,
+      tax: CaseState["work"]["tax"],
+      taxBy: CaseState["work"]["taxBy"],
+      reportAnswers: CaseState["work"]["reportAnswers"],
+      asks: readonly { id: string; key: string }[],
+    ) => reportQuestionStates({ hasTable, selectionAnswered, tax, taxBy, reportAnswers, asks }),
   )
   /**
    * 残りの件数（lib/cases/todo.ts が1回だけ数える）。次にやること・ダウンロードの前の確認・表の「直す」・業種のタブ・タブの数・
@@ -147,7 +160,9 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     const summary = summaryOf(t.edited, t.selected, w.tax, w.basis, w.rule7Tax)
     const planAsks = w.plan?.plan.asks ?? NO_ASKS
     const askRows = askRowsOf(t.sources, t.shown, planAsks, t.plan)
-    const questionStates = questionStatesOf(t.hasTable, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
+    // 載せる工事を聞くかは去年で決まっているかだけで決まる（行や額が変わっても、聞き返しが出たり消えたりしない。変わるのはすすめる側だけ）
+    const advice = selectionAdviceOf(t.shown, t.inclusion, summary)
+    const questionStates = questionStatesOf(t.hasTable, w.selectionAnswered, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
     /** 問い合わせを送ったか（案件が問い合わせ中か、問い合わせの Excel・メールの下書き〔件名〕を出した） */
     const inquirySent = rt.status === "inquiring" || rt.files.some((f) => f.kind === "inquiry_sheet") || w.inquiryText.subject !== null
     const previousSide = previousSideOfSheets(rt.previous)
@@ -165,6 +180,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       askRows,
       askEffects: askEffectsOf(askRows, t.edited, t.shown, t.selected, summary, planAsks, w.manual, w.tax, w.basis, w.rule7Tax, w.selection),
       questionStates,
+      selectionAdvice: advice,
       todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, w.answers !== null, inquirySent),
       manualIncluded: manualIncludedOf(t.inclusion),
       previousSide,
@@ -172,8 +188,18 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）
       chatReady: !!t.rows && !t.reconverting && (noSheetSource || (w.converted && !!rt.source && !!t.grid && !!t.plan)),
+      chatCanSend: false,
       layout: layoutOfInput(s.ui.wide, t.hasTable, !!t.output && !!t.shown, s.ui.workChoice, s.ui.chat.collapsed),
+      view: "table",
+      tool: null,
+      visible: null,
     }
+    out.view = activeView(s.ui.tab, out.todo)
+    out.tool = s.ui.tool
+    // 今目に見えている画面（作業の画面を開いていなければ無し。道具を開いていれば道具、なければ段か表）
+    out.visible = out.layout.workShown ? (out.tool ?? out.view) : null
+    // チャットに指示を送れるか（1つの真実: 送る準備ができ、会話を読み終え、送っている途中でない）。「答える」の段の「AI に聞く」とチャットの欄が同じ値を読む
+    out.chatCanSend = out.chatReady && s.ui.chatTurn.loaded && !s.ui.chatTurn.sending
     // 中身が前と同じ参照なら前の結果を返す（selector が描画ごとに新しいものを返さない）
     const same = last && (Object.keys(out) as (keyof CaseView)[]).every((k) => Object.is(out[k], last!.out[k]))
     last = { state: s, out: same ? last!.out : out }
@@ -193,11 +219,20 @@ export type CaseView = {
   askRows: { id: string; key: string; label: string; keys: Set<string>; rows: NonNullable<TableDerived["shown"]> }[]
   askEffects: { impact: ReturnType<typeof askImpact> | null; facts: string | undefined; wording: ReturnType<typeof askWording>; prompt: ReturnType<typeof askPrompt> }[]
   questionStates: ReturnType<typeof reportQuestionStates>
+  selectionAdvice: ReturnType<typeof selectionAdvice>
   todo: ReturnType<typeof caseTodo>
   manualIncluded: number
   previousSide: ReturnType<typeof previousSideOf>
   formatDiff: { diff: ReturnType<typeof compareFormats>; lines: ReturnType<typeof describeFormatDiff> } | null
   noSheetSource: boolean
   chatReady: boolean
+  /** チャットに指示を送れるか（chatReady と ui.chatTurn から作る） */
+  chatCanSend: boolean
   layout: ReturnType<typeof layoutOf>
+  /** 作業の画面に開いているもの（段・表・道具。職員が選ぶまでは今の段。lib/cases/steps.ts） */
+  view: ReturnType<typeof activeView>
+  /** 開いている道具（段の並びの外に重ねて開く。ui.tool） */
+  tool: CaseState["ui"]["tool"]
+  /** 今目に見えている画面（道具を開いていれば道具、なければ段か表。作業の画面を閉じていれば null）。表の測り方・問い合わせの案内が読む */
+  visible: WorkView | null
 }

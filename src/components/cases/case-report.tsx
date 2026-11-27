@@ -1,14 +1,13 @@
-import { CircleHelp, FileUp, Info, Loader2, MapPin, MessageSquareText, RotateCcw, Sparkles, TableProperties, Undo2 } from "lucide-react"
+import { ArrowRight, CircleHelp, FileUp, Info, Loader2, MapPin, RotateCcw, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { Message, MessageContent, MessageHeader } from "@/components/ui/message"
 import { cn } from "@/lib/utils"
 import type { ReportPhase } from "@/lib/cases/phase"
 
 /**
  * 変換の報告（チャットの最初の返事）。ファイルを読む → 列の対応を考える → 変換する の進み具合と、変換のあとの知らせ（答えは要らない。
- * 計画の AI のメモ・見出しから推定した理由・まとめた行・去年との違い）、職員に聞くこと（Confirmation。答えを選ぶと閉じ、取り消せる）、
- * 費用のかかる工事場所の調査を出す。直す行の件数・ダウンロード・問い合わせは作業の画面の「次にやること」にあるので出さない。
+ * 計画の AI のメモ・見出しから推定した理由・まとめた行・去年との違い）、聞き返しの数の1行（押すと「答える」の段。答えるのはそこだけ）、
+ * 費用のかかる工事場所の調査を出す。直す行の件数・ダウンロード・問い合わせは作業の画面の段の並びにあるので出さない。
  * 案件の作業から作るので保存しない（変われば書き直る）
  */
 
@@ -17,24 +16,6 @@ export type { ReportPhase }
 /** アップロードしたファイルをどう扱ったか */
 export type UploadNote = { name: string; text: string; tone?: "error" }
 
-export type ReportQuestion = {
-  id: string
-  text: string
-  /** 対象の行の数など（例:「該当 12 行」） */
-  detail?: string
-  options: { value: string; label: string }[]
-  /** 答えたなら、その選択肢の表示 */
-  answered: string | null
-  /** 対象の行を表で見る（答えではない。押しても閉じない） */
-  view?: () => void
-  /** 答えを取り消して聞き直す（取り消せるときだけ） */
-  undo?: (() => void) | null
-  /** 「AI に聞く」でチャットに送る決まった質問（説明を頼める聞き返しだけ） */
-  prompt?: string
-}
-
-/** 報告からチャットに送る（チャットの欄が渡す。送れる間だけ canSend。送る決まりは入力欄と同じ） */
-export type ReportChat = { send: (text: string) => void; canSend: boolean }
 
 export type ReportCounts = { rows: number; csv: number }
 
@@ -46,15 +27,14 @@ export type ReportProps = {
   /** 知らせ（計画の AI のメモなど。答えは要らない）。tone は目立たせるか */
   notes: { text: string; tone?: "warning"; testId?: string }[]
   counts: ReportCounts | null
-  questions: ReportQuestion[]
-  onAnswer: (id: string, value: string) => void
+  /** 答えていない報告の聞き返しの数と、「答える」の段を開く（答えるのは「答える」の段だけ。報告には中身を並べず1行だけ。0 なら出さない） */
+  answer: { count: number; go: () => void }
   /** 去年の案件との違い（無ければ null） */
   previous: { fiscalYear: number; lines: string[] | null; error: string | null; changed: boolean } | null
   /** 工事場所の調査（調べられる現場があるときだけ。費用がかかるので職員が押して始める） */
   location: { open: () => void; sites: number } | null
   onRetry: (() => void) | null
   uploads: UploadNote[]
-  chat: ReportChat | null
 }
 
 const PHASE_TEXT = {
@@ -144,14 +124,13 @@ function Body(p: ReportProps) {
           )}
         </p>
       )}
-      {p.questions.map((q) => (
-        <QuestionItem
-          key={q.id}
-          question={q}
-          onAnswer={p.onAnswer}
-          ask={q.prompt && p.chat ? { label: "AI に聞く", disabled: !p.chat.canSend, run: () => p.chat!.send(q.prompt!) } : null}
-        />
-      ))}
+      {p.answer.count > 0 && (
+        <Button size="sm" variant="outline" className="w-fit border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100" onClick={p.answer.go} data-testid="report-answer-step" data-count={p.answer.count}>
+          <CircleHelp className="text-amber-600" />
+          聞き返しが <span className="num">{p.answer.count}</span>件あります
+          <ArrowRight /> 答える
+        </Button>
+      )}
       {p.notes.length > 0 && (
         <div className="grid gap-1" data-testid="report-notes">
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -186,69 +165,5 @@ function Body(p: ReportProps) {
         </Button>
       )}
     </div>
-  )
-}
-
-/**
- * 職員に聞くこと1つ（変換の報告とダウンロードの前の確認で同じ部品）。答えを選ぶと答えを出して閉じ、取り消せる。
- * 「表で見る」「AI に聞く」は答えではない（押しても閉じない）。ask は報告ならチャットに送る、ダウンロードの前の確認ならチャットへ移る
- */
-export function QuestionItem({
-  question: q,
-  onAnswer,
-  ask,
-}: {
-  question: ReportQuestion
-  onAnswer: (id: string, value: string) => void
-  ask: { label: string; disabled: boolean; run: () => void } | null
-}) {
-  return (
-    <Item
-      variant="outline"
-      size="sm"
-      className={cn("items-start", q.answered === null ? "border-amber-300 bg-amber-50" : "bg-muted/30")}
-      data-testid="report-question"
-      data-question={q.id}
-      data-answered={q.answered ?? undefined}
-      data-pending={q.answered === null ? "1" : undefined}
-    >
-      <ItemMedia variant="icon">
-        <CircleHelp className="text-amber-600" />
-      </ItemMedia>
-      <ItemContent className="min-w-0 gap-2">
-        <ItemTitle className="whitespace-pre-wrap">{q.text}</ItemTitle>
-        {q.detail && <ItemDescription className="line-clamp-none" data-testid="report-question-detail">{q.detail}</ItemDescription>}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {q.answered !== null ? (
-            <>
-              <span className="text-sm font-medium" data-testid="report-question-answer">
-                {q.answered}
-              </span>
-              {q.undo && (
-                <Button size="xs" variant="ghost" onClick={q.undo} data-testid="report-question-undo">
-                  <Undo2 /> 取り消す
-                </Button>
-              )}
-            </>
-          ) : (
-            q.options.map((o) => (
-              <Button key={o.value} size="sm" variant="outline" className="bg-background" onClick={() => onAnswer(q.id, o.value)} data-testid="report-answer" data-value={o.value}>
-                {o.label}
-              </Button>
-            ))
-          )}
-          {q.view && (
-            <Button size="sm" variant="ghost" onClick={q.view} data-testid="report-question-view">
-              <TableProperties /> 表で見る
-            </Button>
-          )}
-          {ask && (
-            <Button size="sm" variant="ghost" disabled={ask.disabled} onClick={ask.run} data-testid="report-question-ask">
-              <MessageSquareText /> {ask.label}
-            </Button>
-          )}
-        </div>
-      </ItemContent>
-    </Item>
   )
 }

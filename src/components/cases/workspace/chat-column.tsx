@@ -1,23 +1,22 @@
 import { lazy, Suspense, useRef } from "react"
 import { Paperclip } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
-import { CaseReport, type ReportChat, type ReportProps } from "@/components/cases/case-report"
+import { CaseReport, type ReportProps } from "@/components/cases/case-report"
 import { useCase, useCaseActions, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
 import { derive } from "@/components/cases/store/derive"
 import { AnswerImportPanel, FinalImportPanel } from "@/components/convert/final-import-panel"
 import { FixSuggestionPanel } from "@/components/convert/fix-suggestion"
 import { Button } from "@/components/ui/button"
 import { reportPhase } from "@/lib/cases/phase"
+import { reportAsks } from "@/lib/cases/todo"
 import { ATTACH_ACCEPT } from "@/lib/cases/types"
 import { TAX_LABELS } from "@/lib/convert/koji-selection"
-import { useGyoshuSuggest, useProposalActions, useReportQuestions } from "./hooks"
+import { useGyoshuSuggest, useProposalActions } from "./hooks"
 import { useLocationTool } from "./tools"
 
 /** チャット（Markdown の描画・AI SDK）は画面を開いたあとに読み込む */
 const ChatPanel = lazy(() => import("@/components/chat/chat-panel").then((m) => ({ default: m.ChatPanel })))
 
-/** 報告はチャットの欄の流れの最初（チャットが渡す chat で決まった質問を送れる） */
-const report = (chat: ReportChat | null) => <ChatReport chat={chat} />
 
 /**
  * チャットの欄の中身: チャット（変換の報告・直した Excel と顧客の回答の変更案・業種の AI の案を流れに出す）。
@@ -28,7 +27,7 @@ export function ChatColumn() {
   if (config.chatEnabled)
     return (
       <Suspense fallback={<div className="h-full" />}>
-        <ChatPanel report={report} tail={<FixTail />} />
+        <ChatPanel report={<ChatReport />} tail={<FixTail />} />
       </Suspense>
     )
   return <NoChat />
@@ -39,7 +38,7 @@ function NoChat() {
   const input = useRef<HTMLInputElement>(null)
   return (
     <div className="grid h-full content-start gap-3 overflow-auto p-4">
-      {report(null)}
+      <ChatReport />
       <Button size="sm" className="w-fit" onClick={() => input.current?.click()} data-testid="chat-attach">
         <Paperclip /> アップロード
       </Button>
@@ -60,7 +59,7 @@ function NoChat() {
 }
 
 /** 変換の報告（チャットの最初の返事）と、その下の直した Excel・顧客の回答の変更案 */
-function ChatReport({ chat }: { chat: ReportChat | null }) {
+function ChatReport() {
   const actions = useCaseActions()
   const proposalActions = useProposalActions()
   const view = useTable((t) => t.view)
@@ -70,15 +69,15 @@ function ChatReport({ chat }: { chat: ReportChat | null }) {
   const { excel, answer } = useCase((s) => derive(s).panels)
   return (
     <>
-      <ReportBody chat={chat} onAnswer={actions.answerReport} onRetry={actions.retry} />
+      <ReportBody onRetry={actions.retry} />
       <FinalImportPanel result={finalResult} view={view} proposals={excel} changes={contents} actions={proposalActions} busy={busy} />
       <AnswerImportPanel view={view} proposals={answer} changes={contents} actions={proposalActions} busy={busy} />
     </>
   )
 }
 
-/** 変換の報告。進み具合・知らせ・聞き返し・去年との違い・工事場所の調査をストアから作る */
-function ReportBody({ chat, onAnswer, onRetry }: { chat: ReportChat | null; onAnswer: (id: string, value: string) => void; onRetry: (what: "source" | "convert") => void }) {
+/** 変換の報告。進み具合・知らせ・聞き返しの数（答えるのは「答える」の段）・去年との違い・工事場所の調査をストアから作る */
+function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void }) {
   const { config, actions } = useCaseSession()
   const location = useLocationTool()
   const work = useCase(
@@ -108,8 +107,7 @@ function ReportBody({ chat, onAnswer, onRetry }: { chat: ReportChat | null; onAn
   const { reconverting, hasTable, sources, unmarked, shown, output } = useTable(
     useShallow((t) => ({ reconverting: t.reconverting, hasTable: t.hasTable, sources: t.sources, unmarked: t.unmarked, shown: t.shown, output: t.output })),
   )
-  const { noSheetSource, formatDiff } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, formatDiff: v.formatDiff })))
-  const questions = useReportQuestions()
+  const { noSheetSource, formatDiff, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, formatDiff: v.formatDiff, asks: reportAsks(v.todo) })))
   const { previous } = config
 
   const sourceFile = rt.files.find((f) => f.id === work.sourceFileId)
@@ -138,7 +136,7 @@ function ReportBody({ chat, onAnswer, onRetry }: { chat: ReportChat | null; onAn
     ...(work.plan?.notice ? [{ text: work.plan.notice, tone: "warning" as const }] : []),
     // 計画が税込・税抜を決めたら聞き返さない。決めたことと直し方だけ伝える
     ...(work.taxBy === "plan" && work.tax !== "unknown"
-      ? [{ text: `Excel の見出し・注記から、金額は${TAX_LABELS[work.tax]}とみなしました。違えば「7割と金額」で直してください。`, testId: "plan-tax-note" }]
+      ? [{ text: `Excel の見出し・注記から、金額は${TAX_LABELS[work.tax]}とみなしました。違えば「ダウンロード」の段の「7割と金額」で直してください。`, testId: "plan-tax-note" }]
       : []),
     // 使うシートのメモは報告の最初の行（どのファイルのどのシートか）と重なるので出さない
     ...(work.plan?.plan.notes ?? []).filter((n) => !n.startsWith("使うシート「")).map((text) => ({ text })),
@@ -156,8 +154,7 @@ function ReportBody({ chat, onAnswer, onRetry }: { chat: ReportChat | null; onAn
       planByAi={work.plan?.source === "ai"}
       notes={notes}
       counts={shown && output ? { rows: shown.length, csv: output.length } : null}
-      questions={questions}
-      onAnswer={onAnswer}
+      answer={{ count: asks, go: () => actions.goStep("answer") }}
       previous={
         previous && hasTable && (formatDiff || (previousSheets && "error" in previousSheets) || !previous.source)
           ? {
@@ -171,7 +168,6 @@ function ReportBody({ chat, onAnswer, onRetry }: { chat: ReportChat | null; onAn
       location={location.sites > 0 ? { open: () => actions.showTab("location"), sites: location.sites } : null}
       onRetry={() => onRetry(phase.kind === "failed" && phase.retry === "source" ? "source" : "convert")}
       uploads={rt.notes}
-      chat={chat}
     />
   )
 }

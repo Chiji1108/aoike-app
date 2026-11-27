@@ -27,8 +27,9 @@ async function convert(page: Page) {
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
   await page.getByTestId("chat-file-input").setInputFiles(LARGE)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
+  await openTab(page, "table")
 }
 
 const header = (page: Page) => page.getByTestId("include-all")
@@ -79,6 +80,7 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     await header(page).click()
     await rowBox(page, 0).click()
     await expect(page.getByTestId("include-all-off")).toBeVisible()
+    await expect(page.getByTestId("include-all-off")).toHaveText(/^外す\d+$/)
     await expect(header(page)).toHaveAttribute("aria-checked", "true")
     await rowBox(page, 0).click()
     await header(page).click()
@@ -172,9 +174,27 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     await expect(page.getByTestId("all-hint")).toHaveCount(0)
     await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await showAllRows(page)
     await expect(header(page)).toHaveAttribute("data-selection", "rule7")
     await expect(page.getByTestId("all-hint")).toHaveCount(0)
   })
+})
+
+test("ほかの段を開いて表に戻っても、表のスクロールの位置はずれない（隠れている間は行の高さを測らない）", async ({ page }) => {
+  await convert(page)
+  const top = () => page.getByTestId("preview-table").evaluate((t) => t.parentElement!.scrollTop)
+  await expect(row(page, 0)).toBeVisible()
+  for (const view of ["gyoshu", "inquiry", "export", "answer"] as const) {
+    await openTab(page, view)
+    await openTab(page, "table")
+    await expect(row(page, 0)).toBeVisible()
+    expect(await top()).toBe(0)
+  }
+  // 下へスクロールしてから離れて戻っても、ほぼ同じ位置（下へずれていかない。1行の高さより小さい違いだけ）
+  await scrollTable(page, 1200)
+  const at = await top()
+  await openTab(page, "gyoshu")
+  await openTab(page, "table")
+  await expect.poll(async () => Math.abs((await top()) - at)).toBeLessThan(36)
 })

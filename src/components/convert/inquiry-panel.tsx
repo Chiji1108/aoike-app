@@ -30,6 +30,7 @@ export function InquiryPanel({
   onText,
   attachment,
   onDownload,
+  busy,
   onToggle,
 }: {
   inquiries: Inquiry[]
@@ -44,6 +45,8 @@ export function InquiryPanel({
   attachment: AttachmentChoice
   /** 添付の Excel を作ってダウンロードし、案件に残す（印付きを書けなければ記入用Excel） */
   onDownload: () => Promise<void>
+  /** 変換し直している間（表は前の行なので、問い合わせの Excel をダウンロードできない。CSV・最後の Excel と同じ） */
+  busy: boolean
   onToggle: (key: string, ask: boolean) => void
 }) {
   const active = useMemo(() => inquiries.filter((q) => !dismissed.has(inquiryKey(q))), [inquiries, dismissed])
@@ -146,7 +149,7 @@ export function InquiryPanel({
               本文をコピー
             </Button>
             {attachment.askCount > 0 && (
-              <Button variant="outline" onClick={() => void download()} disabled={downloading} data-testid="download-inquiry-xlsx" data-kind={attachment.kind}>
+              <Button variant="outline" onClick={() => void download()} disabled={downloading || busy} title={busy ? "変換し直しています。終わるとダウンロードできます" : undefined} data-testid="download-inquiry-xlsx" data-kind={attachment.kind}>
                 {downloading ? <Loader2 className="animate-spin" /> : <FileDown />}
                 Excel をダウンロード（{attachment.kind === "marked" ? "印付き" : "記入用Excel"}・{attachment.askCount}件）
               </Button>

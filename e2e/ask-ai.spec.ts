@@ -94,7 +94,8 @@ async function upload(page: Page) {
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
 }
 
-const question = (page: Page) => page.locator('[data-testid="report-question"][data-question="plan-ask-0"]')
+/** 「答える」の段の計画の聞き返し（聞き返しに答えるのは答えるの段だけ） */
+const question = (page: Page) => page.locator('[data-testid="answer-section"] [data-testid="report-question"][data-question="plan-ask-0"]')
 
 test("聞き返しの「AI に聞く」で、聞き返しを特定できる質問が職員の発言としてチャットに出て、返事の間は押せない。狭い画面でもチャットに出る", async ({ page }) => {
   const { customer } = await openNewCase(page)
@@ -119,11 +120,14 @@ test("聞き返しの「AI に聞く」で、聞き返しを特定できる質�
     await expect(question(page)).toHaveAttribute("data-pending", "1")
   })
 
-  await test.step("狭い画面（作業の画面は閉じている）でも、押すとチャットに質問が見える", async () => {
+  await test.step("狭い画面でも、重ねて開いた答えるの段から押すと作業の画面を閉じ、チャットに質問が見える", async () => {
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByTestId("work-frame")).toBeHidden()
     await page.getByTestId("chat-input").fill("書きかけ")
+    await page.getByTestId("work-open").click()
+    await openTab(page, "answer")
     await question(page).getByTestId("report-question-ask").click()
+    await expect(page.getByTestId("work-frame")).toBeHidden()
     await expect.poll(() => texts.length).toBe(2)
     const sent = page.getByTestId("chat-messages").getByText("どういうことですか？").last()
     await expect(sent).toBeInViewport()
@@ -132,6 +136,7 @@ test("聞き返しの「AI に聞く」で、聞き返しを特定できる質�
 
   await test.step("答えると「AI に聞く」は出さない", async () => {
     await page.setViewportSize({ width: 1500, height: 1000 })
+    await openTab(page, "answer")
     await question(page).locator('[data-value="keep"]').click()
     await expect(question(page)).toHaveAttribute("data-answered", "載せる")
     await expect(question(page).getByTestId("report-question-ask")).toHaveCount(0)
@@ -160,6 +165,7 @@ test("載せる件数の表示: 対象の行のうち今載せている数を出
   })
 
   await test.step("対象の行を手で外すと、どちらでも件数は変わらないと書き、ボタンに件数を付けない", async () => {
+    await openTab(page, "answer")
     await question(page).getByTestId("report-question-view").click()
     const row = page.locator('[data-testid="preview-table"] tbody tr[data-row-key]')
     await expect(row).toHaveCount(1)

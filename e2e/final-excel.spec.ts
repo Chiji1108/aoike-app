@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
-import { convertFixture, deleteCustomer, downloadCsv, open, showAllRows } from "./helpers"
+import { fileBytes, convertFixture, deleteCustomer, downloadCsv, open, openExport, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 const ROWS = '[data-testid="preview-table"] tbody tr[data-row-key]'
@@ -20,18 +19,16 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
-/** ダウンロードの前の確認から最後の Excel をダウンロードし、ExcelJS で開く（職員が Excel で開いたとき） */
+/** ダウンロードの段から最後の Excel をダウンロードし、ExcelJS で開く（職員が Excel で開いたとき）。表に戻す */
 async function downloadFinal(page: Page) {
-  await page.getByTestId("export-button").click()
-  const dialog = page.getByTestId("export-dialog")
+  const dialog = await openExport(page)
   await expect(dialog.getByTestId("export-note")).toContainText("アップロードすると表に戻ります")
   const downloading = page.waitForEvent("download")
   await dialog.getByTestId("export-excel").click()
   const path = (await (await downloading).path())!
-  await page.keyboard.press("Escape")
-  await expect(dialog).toBeHidden()
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync(path).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes(path))
+  await openTab(page, "table")
   return wb
 }
 
@@ -91,7 +88,7 @@ test("ダウンロードした Excel の値を1つ直して行を1つ消し、�
 
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved")
   await open(page, caseUrl)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
   await showAllRows(page)
   await expect(page.locator(`${ROWS}[data-row-key="${changedKey}"]`)).toContainText(String(newAmount), { timeout: 60_000 })
 

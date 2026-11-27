@@ -41,7 +41,9 @@ const replanWork = (w: CaseWork, sourceFileId: string): CaseWork => ({
   taxBy: w.taxBy,
   basis: w.basis,
   rule7Tax: w.rule7Tax,
+  // 載せる工事の選び方と、答えたかは元に依らないので引き継ぐ
   selection: w.selection,
+  selectionAnswered: w.selectionAnswered,
   rounding: w.rounding,
   // 税込・税抜の答えは元に依らないので引き継ぐ。計画の聞き返しの答えは前の計画のもの
   reportAnswers: w.reportAnswers.tax ? { tax: w.reportAnswers.tax } : {},

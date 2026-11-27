@@ -79,10 +79,20 @@ export type CaseTodo = {
  * 税は、まだ誰も決めていなければ聞き（計画・職員が決めたら聞かない。答えたものは答えを出す）、金額が決まったか「分からない」と答えたら答えた。
  * 計画の聞き返しは、聞き返しの答えとして記録したもの（exclude・keep）だけを答えと見なす（チャットなどで入れた除外は答えではない）
  */
-export function reportQuestionStates(input: { hasTable: boolean; tax: TaxMode; taxBy: TaxBy | null; reportAnswers: Readonly<Record<string, string>>; asks: readonly { id: string; key: string }[] }) {
+export function reportQuestionStates(input: {
+  hasTable: boolean
+  /** 「答える」の載せる工事に答えたか（lib/cases/selection.ts。どの案件でも1回だけ聞く） */
+  selectionAnswered: boolean
+  tax: TaxMode
+  taxBy: TaxBy | null
+  reportAnswers: Readonly<Record<string, string>>
+  asks: readonly { id: string; key: string }[]
+}) {
   if (!input.hasTable) return []
   const { tax, taxBy, reportAnswers } = input
   const out: { id: string; answered: boolean }[] = []
+  // 載せる工事は最初に聞く（業種を決める・直すの数が変わる）
+  out.push({ id: "selection", answered: input.selectionAnswered })
   if ((tax === "unknown" && taxBy === null) || reportAnswers.tax) out.push({ id: "tax", answered: tax !== "unknown" || reportAnswers.tax === "ask" })
   // 計画の聞き返しの答えは、並び順の id ではなく聞き返しの鍵（lib/convert/plan.ts の askKey）で持つ
   for (const { id, key } of input.asks) out.push({ id, answered: reportAnswers[key] === "exclude" || reportAnswers[key] === "keep" })
@@ -144,6 +154,9 @@ export function caseTodo(input: TodoInput): CaseTodo {
     badges: { gyoshu: rows.length, inquiry: active.length, location: locationOpen },
   }
 }
+
+/** 答えていない報告の聞き返し（載せる工事・税込か税抜か・計画の聞き返し）の数。チャットの報告の1行「聞き返しが N件あります → 答える」 */
+export const reportAsks = (todo: CaseTodo) => todo.answer.filter((a) => a.kind === "question").length
 
 /** 変更案が「答える」に数えるものか（チャットの答えを待つ印・「答える」から移る先） */
 export const awaitsAnswer = (todo: CaseTodo, proposalId: string) => todo.answer.some((a) => a.kind === "proposal" && a.proposalId === proposalId)

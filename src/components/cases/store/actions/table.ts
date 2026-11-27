@@ -5,9 +5,10 @@ import { needsConfirm } from "@/lib/cases/ask-impact"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
 import { pendingGyoshuItems } from "@/lib/cases/todo"
-import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO } from "@/lib/cases/undo"
+import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
+import { selectionSettled, setSelection } from "@/lib/cases/selection"
 import { SELECTION_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
 import { askKey, hasExclusion, type ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
@@ -22,10 +23,8 @@ import { supersedeConversion } from "./source"
 
 const SPEC = KOJI_KEIREKI
 
-/**
- * 報告の聞き返しの答えの取り消しの記録（cases/undo.ts）の単位。key は税なら tax、計画の聞き返しなら並び順に依らない鍵（lib/convert/plan.ts の askKey）
- */
-export const reportUndoId = (key: string) => `report:${key}`
+/** 報告の聞き返しの答えの取り消しの記録の単位（lib/cases/undo.ts の reportUndoId。画面の部品もここから読む） */
+export { reportUndoId }
 
 /** 作業の1つの項目を、その時点の値から変える */
 const update = <K extends keyof CaseWork>(env: CaseEnv, key: K, next: (prev: CaseWork[K]) => CaseWork[K]) => setWork(env.store, (w) => ({ ...w, [key]: next(w[key]) }))
@@ -143,13 +142,15 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
 }
 
 /**
- * 載せる工事の選び方を変える（7割と金額のタブの「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。
- * 取り消しの記録に残し、通知の「取り消す」で戻せる
+ * 載せる工事の選び方を変える（ダウンロードの段の7割と金額の「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。
+ * 取り消しの記録に残し、通知の「取り消す」で戻せる。職員が選んだので「答える」の載せる工事にも答えたことにする
  */
 export function changeSelection(env: CaseEnv, mode: SelectionMode) {
-  if (env.store.getState().work.selection === mode) return
+  // 同じ選び方にもう答えているときだけ何もしない（既定値と同じ値を選んでも、答えたことになる。lib/cases/selection.ts）
+  if (selectionSettled(env.store.getState().work, mode)) return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
-  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode }))
+  // 選び方と一緒に「答えた」を書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
+  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, true))
   notifyCommitted(env, `載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, id, "載せる工事の切り替え")
 }
 
@@ -191,6 +192,12 @@ export function answerProposal(env: CaseEnv, id: string, a: "yes" | "no") {
  */
 export function answerReport(env: CaseEnv, id: string, value: string) {
   const { store } = env
+  if (id === "selection") {
+    // 載せる工事（7割ルール／全件）。答えたあとも表の見出しのチェック・ダウンロードの段の7割と金額で変えられる
+    if (value !== "rule7" && value !== "all") return
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => setSelection(w, value, true))
+    return
+  }
   if (id === "tax") {
     // 「分からない（顧客に聞く）」も職員が決めた値（計画のし直しで上書きしない）
     const next = value === "included" || value === "excluded" ? value : "unknown"

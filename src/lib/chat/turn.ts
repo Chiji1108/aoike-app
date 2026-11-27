@@ -2,6 +2,7 @@ import { createAnthropic, forwardAnthropicContainerIdFromLastStep } from "@ai-sd
 import { isStepCount, streamText, tool, type LanguageModelUsage, type ModelMessage } from "ai"
 import { z } from "zod"
 import { MAX_ADDED_ROWS, newAddedKey } from "../cases/added"
+import { selectionSettled } from "../cases/selection"
 import { baseRows, deriveTable, type CaseTable, type TableView } from "../cases/view"
 import { MAX_ITEMS_PER_REQUEST, parseAiResponse, type AiBatchRequest } from "../convert/ai-tasks"
 import { editText, staffEdit, type CellEdit } from "../convert/convert"
@@ -573,12 +574,12 @@ export function chatTools(state: TurnState) {
       }),
       execute: counted<{ tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }>((input) => {
         const now = state.current
-        // 今と同じ値は変更案にしない（基準額は重ねたあとが今と同じなら）
+        // 今と同じ値は変更案にしない（基準額は重ねたあとが今と同じなら）。載せる工事は、まだ答えていなければ同じ値でも変更案にする（承認すると答えたことになる）
         const basisChanged = !!input.basis && JSON.stringify(applyChanges(now, [], [{ kind: "settings", basis: input.basis }]).basis) !== JSON.stringify(now.basis)
         const change: Extract<ChatChange, { kind: "settings" }> = {
           kind: "settings",
           ...(input.tax && input.tax !== now.tax ? { tax: input.tax } : {}),
-          ...(input.selection && input.selection !== now.selection ? { selection: input.selection } : {}),
+          ...(input.selection && !selectionSettled(now, input.selection) ? { selection: input.selection } : {}),
           ...(basisChanged ? { basis: input.basis } : {}),
           ...(input.rounding && input.rounding !== now.rounding ? { rounding: input.rounding } : {}),
         }

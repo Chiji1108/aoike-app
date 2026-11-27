@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { savedWorkSchema, toSavedAiCache, toSavedWork, type CaseWork } from "@/lib/cases/state"
+import { newWork, savedWorkSchema, toSavedAiCache, toSavedWork, type CaseWork } from "@/lib/cases/state"
 import { GYOSHU_UNDO, UNDO_LIMITS } from "@/lib/cases/undo"
 import { approvedChatProposals } from "@/lib/chat/carryover"
 import { applyChanges, closeUnrecorded, decide, newProposal, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
@@ -13,6 +13,13 @@ const change: ChatChange = { kind: "inquiryMail", subject: "確認のお願い",
 const store = () => createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], previousUnsaved: false, state: null, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" } }))
 
 describe("案件のストア", () => {
+  test("載せる工事は去年から引き継がない（新しい案件はいつも7割ルールのまま答えていない）。保存した作業はそのまま読む", () => {
+    const base = { kase: { status: "converting" as const, costUsd: 0 }, files: [], previousUnsaved: false, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" as const } }
+    expect(initialCaseState({ ...base, state: null }).work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    const saved = { work: toSavedWork({ ...newWork("f"), converted: true, selection: "all", selectionAnswered: true }), aiCache: [] }
+    expect(initialCaseState({ ...base, state: saved }).work).toMatchObject({ selection: "all", selectionAnswered: true })
+  })
+
   test("変更案は中身と一緒に1回で入り、派生は同じ状態なら同じ参照を返す", () => {
     const s = store()
     const p = newProposal("p1", { kind: "excel", fileId: "f" }, [change], null)

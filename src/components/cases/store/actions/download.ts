@@ -21,8 +21,9 @@ const loadInquiryXlsx = createClientOnlyFn(() => Promise.all([import("@/lib/inqu
 
 /** CSV（控え）をダウンロードする。CP932 の検査を通した値をそのまま書き、案件のファイルに残す */
 export function downloadCsv(env: CaseEnv) {
-  const { output } = env.table(env.store.getState())
-  if (!output) return
+  const { output, reconverting } = env.table(env.store.getState())
+  // 変換し直している間は前の行なので書き出さない（控えにも残さない）
+  if (!output || reconverting) return
   const bytes = toCsvBytes(SPEC, output)
   const name = csvFileName(SPEC, env.config.customerName, new Date())
   saveFile(bytes, name, "text/csv")
@@ -35,8 +36,8 @@ export function downloadCsv(env: CaseEnv) {
 export async function downloadFinalExcel(env: CaseEnv) {
   const { config, store } = env
   const s = store.getState()
-  const { view, output } = env.table(s)
-  if (!view || !output) return
+  const { view, output, reconverting } = env.table(s)
+  if (!view || !output || reconverting) return
   try {
     const { finalXlsx } = await loadFinalXlsx()
     // 照合用の鍵はサーバーが案件ごとに決めたもの（Excel には書かない）
@@ -56,9 +57,10 @@ export async function downloadFinalExcel(env: CaseEnv) {
 export async function downloadInquiry(env: CaseEnv) {
   const { config, store } = env
   const s = store.getState()
-  const { output, currentSource } = env.table(s)
+  const { output, currentSource, reconverting } = env.table(s)
   const { attachment, placement, placementId, activeCells } = env.view(s)
-  if (!output) return
+  // 変換し直している間は前の行なので書き出さない（CSV・最後の Excel と同じ）
+  if (!output || reconverting) return
   try {
     const [{ markedXlsx }, { inquiryXlsx }] = await loadInquiryXlsx()
     const type = contentTypeOf("x.xlsx")

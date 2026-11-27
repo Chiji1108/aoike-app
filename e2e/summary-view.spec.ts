@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
-import { callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
+import { fileBytes, callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 /**
  * 7割と金額のタブの表は見るだけ。基準が何かを表の上の1行で出し、「決算書の額を入れる」を押したときだけ業種ごとの欄を開く。
@@ -28,15 +27,15 @@ async function convert(page: Page, file: Parameters<Page["setInputFiles"]>[1]) {
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
   await page.getByTestId("chat-file-input").setInputFiles(file)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
-  await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
+  await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 180_000 })
+  // 7割と金額はダウンロードの段の中
   await openTab(page, "selection")
 }
 
 /** 元請の工事を全部下請にした Excel（元請が1件も無い案件） */
 async function noMotoukeWorkbook() {
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync(FIXTURE).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes(FIXTURE))
   const ws = wb.getWorksheet("工事経歴")!
   const col = (ws.getRow(3).values as unknown[]).findIndex((v) => v === "元請/下請")
   expect(col).toBeGreaterThan(0)
@@ -44,7 +43,7 @@ async function noMotoukeWorkbook() {
   return { name: "下請だけ.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) }
 }
 
-test("表は見るだけ。「決算書の額を入れる」で開いて入れると割合が変わり、閉じても印が残る。ダウンロードの前の確認は届かない業種だけ。空にすると戻る", async ({ page }) => {
+test("表は見るだけ。「決算書の額を入れる」で開いて入れると割合が変わり、閉じても印が残る。ダウンロードの段の確かめにも出る。空にすると戻る", async ({ page }) => {
   await convert(page, FIXTURE)
   const panel = page.getByTestId("selection-section")
   const note = panel.getByTestId("basis-note")
@@ -89,15 +88,12 @@ test("表は見るだけ。「決算書の額を入れる」で開いて入れ�
     await expect(table.getByTestId("from-book")).toHaveCount(1)
   })
 
-  await test.step("ダウンロードの前の確認: 届かない業種だけを表で出す", async () => {
-    await page.getByTestId("export-button").click()
+  await test.step("ダウンロードの段の確かめ: 届かない業種の名前を出す（業種ごとの割合は同じ段の7割と金額の表）", async () => {
     const dialog = page.getByTestId("export-dialog")
     await expect(dialog.getByTestId("export-rule7")).toHaveAttribute("data-ok", "0")
     await expect(dialog.getByTestId("export-rule7")).toContainText("7割に届かない")
-    await expect(dialog.getByTestId("gyoshu-summary").locator("[data-gyoshu]")).toHaveCount(1)
-    await expect(dialog.locator(`[data-gyoshu="${code}"]`).getByTestId("from-book")).toBeVisible()
-    await page.keyboard.press("Escape")
-    await expect(dialog).toBeHidden()
+    await expect(dialog.getByTestId("gyoshu-summary")).toHaveCount(1)
+    await expect(dialog.getByTestId("export-basis")).toHaveAttribute("data-ok", "0")
   })
 
   await test.step("空にすると顧客の表の合計に戻る", async () => {
@@ -108,30 +104,18 @@ test("表は見るだけ。「決算書の額を入れる」で開いて入れ�
     await expect(row.getByTestId("total-ratio")).toHaveText(before)
     await expect(table.getByTestId("from-book")).toHaveCount(0)
     await expect(note).toHaveAttribute("data-entered", "0")
-    await page.getByTestId("export-button").click()
-    const dialog = page.getByTestId("export-dialog")
-    await expect(dialog.getByTestId("export-rule7")).toHaveText("7割: すべての業種で満たしています（基準は顧客の表の合計）")
-    await expect(dialog.getByTestId("gyoshu-summary")).toHaveCount(0)
-    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("export-rule7")).toHaveText("7割: すべての業種で満たしています（基準は顧客の表の合計）")
   })
 
-  await test.step("ダウンロードの前の確認で打った額は Escape で閉じても確定する。読めない字なら閉じずに知らせる", async () => {
-    await page.getByTestId("export-button").click()
-    const dialog = page.getByTestId("export-dialog")
-    await dialog.getByTestId("basis-open").click()
-    const input = dialog.locator(`[data-basis-gyoshu="${code}"]`).getByRole("textbox").first()
+  await test.step("読めない字なら知らせ、数字を入れると確かめの「決算書の額」に出る", async () => {
+    const input = panel.getByTestId("basis-editor").locator(`[data-basis-gyoshu="${code}"]`).getByRole("textbox").first()
     await input.fill("abc")
-    await input.press("Escape")
-    await expect(dialog).toBeVisible()
-    await expect(dialog.getByText("1以上の数字（千円）で入力してください")).toBeVisible()
+    await input.press("Enter")
+    await expect(panel.getByText("1以上の数字（千円）で入力してください")).toBeVisible()
     await input.fill("999999")
-    await input.press("Escape")
-    await expect(dialog).toBeHidden()
+    await input.press("Enter")
     await expect(row.getByTestId("total-ratio").getByTestId("from-book")).toBeVisible()
-    await page.getByTestId("export-button").click()
-    await expect(dialog.getByTestId("export-basis")).toContainText("決算書 999,999 千円")
-    await page.keyboard.press("Escape")
-    await expect(dialog).toBeHidden()
+    await expect(page.getByTestId("export-basis")).toContainText("決算書 999,999 千円")
   })
 })
 

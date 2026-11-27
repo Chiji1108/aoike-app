@@ -1,4 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
+import { describeSettings } from "../describe"
 import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { kojiRow } from "../../convert/__tests__/helpers"
@@ -181,6 +182,16 @@ describe("チャットの道具（決まった入力で）", () => {
       { kind: "rule", scope: "customer", text: "完成年月は引渡日", source: "chat" },
       { kind: "settings", tax: "included", selection: "rule7" },
     ])
+  })
+
+  test("set_selection は、同じ選び方にもう答えていれば変更案にしない。まだ答えていなければ同じ値でも変更案にし、文は「載せる工事を◯◯に決める」", async () => {
+    const answered = newTurnState({ ...table, selection: "rule7", selectionAnswered: true })
+    expect(await call(chatTools(answered), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
+    expect(answered.pending).toEqual([])
+    const unanswered = newTurnState({ ...table, selection: "rule7", selectionAnswered: false })
+    await call(chatTools(unanswered), "set_selection", { selection: "rule7" })
+    expect(unanswered.pending).toEqual([{ kind: "settings", selection: "rule7" }])
+    expect(describeSettings({ selection: "rule7" })).toEqual(["載せる工事を7割ルールに決める"])
   })
 
   test(`道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで。超えたら動かさずに返す`, async () => {

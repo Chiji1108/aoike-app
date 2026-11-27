@@ -72,7 +72,7 @@ test("顧客と案件を作り、変換と手直しを保存して再読み込�
       if (callsServerFn(r.url(), ["planWithAi", "runAiBatch"])) aiCalls.push(r.url())
     })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await showAllRows(page)
     await expect(page.locator(`tr[data-row-key="${key}"] td[data-field="place"]`)).toContainText("保存テスト市")
     await expect(page.locator(`tr[data-row-key="${otherKey}"]`)).toHaveAttribute("data-included", "0")
@@ -136,7 +136,7 @@ test("顧客と案件を作り、変換と手直しを保存して再読み込�
   await test.step("案件を消すと、D1 の行も R2 のファイルも残らない", async () => {
     await reload(page)
     // ファイルの行は作業の画面の上（保存した結果から表ができると開く）
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     const all = await page.locator('[data-testid="file-list"] a').evaluateAll((as) => as.map((a) => a.getAttribute("href")!))
     expect(all).toHaveLength(3)
     const keys = all.map((h) => `cases/${caseId}/${h.split("/").pop()}`)
@@ -176,7 +176,7 @@ test("列の対応を考えている途中で閉じても、開き直すと変�
   await reload(page)
   await replanned
   // 「変換する」のボタンは無い。考え終えると自動で変換し、作業の画面が開く（変換の元は残っている）
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId("current-source")).toBeVisible()
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
   await deleteCustomer(page, customer)

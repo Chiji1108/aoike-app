@@ -18,6 +18,8 @@ export type CaseTable = {
   /** 7割の計算（基準額が税抜か税込か） */
   rule7Tax: Rule7Tax
   selection: SelectionMode
+  /** 「答える」の載せる工事に答えたか（cases/selection.ts。チャットの set_selection が、まだ答えていなければ同じ値でも変更案にする） */
+  selectionAnswered?: boolean
   /** 金額の千円未満の扱い。rows はこの扱いで変換した行（変えたら変換し直す） */
   rounding: Rounding
   /** 職員が外した問い合わせ（inquiryKey）。チャットの問い合わせの道具はこれを除く */

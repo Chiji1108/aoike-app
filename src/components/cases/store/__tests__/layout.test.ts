@@ -3,6 +3,9 @@ import { fixture } from "@/lib/convert/__tests__/helpers"
 import type { ChatPrefs } from "../create-case-store"
 import type { CaseDeps } from "../deps"
 import { createCaseSession } from "../session"
+import { currentStep, nextStep, stepDone } from "@/lib/cases/steps"
+import { newProposal } from "@/lib/chat/proposals"
+import { receiveProposal } from "../actions/proposals"
 import { fakeDeps, FILES, page } from "./helpers"
 
 const noChannel = () => null
@@ -44,26 +47,40 @@ describe("並べ方と画面の action（ui）", () => {
   test("狭い画面: 表ができても重ねて開かず、道具の結果ではタブだけ切り替える。開くとうしろを覆う", async () => {
     const s = await converted(false)
     expect(layout(s)).toMatchObject({ work: { place: "overlay", shown: false }, covered: false })
+    const tab = s.store.getState().ui.tab
     s.actions.openTab("location", "auto")
-    expect(s.store.getState().ui.tab).toBe("location")
+    // 道具は段の並びの外に開く（段の並びは選んでいた段のまま）
+    expect(s.store.getState().ui).toMatchObject({ tool: "location", tab })
     expect(layout(s).covered).toBe(false)
     s.actions.showTab("table")
     expect(layout(s)).toMatchObject({ work: { place: "overlay", shown: true }, covered: true })
   })
 
-  test("狭い画面でその場でチャットへ移る（次にやることの「答える」）: 作業の画面を閉じてから、チャットの答えを待つものへの頼みを書く", async () => {
+  test("狭い画面で「答える」の段の「AI に聞く」: 作業の画面を閉じ、チャットに送る指示とチャットの入力欄への頼みを書く（受け取ったら外す）", async () => {
     const s = await converted(false)
-    s.actions.showTab("table")
-    const before = s.store.getState().ui.focus
-    s.actions.goStep("answer")
-    expect(layout(s).covered).toBe(false)
-    expect(layout(s).workShown).toBe(false)
-    const focus = s.store.getState().ui.focus
-    expect(focus).toEqual({ kind: "chat", target: "[data-pending]" })
-    // 同じ移り先でも、もう一度頼めば新しい頼み（もう一度動かす）
-    s.actions.goStep("answer")
-    expect(s.store.getState().ui.focus).not.toBe(focus)
-    expect(before).toBeNull()
+    s.actions.showTab("answer")
+    // 送れない間は受け付けない（頼みを残さない）
+    s.actions.askChat("説明して")
+    expect(s.store.getState().ui.chatSend).toBeNull()
+    s.actions.setChatLoaded(true)
+    s.actions.askChat("説明して")
+    expect(layout(s)).toMatchObject({ covered: false, workShown: false })
+    const ui = s.store.getState().ui
+    expect(ui.chatSend).toEqual({ text: "説明して" })
+    expect(ui.focus).toEqual({ kind: "chatWindow" })
+    // 送っている途中（送り始めてから返事が終わるまで）は受け付けない
+    s.actions.takeChatSend()
+    s.actions.setChatSending(true)
+    expect(s.view(s.store.getState()).chatCanSend).toBe(false)
+    s.actions.askChat("説明して")
+    expect(s.store.getState().ui.chatSend).toBeNull()
+    s.actions.setChatSending(false)
+    s.actions.askChat("説明して")
+    // 同じ指示でも、もう一度頼めば新しい頼み（もう一度送る）
+    s.actions.askChat("説明して")
+    expect(s.store.getState().ui.chatSend).not.toBe(ui.chatSend)
+    s.actions.takeChatSend()
+    expect(s.store.getState().ui.chatSend).toBeNull()
   })
 
   test("広い画面でチャットへ移っても、作業の画面は閉じない", async () => {
@@ -73,15 +90,12 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.store.getState().ui.focus).toEqual({ kind: "chat", target: '[data-proposal="p"]' })
   })
 
-  test("ダウンロードの前の確認からチャットへ移ると、確認を閉じて閉じたあとのフォーカス先を残し、開き直すと外す", async () => {
+  test("ダウンロードは段として開く（ダイアログでない）。表ができたら今の段に決める", async () => {
     const s = await converted(false)
+    await settle()
+    expect(s.store.getState().ui.tab).toBe(currentStep(s.view(s.store.getState()).todo))
     s.actions.openExport()
-    const to = { target: '[data-proposal="p"]' }
-    s.actions.exportToChat(to)
-    expect(s.store.getState().ui.dialogs.export).toEqual({ open: false, returnTo: to })
-    expect(s.store.getState().ui.focus).toEqual({ kind: "chat", ...to })
-    s.actions.openExport()
-    expect(s.store.getState().ui.dialogs.export).toEqual({ open: true, returnTo: null })
+    expect(s.store.getState().ui).toMatchObject({ tab: "export", workChoice: true })
   })
 
   test("業種の直し方を1行から押すと、業種のタブを開いてその行への頼みを書く（2行以上は頼まない）", async () => {
@@ -212,13 +226,14 @@ describe("チャットの窓（広い画面で表があるとき）", () => {
     expect(chat(s).unread).toBeNull()
   })
 
-  test("「答える」でチャットへ移るとき、たたんでいれば覚えた設定は変えずにその場だけ開き、移り先への頼みを書く", async () => {
+  test("「答える」の段の「AI に聞く」でチャットへ移るとき、たたんでいれば覚えた設定は変えずにその場だけ開き、作業の画面は閉じない", async () => {
     const { saved, prefs } = memoryPrefs({ collapsed: true, size: null, hintShown: true })
     const s = await convertedWith(prefs)
     const writes = saved.writes
-    s.actions.goStep("answer")
+    s.actions.setChatLoaded(true)
+    s.actions.askChat("説明して")
     expect(layout(s)).toMatchObject({ chat: "window", chatCollapsed: false, workShown: true })
-    expect(s.store.getState().ui.focus).toEqual({ kind: "chat", target: "[data-pending]" })
+    expect(s.store.getState().ui.chatSend).toEqual({ text: "説明して" })
     expect(saved.writes).toBe(writes)
     expect(saved.current?.collapsed).toBe(true)
   })
@@ -256,5 +271,115 @@ describe("チャットの窓（広い画面で表があるとき）", () => {
     const a = layout(s)
     s.actions.resizeChat({ w: 480, h: 500 }, false)
     expect(layout(s)).toBe(a)
+  })
+})
+
+describe("段（済んでも勝手に移らない）", () => {
+  test("表ができたら今の段（答える）に決め、答え終えて段が済んでもそのまま。「次は」を押したときだけ次の段へ移り、その段の中身へのフォーカスを頼む", async () => {
+    const s = await converted(true)
+    await settle()
+    const ui = () => s.store.getState().ui
+    const todo = () => s.view(s.store.getState()).todo
+    expect(ui().tab).toBe("answer")
+    s.actions.answerReport("selection", "all")
+    s.actions.answerReport("tax", "included")
+    await settle()
+    expect(stepDone(todo(), "answer")).toBe(true)
+    expect(ui().tab).toBe("answer")
+    expect(ui().focus).toBeNull()
+    const next = nextStep(todo(), "answer")
+    s.actions.goNextStep("answer")
+    expect(ui()).toMatchObject({ tab: next, focus: { kind: "step", id: next } })
+  })
+
+  test("載せる工事は答えるの最初に聞き、答えると作業の載せる工事も変わる（取り消すと出どころも戻る）", async () => {
+    const s = await converted(true)
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
+    s.actions.answerReport("selection", "all")
+    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionAnswered: true })
+    s.actions.undoWithNotice("report:selection", "答え")
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
+  })
+})
+
+describe("道具と段の並び", () => {
+  test("問い合わせの段の上に道具を開いている間は、問い合わせの段は見えていないので、メールの下書きの案内を出さない", async () => {
+    const s = await converted(true)
+    await settle()
+    s.actions.showTab("inquiry")
+    s.actions.showTab("location")
+    s.store.setState((st) => ({ runtime: { ...st.runtime, hints: { ...st.runtime.hints, inquiry: "hidden" } } }))
+    await settle()
+    expect(s.store.getState().runtime.hints.inquiry).toBe("hidden")
+    s.actions.closeTool()
+    await settle()
+    expect(s.store.getState().runtime.hints.inquiry).toBe("shown")
+  })
+
+  test("道具は ui.tool に開き、段・表を選ぶと閉じる。閉じると選んでいた段に戻る", async () => {
+    const s = await converted(true)
+    await settle()
+    s.actions.showTab("gyoshu")
+    s.actions.showTab("replace")
+    expect(s.store.getState().ui).toMatchObject({ tab: "gyoshu", tool: "replace" })
+    expect(s.view(s.store.getState())).toMatchObject({ view: "gyoshu", tool: "replace" })
+    // 今目に見えているのは道具（段の並びは業種のまま）
+    expect(s.view(s.store.getState()).visible).toBe("replace")
+    s.actions.closeTool()
+    expect(s.store.getState().ui).toMatchObject({ tab: "gyoshu", tool: null })
+    expect(s.view(s.store.getState()).visible).toBe("gyoshu")
+    s.actions.setWorkShown(false)
+    expect(s.view(s.store.getState()).visible).toBeNull()
+    s.actions.setWorkShown(true)
+    s.actions.showTab("location")
+    s.actions.goStep("fix")
+    expect(s.store.getState().ui).toMatchObject({ tab: "fix", tool: null })
+  })
+
+  test("直すの段を開くと理由の絞り込みだけを外し、表の聞き返しの絞り込みは残す", async () => {
+    const s = await converted(true)
+    s.actions.setFilter({ kind: "fix", reason: "empty" })
+    s.actions.goStep("fix")
+    expect(s.store.getState().ui.filter).toBeNull()
+    s.actions.setFilter({ kind: "all", ask: "plan-ask-0" })
+    s.actions.goStep("fix")
+    expect(s.store.getState().ui.filter).toEqual({ kind: "all", ask: "plan-ask-0" })
+  })
+})
+
+describe("載せる工事に答えたか（selectionAnswered）", () => {
+  test("表の見出し・7割と金額（changeSelection）で選んでも答えたことになり、取り消すと聞き直す", async () => {
+    const s = await converted(true)
+    s.actions.changeSelection("all")
+    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionAnswered: true })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
+  })
+
+  test("今と同じ7割ルール（既定値）を7割と金額で選んでも、職員が決めた値になって答えたことになる。もう職員が決めた同じ値なら何もしない", async () => {
+    const s = await converted(true)
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    s.actions.changeSelection("rule7")
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: true })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
+    const undo = s.store.getState().work.undo.length
+    s.actions.changeSelection("rule7")
+    expect(s.store.getState().work.undo).toHaveLength(undo)
+    // その切り替えのふつうの取り消しで、答えていない形に戻り、また聞く
+    s.actions.undoWithNotice(s.store.getState().work.undo.at(-1)!.proposalId)
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
+  })
+
+  test("チャットの変更案（settings.selection）を承認すると答えたことになり、承認を取り消すと聞き直す", async () => {
+    const s = await converted(true)
+    const change = { kind: "settings" as const, selection: "all" as const }
+    receiveProposal(s.store, { proposal: newProposal("p-sel", { kind: "chat", messageId: "m" }, [change], null), changes: [change] }, "replace")
+    await s.actions.decideProposal("p-sel", [0], "applied")
+    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionAnswered: true })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
+    s.actions.undoWithNotice("p-sel")
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
   })
 })

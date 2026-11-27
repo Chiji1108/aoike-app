@@ -82,7 +82,7 @@ test("覚えた結果で調べる → 進み具合 → 変更案 → 承認 → 
   // 覚えた結果を読み直すため開き直す
   await saved(page)
   await reload(page)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 120_000 })
   await openTab(page, "location")
   const count = page.getByTestId("location-count")
   await expect(count).toContainText("前の年度に承認した結果 2 件")
@@ -112,7 +112,7 @@ test("覚えた結果で調べる → 進み具合 → 変更案 → 承認 → 
   // 承認したので、もう調べる現場は個人名の1件だけ。開き直しても変更案は戻らない
   await saved(page)
   await open(page, caseUrl)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 120_000 })
   await expect(page.getByTestId("location-panel").getByTestId("proposal")).toHaveCount(0)
   await showAllRows(page)
   await expect(page.getByTestId("preview-table")).toContainText("墨田区")
@@ -129,7 +129,7 @@ test("承認の前に行ごとの都道府県・場所名（今 → 新）と出
   ])
   await saved(page)
   await reload(page)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 120_000 })
   await openTab(page, "location")
   await runSearch(page)
 

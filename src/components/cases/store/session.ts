@@ -1,6 +1,6 @@
 import type { UploadNote } from "@/components/cases/case-report"
 import type { WorkTab } from "@/components/cases/work-tabs"
-import type { StepId } from "@/components/cases/next-steps"
+import type { StepId } from "@/lib/cases/steps"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
@@ -106,15 +106,18 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     viewAsk: (askId: string) => ui.viewAsk(env, askId),
     goChat: (to: ChatTarget) => ui.goChat(env, to),
     goStep: (id: StepId) => ui.goStep(env, id),
+    closeTool: () => ui.closeTool(env),
+    goNextStep: (from: StepId) => ui.goNextStep(env, from),
+    askChat: (text: string) => ui.askChat(env, text),
+    takeChatSend: () => ui.takeChatSend(env),
     runFixAction: (action: FixActionId, keys: readonly string[]) => ui.runFixAction(env, action, keys),
     chatAction: (a: ChatAction) => ui.chatAction(env, a),
     openExport: () => ui.openExport(env),
-    closeExport: () => ui.closeExport(env),
-    exportToChat: (to: ChatTarget) => ui.exportToChat(env, to),
     setDeleteOpen: (open: boolean) => ui.setDeleteOpen(env, open),
     setDownloadsOpen: (open: boolean) => ui.setDownloadsOpen(env, open),
     setDragging: (dragging: boolean) => ui.setDragging(env, dragging),
-    setChatCanSend: (canSend: boolean) => ui.setChatCanSend(env, canSend),
+    setChatLoaded: (loaded: boolean) => ui.setChatLoaded(env, loaded),
+    setChatSending: (sending: boolean) => ui.setChatSending(env, sending),
     suggestionSent: (id: string) => ui.suggestionSent(env, id),
     setChatOpen: (open: boolean) => ui.setChatOpen(env, open),
     resizeChat: (size: ChatSize | null, save: boolean) => ui.resizeChat(env, size, save),
@@ -126,7 +129,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
   const tableWire = () => {
     const { work: w } = store.getState()
     const { rows } = env.table(store.getState())
-    return rows ? toWire({ rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }) : null
+    return rows ? toWire({ rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, selectionAnswered: w.selectionAnswered, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }) : null
   }
 
   /** チャットに送る表と文脈（送る瞬間の状態から作る。送れないときは null） */
@@ -248,10 +251,17 @@ function watch(env: CaseEnv): () => void {
         if (watching) ui.saveChatPrefs(env, { hintShown: true })
       })
     }
-    // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
-    if (s.runtime.hints.inquiry === "hidden" && s.ui.tab === "inquiry" && env.view(s).layout.workShown)
+    // 表ができたら、開いているものを今の段に決める（そのあとは段が済んでも勝手に移らない）
+    if (s.ui.tab === null && t.hasTable && t.output && t.shown && !t.reconverting)
       queueMicrotask(() => {
-        if (watching && store.getState().runtime.hints.inquiry === "hidden") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
+        if (watching) ui.pinCurrentStep(env)
+      })
+    // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
+    if (s.runtime.hints.inquiry === "hidden" && env.view(s).visible === "inquiry")
+      queueMicrotask(() => {
+        const now = store.getState()
+        // 始める前に、まだ問い合わせの段が見えているかを確かめ直す（同じ操作の中で道具を開いた・閉じたときに出さない）
+        if (watching && now.runtime.hints.inquiry === "hidden" && env.view(now).visible === "inquiry") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
       })
   }
   // つないだときの状態でも確かめる（外していた間に決まった計画も変換する）

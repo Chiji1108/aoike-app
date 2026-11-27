@@ -52,7 +52,8 @@ const BY_NOTE: Partial<Record<Extract<ChatChange, { kind: "cell" }>["edit"]["by"
 export function describeSettings(c: { tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }): string[] {
   return [
     c.tax && `Excel の金額: ${TAX_LABELS[c.tax]}`,
-    c.selection && `載せる工事: ${SELECTION_LABELS[c.selection]}`,
+    // 値が今と同じでも、まだ答えていない案件では「決める」案になるので、いつも「決める」と書く
+    c.selection && `載せる工事を${SELECTION_LABELS[c.selection]}に決める`,
     c.rounding && `千円未満: ${ROUNDING_LABELS[c.rounding]}`,
     c.basis && `基準額: ${Object.entries(c.basis).map(([code, b]) => `業種${code} 合計${b?.total ?? "-"}・元請${b?.motouke ?? "-"}千円`).join("、")}`,
   ].filter((x): x is string => !!x)

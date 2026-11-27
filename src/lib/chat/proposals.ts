@@ -9,6 +9,7 @@ import { foundSchema, siteRefSchema, SOURCE_LABELS, type Found } from "../locati
 import { planPatchSchema, type PlanPatch } from "../convert/plan-patch"
 import { proposedRuleSourceSchema, ruleScopeSchema, type ProposedRuleSource, type RuleScope } from "./rules"
 import { setTax, type TaxBy } from "../cases/tax"
+import { setSelection } from "../cases/selection"
 import { applyInquiryChange, introSchema, subjectSchema, type InquiryText } from "../inquiry/text"
 
 /**
@@ -29,8 +30,14 @@ export type ChatChange =
    * rowKey は足す行の key（変更案を作るときに決める。承認すると cases/added.ts の AddedRow になり、値は手直しとして重ねる）
    */
   | { kind: "add"; rowKey: string; by: AddedRow["by"]; cells: Partial<Record<KojiFieldId, CellEdit>> }
-  /** 7割と金額の設定（作業の画面の「7割と金額」のタブ）。rounding は金額の千円未満の扱い（承認すると変換し直す。前の変更案には無い） */
-  | { kind: "settings"; tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }
+  /** 7割と金額の設定（作業の画面のダウンロードの段の「7割と金額」）。rounding は金額の千円未満の扱い（承認すると変換し直す。前の変更案には無い） */
+  | {
+      kind: "settings"
+      tax?: TaxMode
+      selection?: SelectionMode
+      basis?: Basis
+      rounding?: Rounding
+    }
   /** 全体ルール・顧客ルールへの追記（承認すると保存する）。source は足した項目の由来（chat: 職員が頼んだ追記、review: 案件を終えるときの振り返り） */
   | { kind: "rule"; scope: RuleScope; text: string; source: ProposedRuleSource }
   /**
@@ -212,6 +219,8 @@ export type Overlay = {
   taxBy?: TaxBy | null
   basis: Basis
   selection: SelectionMode
+  /** 載せる工事に答えたか（案件の作業だけが持つ。cases/selection.ts） */
+  selectionAnswered?: boolean
   /** 金額の千円未満の扱い（変えたら行を変換し直すのは重ねる側。案件の画面は作業から変換し直し、チャットの表は reroundRows） */
   rounding: Rounding
   added: readonly AddedRow[]
@@ -226,9 +235,10 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
   if (!changes.length) return target
   const edits = new Map(target.edits)
   const manual = new Map(target.manual)
-  let { basis, selection, rounding, inquiryText } = target
-  /** 承認した税の設定（職員が決めた値として、出どころと一緒に書く） */
+  let { basis, rounding, inquiryText } = target
+  /** 承認した税の設定・載せる工事の選び方（職員が決めた値として、出どころと一緒に書く） */
   let tax: TaxMode | undefined
+  let selection: SelectionMode | undefined
   const added = [...target.added]
   const rowOf = new Map(edited.map((r) => [r.key, r]))
   for (const c of changes) {
@@ -277,8 +287,9 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
         c satisfies never
     }
   }
-  const next = { ...target, edits, manual, basis, selection, rounding, added, inquiryText }
-  return tax === undefined ? next : setTax(next, tax, "staff")
+  const next = { ...target, edits, manual, basis, rounding, added, inquiryText }
+  const taxed = tax === undefined ? next : setTax(next, tax, "staff")
+  return selection === undefined ? taxed : setSelection(taxed, selection, true)
 }
 
 /** 調べた工事場所のセルに添える文（出どころ・根拠の URL・AI の迷った点） */

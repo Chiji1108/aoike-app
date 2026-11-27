@@ -1,11 +1,11 @@
 import { createStore } from "zustand"
 import type { UploadNote } from "@/components/cases/case-report"
-import type { WorkTab } from "@/components/cases/work-tabs"
 import type { TableFilter } from "@/components/convert/status"
 import type { FinalImport } from "@/components/convert/final-import-panel"
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
 import type { CaseFile, CaseStatus } from "@/lib/cases/types"
+import type { StepId, StepView, ToolId } from "@/lib/cases/steps"
 import { NO_ADDRESSES, type AddressBook } from "@/lib/convert/address"
 import type { Rule7Tax } from "@/lib/convert/koji-selection"
 import { reviewPlanTransforms, type SheetGrid } from "@/lib/convert/plan"
@@ -31,9 +31,10 @@ export type ChatTarget = { target: string; button?: string }
 /**
  * DOM への頼み（ストアは DOM を触らない。workspace/focus-effects.tsx が描いたあとに動かす）:
  * chat はチャットの欄の target へ移ってボタンに合わせる、gyoshuRow は業種の一覧のその行へ移って選ぶ欄に合わせる、
- * chatWindow は職員が開いたチャットの窓の入力欄へ、chatLauncher は職員がたたんだあとの右下の丸いボタンへ
+ * chatWindow は職員が開いたチャットの窓の入力欄へ、chatLauncher は職員がたたんだあとの右下の丸いボタンへ、
+ * step は「済みました。次は ◯◯ →」で開いた段の中身へ
  */
-export type FocusRequest = ({ kind: "chat" } & ChatTarget) | { kind: "gyoshuRow"; key: string } | { kind: "chatWindow" } | { kind: "chatLauncher" }
+export type FocusRequest = ({ kind: "chat" } & ChatTarget) | { kind: "gyoshuRow"; key: string } | { kind: "chatWindow" } | { kind: "chatLauncher" } | { kind: "step"; id: StepId }
 
 /** チャットの窓の大きさ（px。職員が左上の角で変えた。null は決まった大きさ） */
 export type ChatSize = { w: number; h: number }
@@ -109,26 +110,35 @@ export type CaseState = {
   ui: {
     /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
     wide: boolean
-    /** 作業の画面のタブ */
-    tab: WorkTab
+    /** 作業の画面に開いているもの（段・表・道具）。null は表ができる前（今の段。表ができたら今の段に決める。lib/cases/steps.ts の activeView） */
+    tab: StepView | null
+    /**
+     * 開いている道具（工事場所・一括置換）。段の並びの外に重ねて開き、段の並びは tab を選んだまま。閉じる（null）と tab の段・表に戻る。
+     * 段・表を選ぶと閉じる
+     */
+    tool: ToolId | null
     /**
      * 職員が作業の画面を開いた（true）・閉じた（false）か。決めるまで（null）は、表があれば広い画面では開き、狭い画面では閉じておく
      * （狭い画面で開くとチャットを覆うので、チャットの「表を開く」で開く）
      */
     workChoice: boolean | null
-    /** 表の絞り込み（職員が選んだもの。null は選んでいない） */
+    /** 表の絞り込みの理由・聞き返し（kind は開いているもので決まる: 直すの段は直す行、表はすべて。null は選んでいない） */
     filter: TableFilter | null
     /**
-     * ダイアログ: export はダウンロードの前の確認（returnTo は閉じたあとにフォーカスを合わせるチャットの欄の移り先。開くたびに外す）、
-     * delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
+     * ダイアログ: delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ
      */
-    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; downloads: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
+    dialogs: { delete: boolean; downloads: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
     /** ファイルをドラッグしている */
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
     focus: FocusRequest | null
-    /** チャットに指示を送れるか（チャットの欄が知らせる。ダウンロードの前の確認の「AI に聞く」） */
-    chatCanSend: boolean
+    /**
+     * チャットの指示の状態（送れるかの元。送れるかは case-view.ts の chatCanSend がここから作る）: loaded は保存した会話を読み終えた、
+     * sending は送り始めて（送る前の保存を待つ間も）から返事が終わるまで。書くのはチャットの欄の会話を読む処理と送る処理だけ
+     */
+    chatTurn: { loaded: boolean; sending: boolean }
+    /** チャットに送る決まった指示（「答える」の段の「AI に聞く」。チャットの欄が送れるときに送って外す。新しい頼みは新しいオブジェクト） */
+    chatSend: { text: string } | null
     /**
      * チャットの窓（広い画面で表があるとき）: collapsed はたたんでいる（職員が決めた値は端末ごとに覚える。「答える」などで移るときはその場だけ開く）、
      * unread はたたんでいる間にチャットから届いたもの（new は返事・変更案・アップロードの結果、error は失敗した返事・読めなかったファイル。開くと消す）、
@@ -189,6 +199,7 @@ export function initialCaseState(page: {
   settings: { rule7Tax: Rule7Tax }
   previousUnsaved: boolean
 }, chatPrefs: ChatPrefs | null = null): CaseState {
+  // 載せる工事は去年から引き継がない（どの案件でも「答える」で1回聞く。去年の選び方はおすすめに出すだけ）
   const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
@@ -217,13 +228,15 @@ export function initialCaseState(page: {
     },
     ui: {
       wide: false,
-      tab: "table",
+      tab: null,
+      tool: null,
       workChoice: null,
       filter: null,
-      dialogs: { export: { open: false, returnTo: null }, delete: false, downloads: false, pendingSources: [], askConfirm: null },
+      dialogs: { delete: false, downloads: false, pendingSources: [], askConfirm: null },
       dragging: false,
       focus: null,
-      chatCanSend: false,
+      chatTurn: { loaded: false, sending: false },
+      chatSend: null,
       chat: { collapsed: chatPrefs?.collapsed ?? false, unread: null, size: chatPrefs?.size ?? null, hint: !chatPrefs?.hintShown },
     },
     sync: { status: { kind: "saved" }, peer: "none" },

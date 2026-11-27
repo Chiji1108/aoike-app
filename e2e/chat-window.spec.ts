@@ -108,7 +108,7 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
   const { customer } = await openNewCase(page)
   created.push(customer)
   await fakePlan(page)
-  await fakeChat(page, [{ text: "合成の返事です。" }, { refuse: 500 }])
+  await fakeChat(page, [{ text: "合成の返事です。" }, { refuse: 500 }, { text: "合成の説明です。" }])
 
   await test.step("表が無い間はチャットを中央に大きく出し、右下のボタンは無い", async () => {
     await expect(chat(page)).toHaveAttribute("data-place", "full")
@@ -117,7 +117,7 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
 
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
-  await expect(page.getByTestId("preview-table")).toBeVisible()
+  await expect(page.getByTestId("next-steps")).toBeVisible()
 
   await test.step("表ができると、作業の画面が横幅いっぱい・チャットは右下の窓（開いたまま）", async () => {
     await expect(chat(page)).toHaveAttribute("data-place", "window")
@@ -190,18 +190,19 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
     await expect(page.locator('[data-testid="file-list"] [data-file="合成の資料.pdf"]')).toBeVisible()
   })
 
-  await test.step("たたんだまま次にやることの「答える」を押すと、窓をその場だけ開いて答えを待つ聞き返しへ移る", async () => {
-    await page.getByTestId("next-step-answer").click()
+  await test.step("たたんだまま「答える」の段の「AI に聞く」を押すと、窓をその場だけ開いて質問を送り、入力欄に合わせる", async () => {
+    await openTab(page, "answer")
+    const question = page.locator('[data-testid="answer-section"] [data-testid="report-question"][data-question="plan-ask-0"]')
+    await question.getByTestId("report-question-ask").click()
     await expectOpen(page)
-    const question = page.locator('[data-testid="report-question"][data-question="plan-ask-0"]')
-    await expect(question).toBeInViewport()
-    await expect(question.locator("button").first()).toBeFocused()
+    await expect(page.getByTestId("chat-messages")).toContainText("合成の説明です。")
+    await expect(page.getByTestId("chat-messages").getByText("どういうことですか？").last()).toBeInViewport()
   })
 
   await test.step("開き直すと、覚えたたたんだ設定（「答える」で開いたのはその場だけ）で表ができた最初から窓はたたんだまま", async () => {
     await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await expect(chat(page)).toHaveAttribute("data-collapsed", "1")
     await expect(launcher(page)).toHaveAttribute("aria-expanded", "false")
     // 一度出した「チャットはここにあります」はもう出さない
@@ -302,7 +303,7 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
     // 動きを減らす設定は画面を開いたときに読むので、設定を戻して開き直す
     await page.emulateMedia({ reducedMotion: "no-preference" })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await page.getByTestId("work-close").click()
     await expect(chat(page)).toHaveAttribute("data-place", "full")
     // 「表を開く」を押してすぐ（動きの途中）に、取っ手で ← を押す

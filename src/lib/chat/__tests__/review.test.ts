@@ -76,7 +76,7 @@ describe("振り返る指示（画面の会話から）", () => {
     const known = (applied: number, count: number, undone = 0) => ({ applied, undone, undoneUnknown: false, count, open: false })
     expect(turns).toEqual([
       { instruction: "完成年月は引渡日にして", proposal: known(1, 1), question: null, plan: ["完成年月: J列（年月）"], selection: [], tools: ["set_plan"] },
-      { instruction: "全部載せて", proposal: known(2, 2, 2), question: null, plan: [], selection: ["Excel の金額: 税抜", "載せる工事: 全件", "千円未満: 四捨五入"], tools: ["set_selection", "set_include"] },
+      { instruction: "全部載せて", proposal: known(2, 2, 2), question: null, plan: [], selection: ["Excel の金額: 税抜", "載せる工事を全件に決める", "千円未満: 四捨五入"], tools: ["set_selection", "set_include"] },
       { instruction: "(仮称)を取って", proposal: known(0, 3), question: { text: "工事名の(仮称)も取ってよいですか", answer: "no" }, plan: [], selection: [], tools: ["ask_staff"] },
       { instruction: "これは何？", proposal: null, question: null, plan: [], selection: [], tools: ["set_plan"] },
       { instruction: "止めた指示", proposal: null, question: null, plan: [], selection: [], tools: [] },

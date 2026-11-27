@@ -35,5 +35,5 @@ test("計画を立てている途中で顧客の画面へ移ってすぐ戻っ�
 /** 変換の報告が終わり、表が出るまで待つ */
 async function attachAndConvertDone(page: Page) {
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
-  await expect(page.getByTestId("preview-table")).toBeVisible()
+  await expect(page.getByTestId("next-steps")).toBeVisible()
 }

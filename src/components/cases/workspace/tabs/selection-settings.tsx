@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { RULE7_TAX_LABELS, SELECTION_LABELS, SELECTION_MODES, TAX_LABELS, type Rule7Tax, type TaxMode } from "@/lib/convert/koji-selection"
 import { ROUNDING_LABELS, ROUNDINGS } from "@/lib/convert/transforms"
 
-/** 7割と金額のタブ: 設定（Excel の金額が税込か・7割の計算・端数・載せる工事）と業種ごとの件数と7割 */
-export function SelectionTab() {
+/**
+ * 7割と金額（ダウンロードの段の中）: 設定（Excel の金額が税込か・7割の計算・端数・載せる工事）と、業種ごとの件数と7割・決算書の額を入れる欄
+ */
+export function SelectionSettings() {
   const actions = useCaseActions()
   const { tax, rule7Tax, rounding, selection, manualCount, basis } = useCase(
     useShallow((s) => ({ tax: s.work.tax, rule7Tax: s.work.rule7Tax, rounding: s.work.rounding, selection: s.work.selection, manualCount: s.work.manual.size, basis: s.work.basis })),
@@ -15,7 +17,10 @@ export function SelectionTab() {
   const roundingTotals = useTable((t) => t.roundingTotals)
   const summary = useCaseView((v) => v.summary)
   return (
-    <div className="grid gap-3">
+    <section className="grid gap-3 border-t pt-4" aria-labelledby="selection-heading" data-testid="selection-section">
+      <h3 id="selection-heading" className="text-sm font-medium">
+        7割と金額
+      </h3>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <Field label="Excel の金額" hint="顧客の Excel の金額が税込か税抜か。7割の計算と違えば 1.1 で掛け割りして比べます（金額は変えません）">
           <Segmented label="Excel の金額" value={tax} options={(Object.keys(TAX_LABELS) as TaxMode[]).map((v) => ({ value: v, label: TAX_LABELS[v] }))} onChange={actions.setTax} testId="tax" />
@@ -42,7 +47,7 @@ export function SelectionTab() {
           Excel の金額が分からないので、税込とみなして判定しています。
         </p>
       )}
-    </div>
+    </section>
   )
 }
 

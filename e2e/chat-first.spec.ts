@@ -3,7 +3,7 @@ import ExcelJS from "exceljs"
 import { expect, test, type Page } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
-import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab, reload, showAllRows } from "./helpers"
+import { fileBytes, callsServerFn, csvCount, deleteCustomer, openExport, openNewCase, openTab, reload, showAllRows } from "./helpers"
 
 /**
  * チャット中心の流れ: ファイルをアップロードする → 自動で変換 → 変換の報告（知らせ・聞き返し）と次にやること → チャットで列の対応を直す変更案 →
@@ -76,11 +76,12 @@ test("ファイルをアップロードすると自動で変換して報告で�
   await test.step("チャット欄の📎でファイルをアップロードすると、列の対応を考えてそのまま変換し、報告に注意書き・件数・聞き返しが出る", async () => {
     await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "empty")
     await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
     const report = page.getByTestId("case-report")
-    await expect(report).toHaveAttribute("data-phase", "done")
+    await expect(report).toHaveAttribute("data-phase", "done", { timeout: 180_000 })
     await expect(report.getByTestId("report-notes")).toContainText("見出しから列を推定しました")
-    await expect(page.getByTestId("row-filters-fix")).toHaveAttribute("aria-pressed", "true")
+    // 作業の画面は今の段（答える）で開き、報告は聞き返しの数の1行（答えるのは答えるの段）
+    await expect(page.getByTestId("work-panel")).toHaveAttribute("data-view", "answer")
+    await expect(report.getByTestId("report-answer-step")).toBeVisible()
     // 件数・問い合わせ・ダウンロードは表と見出しにあるので、報告には出さない
     await expect(report.getByTestId("report-count")).toHaveCount(0)
     await expect(report.getByTestId("report-export")).toHaveCount(0)
@@ -88,7 +89,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
   })
 
   await test.step("計画の AI を使えず税込・税抜が分からないので聞き返し、答えると設定に入る", async () => {
-    const q = page.locator('[data-testid="report-question"][data-question="tax"]')
+    const q = page.locator('[data-testid="answer-section"] [data-testid="report-question"][data-question="tax"]')
     await q.locator('[data-value="included"]').click()
     await expect(q).toHaveAttribute("data-answered", "税込")
     await openTab(page, "selection")
@@ -124,8 +125,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     await expect(page.getByTestId("chat-action")).toHaveAttribute("data-action", "export")
     await page.getByTestId("chat-action").click()
     await expect(page.getByTestId("export-dialog")).toBeVisible()
-    await page.keyboard.press("Escape")
-    await expect(page.getByTestId("export-dialog")).toBeHidden()
+    await openTab(page, "table")
   })
 
   await test.step("承認を取り消すと元の列の対応で変換し直し、開き直しても戻ったまま", async () => {
@@ -134,7 +134,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     await expect(page.getByTestId("proposal-undone")).toBeVisible()
     await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await showAllRows(page)
     // 会話は決まった返事なのでサーバーに残らない（変更案の札は出ない）。取り消した値は案件の作業に残る
     await expect(startYm(page)).toHaveText(row.start)
@@ -142,8 +142,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
 
   await test.step("ダウンロードの前の確認: 決算書の額が表の合計と合わなければ知らせ（止めない）、最後の Excel と CSV を出す", async () => {
     const n = await csvCount(page)
-    await page.getByTestId("export-button").click()
-    const dialog = page.getByTestId("export-dialog")
+    const dialog = await openExport(page)
     await expect(dialog.getByTestId("export-rows")).toHaveText(String(n))
     await expect(dialog.getByTestId("export-basis")).toContainText("まだ入れていません")
     await dialog.getByTestId("basis-open").click()
@@ -161,7 +160,7 @@ test("ファイルをアップロードすると自動で変換して報告で�
     const xlsx = await excel
     expect(xlsx.suggestedFilename()).toMatch(/\.xlsx$/)
     const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(readFileSync((await xlsx.path())!).buffer as ArrayBuffer)
+    await wb.xlsx.load(fileBytes((await xlsx.path())!))
     // データのシートと、照合用の隠しシート（上げ直すと表に戻る）
     expect(wb.worksheets.map((w) => w.state)).toEqual(["visible", "veryHidden"])
     const ws = wb.worksheets[0]!
@@ -180,8 +179,6 @@ test("ファイルをアップロードすると自動で変換して報告で�
   })
 
   await test.step("ダウンロードした控えは作業の画面の上のファイルの行に足さず、見出しの「…」のダウンロードの履歴に新しい順で出て、押すとその控えをダウンロードできる", async () => {
-    await page.keyboard.press("Escape")
-    await expect(page.getByTestId("export-dialog")).toBeHidden()
     await page.getByTestId("case-menu").click()
     // 控えはダウンロードのあとに案件に残すので、数がそろうのを待つ
     await expect(page.getByTestId("downloads-button")).toContainText("2件")

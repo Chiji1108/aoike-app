@@ -13,7 +13,7 @@ import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inqu
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
-import { basisSchema, cellEditSchema, fieldIdSchema, legacySelection, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
+import { basisSchema, cellEditSchema, fieldIdSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
 /**
@@ -41,8 +41,10 @@ export type CaseWork = {
   basis: Basis
   /** 7割の計算（基準額が税抜か税込か）。新しい案件は事務所の設定、この項目より前に保存した作業は税抜（前はいつも税抜） */
   rule7Tax: Rule7Tax
-  /** 載せる工事の選び方（koji-selection.ts の SelectionMode） */
+  /** 載せる工事の選び方（koji-selection.ts の SelectionMode）。書くのは cases/selection.ts の setSelection だけ（答えたか selectionAnswered と一緒に書く） */
   selection: SelectionMode
+  /** 「答える」の載せる工事に答えたか（cases/selection.ts。どの案件でも1回だけ聞く） */
+  selectionAnswered: boolean
   rounding: Rounding
   /** チャットの変更案の状態（中身は R2。lib/chat/proposals.ts）。この項目より前に保存した作業には無いので、読むときは空 */
   proposals: Proposal[]
@@ -86,6 +88,7 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   basis: {},
   rule7Tax,
   selection: "rule7",
+  selectionAnswered: false,
   rounding: "floor",
   proposals: [],
   added: [],
@@ -149,9 +152,9 @@ export const savedWorkSchema = z
   taxBy: taxBySchema.default(null),
   basis: basisSchema,
   rule7Tax: rule7TaxSchema.default("excluded"),
-  selection: selectionSchema.optional(),
-  /** 前の形（7割適用済み＝全行を載せる）。読むときに selection にそろえる */
-  alreadyApplied: z.boolean().optional(),
+  /** 載せる工事の選び方と、答えたか（lib/cases/selection.ts）。どちらも必ず持つ（無い前の形は読めない。移行 drizzle/csv/0011 でそろえた） */
+  selection: selectionSchema,
+  selectionAnswered: z.boolean(),
   rounding: roundingSchema,
   proposals: z.array(proposalSchema).default([]),
   added: z.array(addedRowSchema).max(MAX_ADDED_ROWS).default([]),
@@ -161,8 +164,7 @@ export const savedWorkSchema = z
   rejectedExcel: z.array(z.string().max(4000)).max(MAX_REJECTED_EXCEL).default([]),
   markFailure: z.object({ fileId: z.string().max(64), key: z.string().max(64), reason: z.string().max(200) }).nullable().default(null),
   allHintClosed: z.boolean().default(false),
-  })
-  .transform(({ alreadyApplied, selection, ...w }) => ({ ...w, selection: legacySelection(selection, alreadyApplied) ?? "rule7" }))
+})
 export type SavedWork = z.infer<typeof savedWorkSchema>
 
 /** AI の結果（大きい。変換したときだけ変わるので、変わったときだけ保存する） */

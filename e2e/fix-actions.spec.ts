@@ -85,12 +85,14 @@ async function fakeSuggest(page: Page, sent: string[]) {
 async function upload(page: Page) {
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
-  await expect(page.getByTestId("preview-table")).toBeVisible()
+  await expect(page.getByTestId("next-steps")).toBeVisible()
 }
 
 /** 次にやることの「業種を決める」の行数（業種は直すに数えない） */
 const gyoshuCount = async (page: Page) => Number(/(\d+)/.exec((await page.getByTestId("next-step-gyoshu").textContent()) ?? "0")?.[1] ?? 0)
-const tableRow = (page: Page, text: string) => page.locator('[data-testid="preview-table"] tbody tr[data-row-key]').filter({ has: page.getByTestId("row-fix").filter({ hasText: text }) })
+/** 表（すべての行）の、業種がまだ無い行（業種だけが残る行は直すの段に出ないので、表のセルで探す） */
+const noGyoshuRows = (page: Page) =>
+  page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]').filter({ has: page.locator('td[data-field="gyoshu"] button:not(:has([data-code]))') })
 
 test("業種が空の行に業種のタブで AI の案を出し、承認すると業種を決める行が減る。決まった値は選ぶ欄で選ぶ（キーボードでも）。顧客に聞くは問い合わせへ", async ({ page }) => {
   const { customer } = await openNewCase(page)
@@ -103,21 +105,19 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
   await openTab(page, "selection")
   await page.getByTestId("selection-all").click()
   await expect.poll(() => csvCount(page)).toBe(7)
-  await openTab(page, "table")
 
   await test.step("業種は直すに数えず「業種を決める」の段に数える。行の理由の横に「業種を決める」が出る", async () => {
-    await page.getByTestId("row-filters-fix").click()
+    await openTab(page, "fix")
     await expect(page.locator('[data-testid="fix-action"][data-action="decideGyoshu"]')).toHaveCount(0)
     await expect(page.getByTestId("next-step-fix")).not.toHaveAttribute("title", /業種/)
     await expect(page.getByTestId("next-step-gyoshu")).toHaveText(/業種を決める\s*7行/)
-    await page.getByTestId("row-filters-all").click()
     await expect(page.locator('[data-testid="row-fix-action"][data-action="decideGyoshu"]').first()).toHaveText("業種を決める")
   })
 
   const before = await gyoshuCount(page)
   await test.step("業種のタブで頼むと、AI の案がチャットの流れに変更案として出る（結果はそのまま表に入らない）。推し量った案は根拠に推定と出る", async () => {
     await page.locator('[data-testid="row-fix-action"][data-action="decideGyoshu"]').first().click()
-    await expect(page.getByTestId("tab-gyoshu")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-gyoshu")).toHaveAttribute("aria-selected", "true")
     await page.getByTestId("gyoshu-suggest").click()
     const panel = page.getByTestId("fix-suggestion")
     await expect(panel.getByTestId("fix-suggestion-summary")).toContainText("7 行のうち 5 行に案を出しました")
@@ -141,16 +141,17 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
     await page.getByTestId("fix-suggestion").getByTestId("proposal-apply-all").click()
     await expect.poll(() => gyoshuCount(page)).toBe(2)
     await openTab(page, "table")
-    await expect(tableRow(page, "業種が空")).toHaveCount(2)
+    await expect(noGyoshuRows(page)).toHaveCount(2)
     // 承認した値は推定の印を外して入る（AI の推定として直すに残らない）
+    await openTab(page, "fix")
     await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key]').filter({ has: page.getByTestId("row-fix").filter({ hasText: "業種: AI の推定" }) })).toHaveCount(0)
-    await page.getByTestId("row-filters-all").click()
+    await openTab(page, "table")
     await expect(page.locator('td[data-field="gyoshu"] [data-code="2"]').first()).toContainText("建築一式")
   })
 
   await test.step("業種を選ぶ欄で、名前で絞り込んで Enter で選ぶ（キーボードだけ）", async () => {
-    const row = tableRow(page, "業種が空").first()
-    await expect(tableRow(page, "業種が空")).toHaveCount(2)
+    const row = noGyoshuRows(page).first()
+    await expect(noGyoshuRows(page)).toHaveCount(2)
     await row.locator('td[data-field="gyoshu"] button').focus()
     await page.keyboard.press("Enter")
     const picker = page.getByTestId("cell-picker")
@@ -159,14 +160,14 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
     await expect(picker.getByTestId("cell-picker-option")).toHaveCount(2)
     await page.keyboard.press("Enter")
     await expect(picker).toBeHidden()
-    await expect(tableRow(page, "業種が空")).toHaveCount(1)
+    await expect(noGyoshuRows(page)).toHaveCount(1)
     await expect.poll(() => gyoshuCount(page)).toBe(1)
     // 閉じたらセルに戻る
     await expect(page.locator('tr[data-row-key] td[data-field="gyoshu"] button:focus')).toContainText("電気")
   })
 
   await test.step("元請下請は2〜4択のボタン。Escape は欄だけ閉じ、値は変えない。→ と Enter で選ぶ", async () => {
-    await page.getByTestId("row-filters-all").click()
+    await openTab(page, "table")
     const cell = page.locator('[data-testid="preview-table"] tbody tr[data-row-key]').first().locator('td[data-field="motoukeShitauke"]')
     const was = (await cell.locator("[data-code]").getAttribute("data-code")) ?? ""
     await cell.locator("button").focus()
@@ -199,13 +200,13 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
   })
 
   await test.step("理由で絞ると、まとめての操作もその理由の見えている行だけを数える", async () => {
-    await page.getByTestId("row-filters-fix").click()
+    await openTab(page, "fix")
     // 工事場所の AI の推定は自信のある推定なので調べない（操作を出さない）。業種は直すの操作に出さない
     await expect(page.locator('[data-testid="fix-action"][data-action="decideGyoshu"]')).toHaveCount(0)
     await page.getByTestId("fix-reason-guess").click()
     await expect(page.getByTestId("fix-action")).toHaveCount(0)
     await page.getByTestId("fix-reason-guess").click()
-    await page.getByTestId("row-filters-all").click()
+    await openTab(page, "table")
   })
 
   await test.step("主任技術者・監理技術者は1つの欄で選び、2列を一緒に決める（どちらか一方だけが あり）", async () => {
@@ -241,11 +242,11 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
   await test.step("顧客に聞く行からは問い合わせのタブへ", async () => {
     await openTab(page, "selection")
     await page.getByTestId("tax-unknown").click()
-    await openTab(page, "table")
+    await openTab(page, "fix")
     const ask = page.getByTestId("row-ask").first()
     if (await ask.count()) {
       await ask.click()
-      await expect(page.getByTestId("tab-inquiry")).toHaveAttribute("aria-selected", "true")
+      await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("aria-selected", "true")
     }
   })
 })
@@ -259,7 +260,8 @@ test("計画の聞き返しの答えに載せる件数の見込みが付き、�
   await openTab(page, "selection")
   await page.getByTestId("selection-all").click()
   await expect.poll(() => csvCount(page)).toBe(7)
-  const question = page.locator('[data-testid="report-question"][data-question="plan-ask-0"]')
+  await openTab(page, "answer")
+  const question = page.locator('[data-testid="answer-section"] [data-testid="report-question"][data-question="plan-ask-0"]')
   await expect(question.getByTestId("report-answer")).toHaveText(["載せない（載せる 7 → 0 件）", "載せる（7 件のまま）"])
   await expect(question.getByTestId("report-question-detail")).toContainText("データの 7 行のうち 7 行が当たります。")
 

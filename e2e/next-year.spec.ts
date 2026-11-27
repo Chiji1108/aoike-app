@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
 import { expect, test } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
-import { attachAndConvert, callsServerFn, csvCount, deleteCustomer, open, openNewCase, openTab, showAllRows } from "./helpers"
+import { fileBytes, attachAndConvert, callsServerFn, csvCount, deleteCustomer, open, openNewCase, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
@@ -11,7 +10,7 @@ const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathna
  */
 async function nextYearWorkbook() {
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(readFileSync(FIXTURE).buffer as ArrayBuffer)
+  await wb.xlsx.load(fileBytes(FIXTURE))
   const ws = wb.getWorksheet("工事経歴")!
   const header = ws.getRow(3)
   const col = (h: string) => (header.values as unknown[]).findIndex((v) => v === h)
@@ -43,8 +42,12 @@ test.afterEach(async ({ page }) => {
 test("同じ顧客の2年度目は去年の Excel との違いを出し、「去年のやり方で直す」は去年のコードを添える印と違いの文脈を送る。全件の切り替えで載る件数が変わる", async ({ page }) => {
   const { customer } = await openNewCase(page, "2025")
   created.push(customer)
-  await attachAndConvert(page, FIXTURE)
+  await attachAndConvert(page, FIXTURE, { table: false })
   await expect(page.getByTestId("format-diff")).toHaveCount(0)
+  // 2025年度は載せる工事を聞かれ、7割ルールと答える（翌年はこの選び方をおすすめに出す）
+  await page.locator('[data-testid="answer-section"] [data-question="selection"] [data-value="rule7"]').click()
+  await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveAttribute("data-answered", "7割ルール")
+  await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
 
   await test.step("2026年度の案件で、形を変えた Excel を付けると去年との違いが出る", async () => {
     await page.getByRole("link", { name: customer }).click()
@@ -68,6 +71,14 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await expect(diff).toContainText("足された列: L列「担当部署」")
   })
 
+  await test.step("載せる工事は去年から引き継がず今年も聞く。去年（2025年度）の選び方はおすすめと理由に出す", async () => {
+    await openTab(page, "answer")
+    const q = page.locator('[data-testid="answer-section"] [data-question="selection"]')
+    await expect(q).toHaveAttribute("data-pending", "1")
+    await expect(q.locator('[data-value="rule7"]')).toHaveText("7割ルール（おすすめ）")
+    await expect(q.getByTestId("report-question-detail")).toContainText("去年は7割ルールでした")
+  })
+
   await test.step("全件を載せる切り替えで、載る件数が変わり、戻すと元の件数", async () => {
     const rule7 = await csvCount(page)
     await openTab(page, "selection")
@@ -75,7 +86,8 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await expect.poll(() => csvCount(page)).toBeGreaterThan(rule7)
     const all = await csvCount(page)
     await showAllRows(page)
-    expect(await page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]').count()).toBe(all)
+    // 表はほかの段から戻ると描き直すので、描き終えるまで待つ
+    await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]')).toHaveCount(all)
     await openTab(page, "selection")
     await page.getByTestId("selection-rule7").click()
     await expect.poll(() => csvCount(page)).toBe(rule7)
@@ -132,7 +144,7 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await open(page, "/csv")
     await page.locator(`[data-customer="${customer}"]`).getByRole("link").first().click()
     await page.getByRole("link", { name: /2025年度/ }).click()
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId("format-diff")).toHaveCount(0)
   })
 })

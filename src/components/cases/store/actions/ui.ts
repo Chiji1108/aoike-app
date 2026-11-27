@@ -1,4 +1,4 @@
-import type { StepId } from "@/components/cases/next-steps"
+import { currentStep, isTool, nextStep, type StepId } from "@/lib/cases/steps"
 import type { WorkTab } from "@/components/cases/work-tabs"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { ChatAction } from "@/lib/chat/messages"
@@ -9,22 +9,27 @@ import type { CaseEnv } from "../env"
 export const REVIEW_SUGGESTION = "review"
 export const INQUIRY_SUGGESTION = "inquiry-text"
 
-/** チャットの欄の最初の答えを待つもの */
-export const PENDING_TARGET: ChatTarget = { target: "[data-pending]" }
-
 /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
 export function setWide(env: CaseEnv, wide: boolean) {
   setUi(env.store, () => ({ wide }))
 }
 
+/** 開くものをストアの形にする（段・表は tab にして道具を閉じる、道具は tool。段の並びは tab を選んだまま） */
+const viewPatch = (v: WorkTab) => (isTool(v) ? { tool: v } : { tab: v, tool: null })
+
 /** 作業の画面のタブを切り替える（開いているかは変えない） */
 export function setTab(env: CaseEnv, tab: WorkTab) {
-  setUi(env.store, () => ({ tab }))
+  setUi(env.store, () => viewPatch(tab))
 }
 
 /** 作業の画面をそのタブで開く */
 export function showTab(env: CaseEnv, tab: WorkTab) {
-  setUi(env.store, () => ({ tab, workChoice: true }))
+  setUi(env.store, () => ({ ...viewPatch(tab), workChoice: true }))
+}
+
+/** 開いている道具を閉じて、段の並びで選んでいる段・表に戻る */
+export function closeTool(env: CaseEnv) {
+  setUi(env.store, () => ({ tool: null }))
 }
 
 /** 作業の画面を開く・閉じる（職員が決めた。閉じても隠すだけ） */
@@ -37,7 +42,7 @@ export function setWorkShown(env: CaseEnv, open: boolean) {
  * 職員が閉じた・狭い画面ではタブだけ切り替える（勝手に開き直さない。返事の途中でチャットを覆わない。「表を開く」で開くとそのタブ）
  */
 export function openTab(env: CaseEnv, tab: WorkTab, how: "auto" | "click") {
-  setUi(env.store, (u) => (how === "click" || (u.wide && u.workChoice !== false) ? { tab, workChoice: true } : { tab }))
+  setUi(env.store, (u) => (how === "click" || (u.wide && u.workChoice !== false) ? { ...viewPatch(tab), workChoice: true } : viewPatch(tab)))
 }
 
 /** 表の絞り込みを選ぶ */
@@ -47,7 +52,7 @@ export function setFilter(env: CaseEnv, filter: TableFilter) {
 
 /** 計画の聞き返しの対象の行を表で見る */
 export function viewAsk(env: CaseEnv, askId: string) {
-  setUi(env.store, () => ({ filter: { kind: "all", ask: askId }, tab: "table", workChoice: true }))
+  setUi(env.store, () => ({ filter: { kind: "all", ask: askId }, tab: "table", tool: null, workChoice: true }))
 }
 
 /**
@@ -57,6 +62,27 @@ export function viewAsk(env: CaseEnv, askId: string) {
 export function goChat(env: CaseEnv, to: ChatTarget) {
   const collapsed = env.view(env.store.getState()).layout.chatCollapsed
   setUi(env.store, (u) => ({ ...(u.wide ? {} : { workChoice: false }), ...(collapsed ? { chat: { ...u.chat, collapsed: false } } : {}), focus: { kind: "chat", ...to } }))
+}
+
+/**
+ * チャットに決まった指示を送る（「答える」の段の「AI に聞く」。送るのはチャットの欄。ui.chatSend を読んで送り、takeChatSend で外す。送れる間だけ受け付ける）。
+ * 移るのは goChat と同じ（狭い画面では作業の画面を閉じ、たたんだ窓はその場だけ開く）。フォーカスはチャットの入力欄へ
+ */
+export function askChat(env: CaseEnv, text: string) {
+  // 送れない間（返事の途中・会話の読み込み中）は受け付けない（ボタンも押せない。頼みを残してあとで勝手に送らない）
+  if (!env.view(env.store.getState()).chatCanSend) return
+  const collapsed = env.view(env.store.getState()).layout.chatCollapsed
+  setUi(env.store, (u) => ({
+    ...(u.wide ? {} : { workChoice: false }),
+    ...(collapsed ? { chat: { ...u.chat, collapsed: false } } : {}),
+    chatSend: { text },
+    focus: { kind: "chatWindow" },
+  }))
+}
+
+/** チャットの欄が送る指示を受け取った（同じ頼みで二度送らない） */
+export function takeChatSend(env: CaseEnv) {
+  setUi(env.store, () => ({ chatSend: null }))
 }
 
 /**
@@ -95,13 +121,31 @@ export function chatArrived(env: CaseEnv, tone: "new" | "error") {
   setUi(env.store, (u) => ({ chat: { ...u.chat, unread: tone } }))
 }
 
-/** 次にやることの段へ移る。答えるはチャットの最初の答えを待つものへ（狭い画面では作業の画面を閉じる） */
+/** 段を開く（どの段にもいつでも行ける。順番は案内だけ）。直すは理由の絞り込みを外して直す行のすべてから */
 export function goStep(env: CaseEnv, id: StepId) {
-  if (id === "export") return openExport(env)
-  if (id === "inquiry") return showTab(env, "inquiry")
-  if (id === "gyoshu") return showTab(env, "gyoshu")
-  if (id === "fix") return setUi(env.store, () => ({ filter: { kind: "fix" }, tab: "table", workChoice: true }))
-  goChat(env, PENDING_TARGET)
+  // 直すは理由の絞り込みだけを外す（表の聞き返しの絞り込みは表に戻ったときのために残す）
+  if (id === "fix") return setUi(env.store, (u) => ({ filter: u.filter?.ask ? { kind: u.filter.kind, ask: u.filter.ask } : null, tab: "fix", tool: null, workChoice: true }))
+  showTab(env, id)
+}
+
+/**
+ * 段の中身の終わりの「済みました。次は ◯◯ →」: 次の段（lib/cases/steps.ts の nextStep）を開き、その段の中身にフォーカスを移す。
+ * 段が済んでも勝手には移らない（移るのも、フォーカスが動くのも、これを押したときだけ）
+ */
+export function goNextStep(env: CaseEnv, from: StepId) {
+  const id = nextStep(env.view(env.store.getState()).todo, from)
+  goStep(env, id)
+  setUi(env.store, () => ({ focus: { kind: "step", id } }))
+}
+
+/**
+ * 表ができたら、開いているものを今の段に決める（職員がまだ選んでいなければ。session.ts の watch が呼ぶ）。
+ * 決めたあとは段が済んでも開いているものを変えない（勝手に次の段へ移らない）
+ */
+export function pinCurrentStep(env: CaseEnv) {
+  const s = env.store.getState()
+  if (s.ui.tab !== null) return
+  setUi(env.store, () => ({ tab: currentStep(env.view(s).todo) }))
 }
 
 /**
@@ -111,29 +155,17 @@ export function goStep(env: CaseEnv, id: StepId) {
 export function runFixAction(env: CaseEnv, action: FixActionId, keys: readonly string[]) {
   if (action === "findLocation") return showTab(env, "location")
   if (action === "askCustomer") return showTab(env, "inquiry")
-  setUi(env.store, () => ({ tab: "gyoshu", workChoice: true, ...(keys.length === 1 ? { focus: { kind: "gyoshuRow", key: keys[0]! } } : {}) }))
+  setUi(env.store, () => ({ tab: "gyoshu", tool: null, workChoice: true, ...(keys.length === 1 ? { focus: { kind: "gyoshuRow", key: keys[0]! } } : {}) }))
 }
 
-/** 返事のボタン（ダウンロードの前の確認・問い合わせ） */
+/** 返事のボタン（ダウンロード・問い合わせの段を開く） */
 export function chatAction(env: CaseEnv, a: ChatAction) {
-  if (a === "export") openExport(env)
-  else showTab(env, "inquiry")
+  showTab(env, a === "export" ? "export" : "inquiry")
 }
 
-/** ダウンロードの前の確認を開く（閉じたあとのフォーカスは開いたボタンに戻す） */
+/** ダウンロードの段を開く（前の確認はダイアログでなく段の中身） */
 export function openExport(env: CaseEnv) {
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, export: { open: true, returnTo: null } } }))
-}
-
-/** ダウンロードの前の確認を閉じる */
-export function closeExport(env: CaseEnv) {
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, export: { open: false, returnTo: null } } }))
-}
-
-/** ダウンロードの前の確認を閉じてチャットの移り先へ移る（確認は閉じると開いたボタンにフォーカスを戻すので、その代わりに移り先のボタンへ） */
-export function exportToChat(env: CaseEnv, to: ChatTarget) {
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, export: { open: false, returnTo: to } } }))
-  goChat(env, to)
+  showTab(env, "export")
 }
 
 /** 案件の削除の確認を開く・閉じる */
@@ -151,9 +183,14 @@ export function setDragging(env: CaseEnv, dragging: boolean) {
   setUi(env.store, () => ({ dragging }))
 }
 
-/** チャットに指示を送れるか（チャットの欄が知らせる） */
-export function setChatCanSend(env: CaseEnv, chatCanSend: boolean) {
-  setUi(env.store, () => ({ chatCanSend }))
+/** 保存した会話を読み終えた（チャットの欄が会話を読んだとき） */
+export function setChatLoaded(env: CaseEnv, loaded: boolean) {
+  setUi(env.store, (u) => ({ chatTurn: { ...u.chatTurn, loaded } }))
+}
+
+/** 指示を送り始めた・返事が終わった（チャットの欄の送る処理だけが書く。送れるかの元） */
+export function setChatSending(env: CaseEnv, sending: boolean) {
+  setUi(env.store, (u) => ({ chatTurn: { ...u.chatTurn, sending } }))
 }
 
 /** 案内を送った（返ってきた Excel の案内はファイルの id、振り返りは review、問い合わせのメールの下書きは inquiry-text） */

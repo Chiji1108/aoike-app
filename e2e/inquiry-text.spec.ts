@@ -57,7 +57,7 @@ test("AI のメールの下書きを承認すると件名・前置き・本文�
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
 
   await openTab(page, "inquiry")

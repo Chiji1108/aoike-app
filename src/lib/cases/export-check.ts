@@ -79,7 +79,7 @@ export function exportCheck(output: readonly Row[], summary: readonly GyoshuSumm
 
 export const issueLabel = (i: ExportIssue) => `${fieldLabel(i.field)}: ${i.message}`
 
-/** 決算書の額を使った側の数（業種ごと）。7割と金額のタブの基準の1行と、ダウンロードの前の確認で同じ数 */
+/** 決算書の額を使った側の数（業種ごと）。7割と金額の基準の1行と、ダウンロードの段の確かめで同じ数 */
 export const fromBookCount = (summary: readonly GyoshuSummary[]) => ({
   total: summary.filter((g) => g.fromBook.total).length,
   motouke: summary.filter((g) => g.fromBook.motouke).length,
