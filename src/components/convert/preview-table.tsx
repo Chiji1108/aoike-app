@@ -1,17 +1,22 @@
 import { useMemo, useRef, useState, useSyncExternalStore } from "react"
 import {
+  columnFacetingFeature,
+  columnFilteringFeature,
   columnVisibilityFeature,
   createColumnHelper,
+  createFacetedRowModel,
+  createFacetedUniqueValues,
+  createFilteredRowModel,
   createSortedRowModel,
   rowSortingFeature,
   sortFn_alphanumeric,
   tableFeatures,
   useTable,
-  type ColumnVisibilityState,
-  type SortingState,
+  type Column,
+  type Updater,
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown, Check, Columns3, ListChecks, MapPin, MessageCircleQuestion, RefreshCw, Search, Undo2, X } from "lucide-react"
+import { ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUp, ArrowUpNarrowWide, Check, ChevronDown, Columns3, Funnel, ListChecks, MapPin, MessageCircleQuestion, RefreshCw, Search, Undo2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -23,8 +28,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CellEdit, CellResult, EditSession, RowResult } from "@/lib/convert/convert"
 import { INCLUSION_LABELS, rangeToggle, SELECTION_LABELS, type Inclusion, type SelectionMode } from "@/lib/convert/koji-selection"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
@@ -32,6 +37,7 @@ import type { CsvSpec } from "@/lib/spec/types"
 import { cn } from "@/lib/utils"
 import { choiceLabel, choicesOf } from "@/lib/spec/choices"
 import { CellPicker } from "./cell-picker"
+import { facetItems, matchesColumnFilter, toneCounts, type ColumnFilterValue, type TableGrid } from "./column-filter"
 import {
   CONFIRM_LABEL,
   FIX_ACTIONS,
@@ -58,9 +64,18 @@ import {
 
 type Row = RowResult<KojiFieldId>
 
+/**
+ * 列のフィルター（見出しの ▼）は TanStack Table の列のフィルター。値の一覧（faceted）は、その列の ▼ を開いたときだけ数える
+ * （ほかの列の絞り込みに合う行で。TanStack Table が覚えるので、開いている間に描き直しても数え直さない）
+ */
 const features = tableFeatures({
   columnVisibilityFeature,
+  columnFilteringFeature,
+  columnFacetingFeature,
   rowSortingFeature,
+  filteredRowModel: createFilteredRowModel(),
+  facetedRowModel: createFacetedRowModel(),
+  facetedUniqueValues: createFacetedUniqueValues(),
   sortedRowModel: createSortedRowModel(),
   sortFns: { alphanumeric: sortFn_alphanumeric },
 })
@@ -126,6 +141,18 @@ type ActiveStore = ReturnType<typeof activeStore>
 /** 絞り込みを比べる鍵（止めた並びがどの絞り込みのものか） */
 const filterKey = (f: TableFilter) => `${f.kind}|${f.reason ?? ""}|${f.ask ?? ""}`
 
+/**
+ * 表の見え方の鍵（絞り込み・検索・並べ替え・列のフィルター・列の表示。変わったら止めた並びと Shift＋クリックの起点を捨てる。
+ * 列の表示も入れるのは、検索が見えている列だけを探すので、列を出し入れすると検索に合う行が変わるため）
+ */
+const viewKey = (f: TableFilter, needle: string, grid: TableGrid) =>
+  `${filterKey(f)}|${needle}|${JSON.stringify(grid.sorting)}|${JSON.stringify(grid.columnFilters)}|${JSON.stringify(grid.columnVisibility)}`
+
+const resolve = <T,>(u: Updater<T>, old: T) => (typeof u === "function" ? (u as (o: T) => T)(old) : u)
+
+/** 値の一覧に一度に出す数（数千の値を描かない。残りは一覧の中の検索で探す） */
+const SHOWN_VALUES = 300
+
 const originText = (r: Row) => `${r.sheet}!${r.row + 1}`
 
 /** 行の理由として見せる数（残りは「他 N」。全部はツールチップ） */
@@ -157,6 +184,12 @@ export function PreviewTable({
   confirmUndo,
   onGoFix,
   visible,
+  grid,
+  onQuery,
+  onSorting,
+  onColumnVisibility,
+  onColumnFilter,
+  onClearColumnFilters,
 }: {
   spec: CsvSpec<KojiFieldId>
   rows: Row[]
@@ -193,22 +226,30 @@ export function PreviewTable({
   onGoFix?: () => void
   /** 表が画面に見えているか（隠れている間は行の高さを測らない） */
   visible: boolean
+  /** 表の見え方（検索・並べ替え・列の表示・列のフィルター）。案件の画面が持つ（ui.grid。直すの段と表で同じ） */
+  grid: TableGrid
+  onQuery: (query: string) => void
+  onSorting: (sorting: TableGrid["sorting"]) => void
+  /** 隠した列の絞り込みは、受け取った側で外す */
+  onColumnVisibility: (v: TableGrid["columnVisibility"]) => void
+  onColumnFilter: (id: string, value: ColumnFilterValue | null) => void
+  onClearColumnFilters: () => void
 }) {
   const [editing, setEditing] = useState<Editing | null>(null)
   const setFilter = onFilterChange
-  const [query, setQuery] = useState("")
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({})
+  const { query, sorting, columnVisibility, columnFilters } = grid
+  const needle = query.trim().toLowerCase()
   /**
-   * 手直しを始めたときの表示の行（キーの並び）。手直しで行が絞り込みから外れたり並べ替えで動いたりしても、
-   * 絞り込み・並べ替え・検索を変えるか「更新」を押すまではこの並びのまま出す
+   * 手直しを始めたときの表示の行（キーの並び）。手直しで行が絞り込み・列のフィルターから外れたり並べ替えで動いたりしても、
+   * 絞り込み・並べ替え・検索・列のフィルターを変えるか「更新」を押すまではこの並びのまま出す
    */
   const [pinned, setPinned] = useState<readonly string[] | null>(null)
   const unpin = () => setPinned(null)
-  // 絞り込みが変わったら（表の上でも、次にやること・「表で見る」など外からでも）止めた並びを捨てる（描くときに1か所で）
-  const [pinnedFilter, setPinnedFilter] = useState(filterKey(filter))
-  if (pinnedFilter !== filterKey(filter)) {
-    setPinnedFilter(filterKey(filter))
+  // 見え方が変わったら（表の上でも、次にやること・「表で見る」など外からでも）止めた並びを捨てる（描くときに1か所で）
+  const view = viewKey(filter, needle, grid)
+  const [pinnedView, setPinnedView] = useState(view)
+  if (pinnedView !== view) {
+    setPinnedView(view)
     setPinned(null)
   }
 
@@ -219,10 +260,20 @@ export function PreviewTable({
       columnHelper.columns([
         columnHelper.display({ id: "include", header: "載せる", enableHiding: false }),
         ...(reasonsColumn ? [columnHelper.display({ id: "reasons", header: "直す理由と直し方", enableHiding: false })] : []),
-        columnHelper.accessor(originText, { id: "origin", header: "元の行", sortFn: "alphanumeric" }),
+        columnHelper.accessor(originText, {
+          id: "origin",
+          header: "元の行",
+          sortFn: "alphanumeric",
+          filterFn: (row, _id, fv: ColumnFilterValue) => matchesColumnFilter(originText(row.original), undefined, fv),
+        }),
         ...spec.fields.map((f) =>
-          // CSV の列（A〜N）との対応は見出しのツールチップに出す
-          columnHelper.accessor((r) => r.cells[f.id].value, { id: f.id, header: f.label, sortFn: "alphanumeric" }),
+          // CSV の列（A〜N）との対応は見出しの ▼ の中に出す
+          columnHelper.accessor((r) => r.cells[f.id].value, {
+            id: f.id,
+            header: f.label,
+            sortFn: "alphanumeric",
+            filterFn: (row, _id, fv: ColumnFilterValue) => matchesColumnFilter(row.original.cells[f.id].value, row.original.cells[f.id], fv),
+          }),
         ),
       ]),
     [spec, reasonsColumn],
@@ -230,7 +281,6 @@ export function PreviewTable({
   const store = useRef<ActiveStore | null>(null)
   store.current ??= activeStore()
 
-  const needle = query.trim().toLowerCase()
   const data = useMemo(() => {
     const visible = (id: string) => columnVisibility[id] !== false
     const searched = spec.fields.filter((f) => visible(f.id))
@@ -243,22 +293,27 @@ export function PreviewTable({
     return rows.filter((r) => inFilter(filter, fixes.get(r.key) ?? NO_FIX, inclusion.get(r.key)?.included ?? false, asked, r.key) && (!needle || hasText(r)))
   }, [rows, fixes, inclusion, filter, asks, needle, columnVisibility, spec])
   const activeAsk = asks.find((a) => a.id === filter.ask)
-  /** まとめて頼める直し方: 今の絞り込み（理由・検索）で見えている行だけ（件数もその行で） */
-  const fixGroups = useMemo(() => (filter.kind === "fix" && !filter.ask ? fixActionGroups(data, inclusion, fixes, filter.reason) : []), [data, inclusion, fixes, filter])
 
   const table = useTable({
     features,
     data,
     columns,
     getRowId: (r) => r.key,
-    onSortingChange: (updater) => {
-      unpin()
-      setSorting(updater)
+    onSortingChange: (u) => onSorting(resolve(u, sorting)),
+    onColumnVisibilityChange: (u) => onColumnVisibility(resolve(u, columnVisibility)),
+    onColumnFiltersChange: (u) => {
+      const next = resolve(u, columnFilters)
+      for (const id of new Set([...columnFilters, ...next].map((f) => f.id))) onColumnFilter(id, (next.find((f) => f.id === id)?.value as ColumnFilterValue | undefined) ?? null)
     },
-    onColumnVisibilityChange: setColumnVisibility,
-    state: { sorting, columnVisibility },
+    state: { sorting, columnVisibility, columnFilters },
   })
+  const filtered = table.getFilteredRowModel().rows
   const live = table.getRowModel().rows.map((r) => r.original)
+  /** まとめて頼める直し方: 今の絞り込み（理由・検索・列の絞り込み）で見えている行だけ（件数もその行で） */
+  const fixGroups = useMemo(
+    () => (filter.kind === "fix" && !filter.ask ? fixActionGroups(filtered.map((r) => r.original), inclusion, fixes, filter.reason) : []),
+    [filtered, inclusion, fixes, filter],
+  )
   const liveKeys = new Set(live.map((r) => r.key))
   const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows])
   const shown = pinned ? pinned.flatMap((k) => byKey.get(k) ?? []) : live
@@ -294,7 +349,7 @@ export function PreviewTable({
    */
   const [rangeAnchor, setRangeAnchor] = useState<{ key: string; included: boolean; order: readonly string[] } | null>(null)
   // 絞り込み・検索・並べ替え・選び方が変わったら起点を捨てる（思わぬ広い範囲にしない。描くときに1か所で）
-  const anchorView = `${filterKey(filter)}|${needle}|${JSON.stringify(sorting)}|${selection}`
+  const anchorView = `${view}|${selection}`
   const [anchorViewSeen, setAnchorViewSeen] = useState(anchorView)
   if (anchorViewSeen !== anchorView) {
     setAnchorViewSeen(anchorView)
@@ -314,6 +369,15 @@ export function PreviewTable({
   }
   /** 項目ごとの定義と選ぶ欄（描くたびに作らない） */
   const fieldInfo = useMemo(() => new Map(spec.fields.map((f) => [f.id, { spec: f, choices: choicesOf(f) }])), [spec])
+  /** 値の一覧に出す表示の値（選ぶ欄の項目は名前。業種・元請下請はコードも添える。セルと同じ） */
+  const valueLabel = useMemo(
+    () => (columnId: string, v: string) => {
+      const f = fieldInfo.get(columnId as KojiFieldId)
+      const named = f && choiceLabel(f.spec, v)
+      return named ? (f.choices?.kind === "codes" && f.choices.set !== "flag" ? `${v} ${named}` : named) : v
+    },
+    [fieldInfo],
+  )
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -472,13 +536,23 @@ export function PreviewTable({
             placeholder="表の中を検索"
             className="pl-7"
             value={query}
-            onChange={(e) => {
-              unpin()
-              setQuery(e.target.value)
-            }}
+            onChange={(e) => onQuery(e.target.value)}
           />
         </div>
         {sorting.length > 0 && <span className="text-xs text-muted-foreground">並べ替えは表示だけ</span>}
+        {columnFilters.length > 0 && (
+          <span className="flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 py-0.5 pr-1 pl-2.5 text-xs text-sky-900" data-testid="column-filters">
+            <Funnel className="size-3" aria-hidden />
+            絞り込み中: {columnFilters.map((f) => columnLabel(spec, f.id)).join("・")}
+            {/* 段の並び・直す理由の数は列の絞り込みの前の数なので、見えている行の数と食い違わないように両方を出す（全部は直す理由・検索の後の行） */}
+            <span className="num text-sky-800/80" data-testid="column-filters-count">
+              （{data.length}行のうち {filtered.length}行を表示）
+            </span>
+            <Button size="xs" variant="ghost" className="h-5 px-1.5" onClick={onClearColumnFilters} data-testid="column-filters-clear">
+              すべて解除
+            </Button>
+          </span>
+        )}
         {outdated && (
           <span className="flex items-center gap-1.5 text-xs text-amber-700" data-testid="outdated">
             手直しのあと止めています
@@ -556,6 +630,7 @@ export function PreviewTable({
               <TableRow key={hg.id} className="hover:bg-transparent">
                 {hg.headers.map((h) => {
                   const sorted = h.column.getIsSorted()
+                  const colFilter = h.column.getFilterValue() as ColumnFilterValue | undefined
                   return (
                     <TableHead
                       key={h.id}
@@ -567,18 +642,17 @@ export function PreviewTable({
                     >
                       {h.column.id === "include" ? (
                         <IncludeHeader selection={selection} onSelection={onSelection} off={offCount} />
-                      ) : h.column.getCanSort() ? (
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={<button type="button" className="inline-flex items-end gap-1 text-left font-medium hover:text-foreground" onClick={h.column.getToggleSortingHandler()} />}
-                          >
-                            <span>
-                              <table.FlexRender header={h} />
-                            </span>
-                            {sorted === "asc" ? <ArrowUp className="size-3 shrink-0" /> : sorted === "desc" ? <ArrowDown className="size-3 shrink-0" /> : <ArrowUpDown className="size-3 shrink-0 opacity-40" />}
-                          </TooltipTrigger>
-                          <TooltipContent>{columnTip(spec, h.column.id)}</TooltipContent>
-                        </Tooltip>
+                      ) : h.column.getCanFilter() ? (
+                        <ColumnMenu
+                          column={h.column}
+                          label={columnLabel(spec, h.column.id)}
+                          tip={columnTip(spec, h.column.id)}
+                          sorted={sorted}
+                          filter={colFilter}
+                          valueLabel={valueLabel}
+                          onSort={(desc) => onSorting(desc === null ? [] : [{ id: h.column.id, desc }])}
+                          onFilter={(v) => onColumnFilter(h.column.id, v)}
+                        />
                       ) : (
                         <table.FlexRender header={h} />
                       )}
@@ -610,6 +684,7 @@ export function PreviewTable({
             {shown.length === 0 && (
               <TableRow>
                 <TableCell colSpan={visibleColumns.length} className="h-20 text-center text-muted-foreground" data-testid="no-match">
+                  {columnFilters.length ? "列の絞り込みに合う" : ""}
                   {needle ? `「${query.trim()}」を含む${ROW_FILTERS[filter.kind].empty}` : ROW_FILTERS[filter.kind].empty}はありません
                 </TableCell>
               </TableRow>
@@ -649,6 +724,204 @@ function IncludeHeader({ selection, onSelection, off }: { selection: SelectionMo
         </span>
       )}
     </label>
+  )
+}
+
+/**
+ * 見出しの ▼（Excel のフィルターと同じ）。見出しを押すと開き、並べ替え（昇順・降順）・色で絞る・値で絞る（一覧の中の検索・全選択／解除・件数）をここでする。
+ * 絞っている列は ▼ がじょうごに変わる。選ぶとすぐ表に効く（OK を押さない。閉じるのは Escape か外を押す）。
+ * 値の一覧と色は開いている間だけ数える（ColumnFilterPanel は開いたときだけ描く）
+ */
+function ColumnMenu({
+  column,
+  label,
+  tip,
+  sorted,
+  filter,
+  valueLabel,
+  onSort,
+  onFilter,
+}: {
+  column: Column<typeof features, Row, unknown>
+  label: string
+  tip: string
+  sorted: false | "asc" | "desc"
+  filter: ColumnFilterValue | undefined
+  valueLabel: (columnId: string, value: string) => string
+  onSort: (desc: boolean | null) => void
+  onFilter: (value: ColumnFilterValue | null) => void
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            className={cn(
+              "inline-flex w-full items-end justify-between gap-1 rounded-sm text-left font-medium outline-none select-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+              filter && "text-sky-800",
+            )}
+            title={`${tip}。押すと並べ替え・絞り込み`}
+            data-testid="column-menu"
+            data-column={column.id}
+            data-filtered={filter ? "1" : undefined}
+          />
+        }
+      >
+        <span className="min-w-0">{label}</span>
+        <span className="flex shrink-0 items-center gap-0.5">
+          {sorted === "asc" ? <ArrowUp className="size-3" aria-label="昇順" /> : sorted === "desc" ? <ArrowDown className="size-3" aria-label="降順" /> : null}
+          {filter ? <Funnel className="size-3 fill-current" aria-label="絞り込み中" /> : <ChevronDown className="size-3 opacity-60" aria-hidden />}
+        </span>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="max-h-(--available-height) w-72 max-w-[calc(100vw-2rem)] overflow-y-auto" data-testid="column-panel">
+        <ColumnFilterPanel column={column} label={label} tip={tip} sorted={sorted} filter={filter} valueLabel={valueLabel} onSort={onSort} onFilter={onFilter} />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function ColumnFilterPanel({
+  column,
+  label,
+  tip,
+  sorted,
+  filter,
+  valueLabel,
+  onSort,
+  onFilter,
+}: {
+  column: Column<typeof features, Row, unknown>
+  label: string
+  tip: string
+  sorted: false | "asc" | "desc"
+  filter: ColumnFilterValue | undefined
+  valueLabel: (columnId: string, value: string) => string
+  onSort: (desc: boolean | null) => void
+  onFilter: (value: ColumnFilterValue | null) => void
+}) {
+  const [search, setSearch] = useState("")
+  // ほかの列の絞り込みに合う行の、この列の値と件数・色（TanStack Table が覚える。開いている間だけ数える）
+  const counts = column.getFacetedUniqueValues()
+  const items = useMemo(() => facetItems(counts, (v) => valueLabel(column.id, v)), [counts, valueLabel, column.id])
+  const facetRows = column.getFacetedRowModel().rows
+  const tones = useMemo(() => (column.id === "origin" ? [] : toneCounts(facetRows.map((r) => r.original.cells[column.id as KojiFieldId]))), [facetRows, column.id])
+  const needle = search.trim().toLowerCase()
+  const matched = needle ? items.filter((i) => i.label.toLowerCase().includes(needle) || i.value.toLowerCase().includes(needle)) : items
+  /**
+   * チェックの付いた値。値で絞っているときは外した値のほか、色で絞っているときはその色のセルの値
+   * （色から値に切り替えると、今見えている行から始まる）
+   */
+  const selected = useMemo(() => {
+    if (filter && "tone" in filter) return new Set(facetRows.filter((r) => matchesColumnFilter("", r.original.cells[column.id as KojiFieldId], filter)).map((r) => String(r.getValue(column.id) ?? "")))
+    const excluded = new Set(filter?.exclude)
+    return new Set(items.filter((i) => !excluded.has(i.value)).map((i) => i.value))
+  }, [filter, facetRows, items, column])
+  /** 一覧に出ていない（ほかの列・検索・段で今は見えない）のに外したままの値の数 */
+  const hiddenExcluded = useMemo(() => {
+    if (!filter || !("exclude" in filter)) return 0
+    const listed = new Set(items.map((i) => i.value))
+    return filter.exclude.filter((v) => !listed.has(v)).length
+  }, [filter, items])
+  const allOn = matched.every((i) => selected.has(i.value)) && (needle !== "" || hiddenExcluded === 0)
+  const someOn = matched.some((i) => selected.has(i.value))
+  /**
+   * 外す値を決める（チェックの無い値。一覧に無い値〔ほかの列・検索・段で今は見えない値〕で前に外したものは外したまま。外す値が無ければ絞り込みを外す）
+   */
+  const choose = (next: Set<string>) => {
+    const listed = new Set(items.map((i) => i.value))
+    const kept = filter && "exclude" in filter ? filter.exclude.filter((v) => !listed.has(v)) : []
+    const exclude = [...kept, ...items.filter((i) => !next.has(i.value)).map((i) => i.value)]
+    onFilter(exclude.length ? { exclude } : null)
+  }
+  const toggle = (value: string, on: boolean) => {
+    const next = new Set(selected)
+    if (on) next.add(value)
+    else next.delete(value)
+    choose(next)
+  }
+  const toggleMatched = (on: boolean) => {
+    // 検索していない「すべて選択」は、一覧に無い外した値も含めて、この列の絞り込みを外す
+    if (on && !needle) return onFilter(null)
+    const next = new Set(selected)
+    for (const i of matched) if (on) next.add(i.value)
+    else next.delete(i.value)
+    choose(next)
+  }
+  const sectionLabel = "text-xs font-medium text-muted-foreground"
+  return (
+    <div className="flex flex-col gap-2.5 text-xs">
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-muted-foreground">{tip}</p>
+      </div>
+      <div className="flex gap-1.5" role="group" aria-label="並べ替え">
+        <Button size="sm" variant={sorted === "asc" ? "default" : "outline"} className="flex-1" aria-pressed={sorted === "asc"} onClick={() => onSort(sorted === "asc" ? null : false)} data-testid="sort-asc">
+          <ArrowUpNarrowWide />
+          昇順
+        </Button>
+        <Button size="sm" variant={sorted === "desc" ? "default" : "outline"} className="flex-1" aria-pressed={sorted === "desc"} onClick={() => onSort(sorted === "desc" ? null : true)} data-testid="sort-desc">
+          <ArrowDownWideNarrow />
+          降順
+        </Button>
+      </div>
+      {tones.length > 0 && (
+        <div className="flex flex-col gap-1" role="group" aria-label="色で絞る">
+          <p className={sectionLabel}>色で絞る</p>
+          <div className="flex flex-wrap gap-1">
+            {tones.map(({ tone, count }) => {
+              const on = !!filter && "tone" in filter && filter.tone === tone
+              return (
+                <Button key={tone} size="xs" variant={on ? "default" : "outline"} aria-pressed={on} onClick={() => onFilter(on ? null : { tone })} data-testid="filter-tone" data-tone={tone}>
+                  <span className={cn("size-2.5 shrink-0 rounded-[3px]", STATUS[tone].dot)} aria-hidden />
+                  {STATUS[tone].label}
+                  <span className="num opacity-70">{count}</span>
+                </Button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      <div className="flex flex-col gap-1" role="group" aria-label="値で絞る">
+        <p className={sectionLabel}>値で絞る</p>
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input type="search" aria-label={`${label}の値を検索`} placeholder="一覧の中を検索" className="h-7 pl-7 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <ul className="flex max-h-60 flex-col overflow-y-auto rounded-md border py-1" data-testid="filter-values">
+          {matched.length > 0 && (
+            <li>
+              <label className="flex items-center gap-2 px-2 py-1 font-medium hover:bg-muted">
+                <Checkbox checked={allOn} indeterminate={!allOn && someOn} onCheckedChange={(on) => toggleMatched(on)} data-testid="filter-all" />
+                {needle ? "検索結果をすべて選択" : "すべて選択"}
+              </label>
+            </li>
+          )}
+          {hiddenExcluded > 0 && (
+            <li className="px-2 py-1 text-muted-foreground" data-testid="filter-hidden-excluded">
+              一覧に無い値 {hiddenExcluded}件を外しています
+            </li>
+          )}
+          {matched.slice(0, SHOWN_VALUES).map((i) => (
+            <li key={i.value}>
+              <label className="flex items-center gap-2 px-2 py-1 hover:bg-muted" data-testid="filter-value" data-value={i.value}>
+                <Checkbox checked={selected.has(i.value)} onCheckedChange={(on) => toggle(i.value, on)} />
+                <span className={cn("min-w-0 flex-1 truncate", !i.value && "text-muted-foreground")} title={i.label}>
+                  {i.label}
+                </span>
+                <span className="num shrink-0 text-muted-foreground">{i.count}</span>
+              </label>
+            </li>
+          ))}
+          {matched.length > SHOWN_VALUES && <li className="px-2 py-1 text-muted-foreground">ほか {matched.length - SHOWN_VALUES} 件（一覧の中を検索で探せます）</li>}
+          {matched.length === 0 && <li className="px-2 py-1 text-muted-foreground">合う値がありません</li>}
+        </ul>
+      </div>
+      <Button size="sm" variant="ghost" disabled={!filter} onClick={() => onFilter(null)} data-testid="filter-clear">
+        <X />
+        この列の絞り込みを解除
+      </Button>
+    </div>
   )
 }
 

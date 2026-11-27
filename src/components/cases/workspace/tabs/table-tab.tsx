@@ -22,6 +22,7 @@ export function TableTab() {
   )
   const selection = useCase((s) => s.work.selection)
   const filter = useCase((s) => s.ui.filter)
+  const grid = useCase((s) => s.ui.grid)
   const lastConfirm = useCase((s) => derive(s).lastOp.confirm)
   if (!shown || !output) return null
   /**
@@ -67,6 +68,12 @@ export function TableTab() {
         confirmUndo={lastConfirm ? () => actions.undoWithNotice(lastConfirm.proposalId, `「${CONFIRM_LABEL}」`) : null}
         onGoFix={() => actions.goStep("fix")}
         visible={visible === "table" || visible === "fix"}
+        grid={grid}
+        onQuery={actions.setTableQuery}
+        onSorting={actions.setTableSorting}
+        onColumnVisibility={actions.setColumnVisibility}
+        onColumnFilter={actions.setColumnFilter}
+        onClearColumnFilters={actions.clearColumnFilters}
       />
     </>
   )

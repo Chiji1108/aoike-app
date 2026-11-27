@@ -493,6 +493,24 @@ describe("道具と段の並び", () => {
     s.actions.goStep("fix")
     expect(s.store.getState().ui.filter).toEqual({ kind: "all", ask: "plan-ask-0" })
   })
+
+  test("列のフィルターは直すの段と表で同じまま。聞き返しの「表で見る」と列を隠すと外れ、検索・並べ替えは残す", async () => {
+    const s = await converted(true)
+    s.actions.setTableQuery("サンプル")
+    s.actions.setTableSorting([{ id: "amount", desc: true }])
+    s.actions.setColumnFilter("gyoshu", { exclude: ["08"] })
+    s.actions.setColumnFilter("place", { tone: "warning" })
+    s.actions.goStep("fix")
+    s.actions.showTab("table")
+    expect(s.store.getState().ui.grid.columnFilters.map((f) => f.id)).toEqual(["gyoshu", "place"])
+    s.actions.setColumnVisibility({ place: false })
+    expect(s.store.getState().ui.grid.columnFilters.map((f) => f.id)).toEqual(["gyoshu"])
+    s.actions.viewAsk("plan-ask-0")
+    expect(s.store.getState().ui.grid).toEqual({ query: "サンプル", sorting: [{ id: "amount", desc: true }], columnVisibility: { place: false }, columnFilters: [] })
+    s.actions.setColumnFilter("gyoshu", { exclude: [] })
+    s.actions.clearColumnFilters()
+    expect(s.store.getState().ui.grid.columnFilters).toEqual([])
+  })
 })
 
 describe("載せる工事に答えたか（selectionAnswered）", () => {

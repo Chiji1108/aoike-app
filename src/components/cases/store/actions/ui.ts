@@ -1,6 +1,7 @@
 import { currentStep, isTool, nextStep, type StepId } from "@/lib/cases/steps"
 import type { WorkTab } from "@/components/cases/work-tabs"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
+import { withColumnFilter, withColumnVisibility, type ColumnFilterValue, type TableGrid } from "@/components/convert/column-filter"
 import type { ChatAction } from "@/lib/chat/messages"
 import { setRuntime, setUi, type ChatPrefs, type ChatSize, type ChatTarget } from "../create-case-store"
 import type { CaseEnv } from "../env"
@@ -47,9 +48,34 @@ export function setFilter(env: CaseEnv, filter: TableFilter) {
   setUi(env.store, () => ({ filter }))
 }
 
-/** 計画の聞き返しの対象の行を表で見る */
+/** 計画の聞き返しの対象の行を表で見る（その行をすべて見せるので、列のフィルターは外す。検索・並べ替えは残す） */
 export function viewAsk(env: CaseEnv, askId: string) {
-  setUi(env.store, () => ({ filter: { kind: "all", ask: askId }, tab: "table", tool: null, workChoice: true }))
+  setUi(env.store, (u) => ({ filter: { kind: "all", ask: askId }, tab: "table", tool: null, workChoice: true, grid: { ...u.grid, columnFilters: [] } }))
+}
+
+/** 表の中を検索する */
+export function setTableQuery(env: CaseEnv, query: string) {
+  setUi(env.store, (u) => ({ grid: { ...u.grid, query } }))
+}
+
+/** 表を並べ替える（表示だけ。空なら元の並び） */
+export function setTableSorting(env: CaseEnv, sorting: TableGrid["sorting"]) {
+  setUi(env.store, (u) => ({ grid: { ...u.grid, sorting } }))
+}
+
+/** 表示する列を変える（隠した列の絞り込みは外す） */
+export function setColumnVisibility(env: CaseEnv, columnVisibility: TableGrid["columnVisibility"]) {
+  setUi(env.store, (u) => ({ grid: withColumnVisibility(u.grid, columnVisibility) }))
+}
+
+/** 列のフィルターを決める（null はその列を外す） */
+export function setColumnFilter(env: CaseEnv, id: string, value: ColumnFilterValue | null) {
+  setUi(env.store, (u) => ({ grid: { ...u.grid, columnFilters: withColumnFilter(u.grid.columnFilters, id, value) } }))
+}
+
+/** 列のフィルターをすべて外す（表の上の「すべて解除」） */
+export function clearColumnFilters(env: CaseEnv) {
+  setUi(env.store, (u) => ({ grid: { ...u.grid, columnFilters: [] } }))
 }
 
 /**
