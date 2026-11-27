@@ -171,7 +171,6 @@ export function PreviewTable({
   /** 載せる工事の選び方（見出しのチェック。ダウンロードの段の7割と金額の「載せる工事」と同じ設定） */
   selection: SelectionMode
   onSelection: (m: SelectionMode) => void
-  /** 7割ルールのまま手で載せた行が多いときの「全件にしますか？」（出さないときは null） */
   /** 絞り込み（案件の画面が持つ。直すの段は直す行・表はすべての行。聞き返しの「表で見る」を押しても変わる） */
   filter: TableFilter
   onFilterChange: (f: TableFilter) => void

@@ -198,7 +198,6 @@ export const setBasis = (env: CaseEnv, code: string, side: "total" | "motouke", 
   update(env, "basis", (prev) => ({ ...prev, [code]: { ...prev[code], [side]: v } }))
 /** 手動の入れ外しを戻す */
 export const clearManual = (env: CaseEnv) => update(env, "manual", () => new Map())
-/** 「全件にしますか？」を閉じる */
 
 /** 変更案の聞き返しに答える（変更案があれば「はい」で承認できるようになる。いいえで全部を却下） */
 export function answerProposal(env: CaseEnv, id: string, a: "yes" | "no") {

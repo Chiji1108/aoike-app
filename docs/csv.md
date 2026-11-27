@@ -121,7 +121,7 @@ pnpm exec tsx scripts/eval-report.ts --cases <cases.json> --out /path/to/report 
 
 - 「去年のやり方で直す」と振り返りを消したとき（2026-11-27）: R2 の会話から `data-carryover` の部品などを取り除いた（1件）。D1 のマイグレーション `drizzle/csv/0012_rule_source_review.sql`（由来 `review` のルールの項目を `chat` にする）は**デプロイの前に**当てる
 - 開発者への要望と、工事場所の覚えた結果を消したとき（2026-11-28）: D1 のマイグレーション `drizzle/csv/0013_drop_feedback_location_memory.sql`（`csv_feedback`・`csv_location_memory` の表を消す）は**デプロイのあとに**当てる（前の版はこの表を読み書きする）
-- 前の形の保存を読む互換をやめたとき（2026-11-28）: 保存した作業・計画・変更案・取り消しの記録・チャットに送る表は今の形だけを読む（省いた項目を既定値で補わない）。D1 のマイグレーション `drizzle/csv/0014_plan_exclude_values.sql`（計画の `rowFilter.excludeValues` を必ず持たせ、やめた `allHintClosed` を消す）は**デプロイの直前に**当てる（今の版は `excludeValues` の無い計画を読めない。前の版は読んだ計画をそのまま保存し直すので、当てたあとも消えない）
+- 前の形の保存を読む互換をやめたとき（2026-11-28）: #35 のデプロイの直後に、本番の保存を新しい形に直した
 
 ## 業種コードの確認（建設業.NET の更新後に）
 

@@ -49,4 +49,5 @@ describe("税の設定と出どころ", () => {
     const r = undo(changed, "u1")!
     expect(r.work).toMatchObject({ tax: "unknown", taxBy: "staff" })
     expect(r.kept).toBe(1)
-  })})
+  })
+})
