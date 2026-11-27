@@ -73,6 +73,8 @@ test("全件をすすめる閾値: 行が FEW_ROWS 行以下、または表の�
   expect([FEW_ROWS, FILTERED_RATIO]).toEqual([12, 0.85])
   expect(selectionAdvice({ previous: null, rows: FEW_ROWS, summary: [] })).toMatchObject({ recommended: "all" })
   expect(selectionAdvice({ previous: null, rows: FEW_ROWS + 1, summary: [] })).toMatchObject({ recommended: "rule7" })
+  // 載せうる行が無いときは、行の数では全件をすすめない
+  expect(selectionAdvice({ previous: null, rows: 0, summary: [] })).toMatchObject({ recommended: "rule7" })
   expect(selectionAdvice({ previous: null, rows: 40, summary: [g(850, 1000)] })).toMatchObject({ recommended: "all" })
   expect(selectionAdvice({ previous: null, rows: 40, summary: [g(851, 1000)] })).toMatchObject({ recommended: "rule7" })
 })

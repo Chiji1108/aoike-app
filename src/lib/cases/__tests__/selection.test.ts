@@ -135,3 +135,21 @@ describe("「答える」の載せる工事の行の取り消し（lastSelection
     expect(lastSelectionUndo([])).toBeNull()
   })
 })
+
+test("前の版の取り消しの記録（値だけ）も、作業と同じ控えの有無で出どころを読むので、控えのある前の保存でも取り消すと戻る", () => {
+  // 前の形: 全件から7割ルールに戻した記録（値だけ）があり、作業は7割ルール・selectionBy なし・ダウンロードの控えあり
+  const legacyEntry = { id: "u1", proposalId: "selection:1", kind: "op", label: "載せる工事の切り替え", at: 0, edits: [], manual: [], added: [], external: [], selection: ["all", "rule7"] }
+  const json = savedJson({ selectionBy: undefined, selection: "rule7", undo: [legacyEntry] })
+  const w = fromSaved(savedWorkSchema.parse(json), [], [{ kind: "csv" }])
+  expect(w).toMatchObject({ selection: "rule7", selectionBy: "staff" })
+  expect(w.undo[0]!.selection).toEqual([
+    { selection: "all", selectionBy: "staff" },
+    { selection: "rule7", selectionBy: "staff" },
+  ])
+  const r = undo(w, "u1")!
+  expect(r).toMatchObject({ reverted: 1, kept: 0 })
+  expect(r.work).toMatchObject({ selection: "all", selectionBy: "staff" })
+  // 控えが無ければ7割ルールは既定値（null）と読み、作業も記録も同じなので、やはり戻る
+  const w2 = fromSaved(savedWorkSchema.parse(json), [], [])
+  expect(undo(w2, "u1")).toMatchObject({ reverted: 1, work: { selection: "all", selectionBy: "staff" } })
+})

@@ -6,7 +6,7 @@ import { hasExclusion, withExclusions, type ValueFilter } from "../convert/plan"
 import { basisSchema, cellEditSchema, roundingSchema } from "../schemas"
 import type { Rounding } from "../convert/transforms"
 import { setTax, taxSettingSchema, type TaxBy, type TaxSetting } from "./tax"
-import { selectionSettingSchema, setSelection, type SelectionBy, type SelectionSource } from "./selection"
+import { selectionSettingSchema, setSelection, type SelectionBy, type SelectionSetting, type SelectionSource } from "./selection"
 import type { AddedRow } from "./added"
 import { addedRowSchema } from "./added"
 import type { SavedPlan } from "./state"
@@ -63,7 +63,7 @@ export type UndoEntry = {
   /** 税の設定と出どころ（一緒に戻す） */
   tax?: Pair<TaxSetting>
   /** 載せる工事の選び方と出どころ（一緒に戻す。前の版の記録は値だけ） */
-  selection?: Pair<SelectionSource>
+  selection?: Pair<SelectionSetting>
   basis?: Pair<Basis>
   /** 千円未満の扱い（この項目より前の記録には無い） */
   rounding?: Pair<Rounding>
@@ -289,7 +289,7 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
   // 聞き返しの答えの記録は、答え1つを1件と数える（答えで変えた設定・計画は答えの一部）
   const answers = entry.reportAnswers?.length ? entry.reportAnswers.filter(([k, , after]) => (work.reportAnswers[k] ?? null) === after).length : null
   const counts = answers === null ? { reverted, kept } : { reverted: answers, kept: entry.reportAnswers!.length - answers }
-  return { work: setSelection(setTax(next, tax.tax, tax.taxBy), selection.selection, selection.selectionBy), ...counts, planChanged: plan !== work.plan }
+  return { work: setSelection(setTax(next, tax.tax, tax.taxBy), selection.selection, selection.selectionBy ?? null), ...counts, planChanged: plan !== work.plan }
 }
 
 const pair = <T extends z.ZodType>(s: T) => z.tuple([s, s])

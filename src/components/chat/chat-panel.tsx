@@ -203,12 +203,14 @@ export function ChatPanel(props: ChatPanelProps) {
   /** 送る前の保存を待っている間（続けて押しても二度送らない） */
   const [preparing, setPreparing] = useState(false)
   const canSend = ready && !working && !preparing
-  // 送れるかを案件の画面に知らせる（報告の「AI に聞く」と同じ条件。ダウンロードの前の確認の「AI に聞く」に使う）
+  // 送れるかを案件の画面に知らせる（ストアの ui.chatCanSend。「答える」の段の「AI に聞く」は、これが true の間だけ頼める）
   useEffect(() => {
     actions.setChatCanSend(canSend)
   }, [canSend, actions])
   async function send(text = input.trim(), options: { carryover?: true; keepInput?: true; needsSaved?: true } = {}) {
     if (!text || working || preparing || !ready) return false
+    // 送れるかの真実（ストアの ui.chatCanSend）は、送り始めるその場で false にする（effect を待つと、その間に「AI に聞く」が通ってしまう）
+    actions.setChatCanSend(false)
     setPreparing(true)
     let saved: boolean
     try {
@@ -228,24 +230,15 @@ export function ChatPanel(props: ChatPanelProps) {
     return !failed.current
   }
   /**
-   * 作業の画面から頼まれた決まった指示（「答える」の段の「AI に聞く」。ui.chatSend）を、受け取ったその場で1回だけ送る。
-   * 送れるかは askChat と同じストアの ui.chatCanSend で決め（頼みはいつも外し、あとで勝手に送らない）、それでも送れなかったら
-   * 質問を入力欄に残して「返事が終わったら送ってください」と知らせる
+   * 作業の画面から頼まれた決まった指示（「答える」の段の「AI に聞く」。ui.chatSend）を、受け取ったその場で送る。
+   * 頼めるのはストアの ui.chatCanSend が true の間だけ（askChat）で、送り始めるときにその場で false にするので、ここではそのまま送る。
+   * 送ったあとのサーバーの失敗は、ふつうの送り損ねと同じ表示（失敗した返事・やり直し）に任せる
    */
   const chatSend = useCase((s) => s.ui.chatSend)
-  const storeCanSend = useCase((s) => s.ui.chatCanSend)
   useEffect(() => {
     if (!chatSend) return
     actions.takeChatSend()
-    const keep = () => {
-      setInput(chatSend.text)
-      toast.info("今は送れないので、質問を入力欄に入れました。返事が終わったら送ってください")
-    }
-    if (!storeCanSend) return keep()
-    void send(chatSend.text, { keepInput: true }).then((sent) => {
-      if (!sent) keep()
-    })
-    // 受け取ったときの値で決める（あとで送れるようになっても勝手に送らない）
+    void send(chatSend.text, { keepInput: true })
   }, [chatSend])
   /** 会話にもう送った指示（once の案内を出さない） */
   const sentTexts = new Set(messages.flatMap((m) => (m.role === "user" ? [m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")] : [])))

@@ -175,6 +175,13 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
       await expect(page.getByTestId("reasons-cell")).toHaveCount(0)
       await page.getByTestId("table-go-fix").click()
       await expect(view(page)).toHaveAttribute("data-view", "fix")
+      // 理由で絞ってからほかを開き、直すのタブを押し直すと、絞り込みは外れて直す行のすべてから（タブの切り替えも段を開くのと同じ）
+      const reason = page.locator('[data-testid^="fix-reason-"]').first()
+      await reason.click()
+      await expect(reason).toHaveAttribute("aria-pressed", "true")
+      await openTab(page, "table")
+      await openTab(page, "fix")
+      await expect(page.locator('[data-testid^="fix-reason-"][aria-pressed="true"]')).toHaveCount(0)
     }
   })
 

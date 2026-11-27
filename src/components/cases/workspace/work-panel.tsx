@@ -10,6 +10,7 @@ import type { MappingPlan, SheetGrid } from "@/lib/convert/plan"
 import { sameHeader } from "@/lib/convert/sources"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import { cn } from "@/lib/utils"
+import { isStep } from "@/lib/cases/steps"
 import { StepBar } from "./step-bar"
 import { StepDone } from "./step-done"
 import { AnswerTab } from "./tabs/answer-tab"
@@ -35,7 +36,7 @@ export function WorkPanel() {
   return (
     <section className="flex h-full min-h-0 flex-col bg-background" aria-label="作業の画面" data-testid="work-panel" data-view={view}>
       <Toolbar />
-      <Tabs value={view} onValueChange={(v) => actions.setTab(v as WorkTab)} className="min-h-0 flex-1 gap-0">
+      <Tabs value={view} onValueChange={(v: WorkTab) => (isStep(v) ? actions.goStep(v) : actions.setTab(v))} className="min-h-0 flex-1 gap-0">
         <StepBar />
         <TabsContent value="answer" keepMounted className={pad} data-testid="answer-section" data-step-panel="answer">
           <AnswerTab />

@@ -33,13 +33,17 @@ export function savedSelectionBy(saved: { selectionBy?: SelectionBy | null; sele
 export const hasDownloadCopies = (files: readonly { kind: string }[]) => files.some((f) => f.kind === "csv" || f.kind === "final_sheet")
 
 /**
- * 取り消しの記録に残す選び方。前の版の記録は値だけなので、前の保存と同じ決まり（savedSelectionBy）で出どころを読む
- * （取り消すときに、前の保存から読んだ今の値と合う）
+ * 取り消しの記録に残す選び方。selectionBy が無いのは前の版の記録（値だけ）で、出どころは記録を読むときに作業と同じ決まり（savedSelectionBy）で決める
+ * （fromSaved が案件の控えの有無と一緒に withSavedSelectionBy で埋める。作業の今の値と出どころがそろうので、取り消すと戻る）
  */
-export const selectionSettingSchema = z.union([
-  z.object({ selection: selectionSchema, selectionBy: selectionBySchema }),
-  selectionSchema.transform((selection): SelectionSource => ({ selection, selectionBy: savedSelectionBy({ selection, downloaded: false }) })),
-])
+export type SelectionSetting = { selection: SelectionMode; selectionBy?: SelectionBy | null }
+export const selectionSettingSchema = z.union([z.object({ selection: selectionSchema, selectionBy: selectionBySchema }), selectionSchema.transform((selection): SelectionSetting => ({ selection }))])
+
+/** 前の版の記録の選び方の出どころを、作業と同じ決まりで埋める（downloaded は案件にダウンロードの控えがあるか） */
+export const withSavedSelectionBy = (s: SelectionSetting, downloaded: boolean): SelectionSource => ({
+  selection: s.selection,
+  selectionBy: savedSelectionBy({ selectionBy: s.selectionBy, selection: s.selection, downloaded }),
+})
 
 /**
  * 翌年に引き継ぐ去年の選び方: 去年に変換して出し、選び方を誰かが決めていたときだけ（既定値のままなら null で、今年は「答える」で聞く）。

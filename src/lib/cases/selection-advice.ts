@@ -4,7 +4,7 @@ import { SELECTION_LABELS, type GyoshuSummary, type SelectionMode } from "@/lib/
  * 載せる工事（7割ルール／全件）のおすすめ。「答える」の最初の聞き返しの選択肢に「（おすすめ）」を添える（決まった処理。判断の決まりはここ1か所）。
  * 聞くか・答えたか・去年から引き継ぐかは、作業の selectionBy だけで決める（lib/cases/selection.ts。ここでは決めない）。
  * - 去年の案件で選び方を決めていれば、それ（引き継がずに聞いている＝前に保存した今年の作業）
- * - データがすでに顧客の側で絞られていそうなら全件: 載せうる行が少ない（FEW_ROWS 行以下）、
+ * - データがすでに顧客の側で絞られていそうなら全件: 載せうる行が少ない（1行以上 FEW_ROWS 行以下。0 行は数で決めない）、
  *   または決算書の額を入れた業種で、表の合計がその決算書の額の FILTERED_RATIO 以下（7割で選んだあとの一覧が届いたように見える）。
  *   比べるのは決算書の額を入れた業種の行だけで、金額は7割の計算の税（rule7Tax）にそろえた業種ごとの集計（summarizeKoji。7割の表と同じ数）
  * - ほかは7割ルール（理由は、去年の案件が無ければ初めての顧客、あれば去年は決めていなかった）
@@ -28,7 +28,7 @@ export function selectionAdvice(input: {
 }): SelectionAdvice {
   const last = input.previous?.selection
   if (last) return { recommended: last, reason: `去年は${SELECTION_LABELS[last]}でした` }
-  if (input.rows <= FEW_ROWS) return { recommended: "all", reason: `工事が ${input.rows} 件と少なく、顧客の側で選んだ一覧に見えます` }
+  if (input.rows > 0 && input.rows <= FEW_ROWS) return { recommended: "all", reason: `工事が ${input.rows} 件と少なく、顧客の側で選んだ一覧に見えます` }
   const entered = input.summary.filter((g) => g.fromBook.total)
   const book = entered.reduce((s, g) => s + g.basis.total, 0)
   const table = entered.reduce((s, g) => s + g.total, 0)

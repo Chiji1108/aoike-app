@@ -13,7 +13,7 @@ import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inqu
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
-import { hasDownloadCopies, savedSelectionBy, selectionBySchema, type SelectionBy } from "./selection"
+import { hasDownloadCopies, savedSelectionBy, selectionBySchema, withSavedSelectionBy, type SelectionBy, type SelectionSource } from "./selection"
 import { basisSchema, cellEditSchema, fieldIdSchema, legacySelection, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
@@ -187,8 +187,11 @@ export const toSavedAiCache = (cache: AiCache): SavedAiCache => [...cache]
  * ダウンロードの控えの有無から読む。lib/cases/selection.ts の savedSelectionBy）
  */
 export function fromSaved(w: SavedWork, aiCache: SavedAiCache, files: readonly { kind: string }[]): CaseWork {
-  const selectionBy = savedSelectionBy({ selectionBy: w.selectionBy, selection: w.selection, downloaded: hasDownloadCopies(files) })
-  return withAskKeys({ ...w, selectionBy, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
+  const downloaded = hasDownloadCopies(files)
+  const selectionBy = savedSelectionBy({ selectionBy: w.selectionBy, selection: w.selection, downloaded })
+  // 前の版の取り消しの記録の選び方も、作業と同じ決まり・同じ控えの有無で出どころを埋める（取り消すと今の値と合って戻る）
+  const undo = w.undo.map((e) => (e.selection ? { ...e, selection: [withSavedSelectionBy(e.selection[0], downloaded), withSavedSelectionBy(e.selection[1], downloaded)] as [SelectionSource, SelectionSource] } : e))
+  return withAskKeys({ ...w, selectionBy, undo, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
 }
 
 /** D1 の1行に入る大きさ（D1 の上限は 2,000,000 バイト。少し余裕を持たせる）。作業と AI の結果はそれぞれ別の行 */
