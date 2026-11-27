@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { Ellipsis, Trash2, TriangleAlert } from "lucide-react"
+import { Ellipsis, History, Trash2, TriangleAlert } from "lucide-react"
 import { useCase, useCaseActions } from "@/components/cases/store/context"
 import type { PeerState } from "@/components/cases/store/create-case-store"
 import { Cost } from "@/components/cost"
@@ -7,7 +7,7 @@ import { Segmented } from "@/components/segmented"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { SaveStatus } from "@/lib/cases/autosave"
-import { CASE_STATUSES, CASE_STATUS_LABELS } from "@/lib/cases/types"
+import { CASE_STATUSES, CASE_STATUS_LABELS, downloadHistory } from "@/lib/cases/types"
 import { CASE_COST_NOTICE_USD } from "@/lib/cost"
 import { cn } from "@/lib/utils"
 import { useFx } from "./tools"
@@ -42,11 +42,12 @@ export function CaseHeader({ customer, fiscalYear }: { customer: { id: string; n
 }
 
 /**
- * 見出しの「…」: 案件の AI の費用の合計と削除。費用が10ドルを超えたら、ボタンにも注意を出す（止めない）
+ * 見出しの「…」: 案件の AI の費用の合計・ダウンロードの履歴・削除。費用が10ドルを超えたら、ボタンにも注意を出す（止めない）
  */
 function CaseMenu() {
   const actions = useCaseActions()
   const usd = useCase((s) => s.runtime.costUsd)
+  const downloads = useCase((s) => downloadHistory(s.runtime.files).length)
   const fx = useFx()
   const over = usd > CASE_COST_NOTICE_USD
   return (
@@ -63,6 +64,11 @@ function CaseMenu() {
             {over && <span className="block">{CASE_COST_NOTICE_USD} ドルを超えました（止めません）</span>}
           </DropdownMenuLabel>
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => actions.setDownloadsOpen(true)} data-testid="downloads-button">
+          <History /> ダウンロードの履歴
+          {downloads > 0 && <span className="num ml-auto text-xs text-muted-foreground">{downloads}件</span>}
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={() => actions.setDeleteOpen(true)} data-testid="delete-button">
           <Trash2 /> 案件を削除

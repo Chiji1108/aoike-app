@@ -177,7 +177,29 @@ test("ファイルをアップロードすると自動で変換して報告で�
     expect(text.split("\r\n").filter(Boolean)).toHaveLength(rows)
     // Excel で開いて保存すると文字化けするので、ダウンロードしたときに知らせる
     await expect(page.getByText("CSV は Excel で開いて保存しないでください", { exact: false })).toBeVisible()
-    await expect(page.locator('[data-testid="file-list"] [data-kind="final_sheet"]')).toHaveCount(1)
+  })
+
+  await test.step("ダウンロードした控えは作業の画面の上のファイルの行に足さず、見出しの「…」のダウンロードの履歴に新しい順で出て、押すとその控えをダウンロードできる", async () => {
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("export-dialog")).toBeHidden()
+    await page.getByTestId("case-menu").click()
+    // 控えはダウンロードのあとに案件に残すので、数がそろうのを待つ
+    await expect(page.getByTestId("downloads-button")).toContainText("2件")
+    await page.getByTestId("downloads-button").click()
+    const items = page.getByTestId("download-history").locator("[data-kind]")
+    await expect(items).toHaveCount(2)
+    await expect(items.first()).toHaveAttribute("data-kind", "csv")
+    await expect(items.nth(1)).toHaveAttribute("data-kind", "final_sheet")
+    await expect(items.first()).toContainText("にダウンロードしたもの")
+    const again = page.waitForEvent("download")
+    await items.nth(1).click()
+    expect((await again).suggestedFilename()).toMatch(/\.xlsx$/)
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("downloads-dialog")).toBeHidden()
+    // 届いたファイル（変換の元）は並びに残る
+    const list = page.getByTestId("file-list")
+    await expect(list.locator('[data-kind="source"]')).toHaveCount(1)
+    await expect(list.locator('[data-kind="csv"], [data-kind="final_sheet"]')).toHaveCount(0)
   })
 })
 
