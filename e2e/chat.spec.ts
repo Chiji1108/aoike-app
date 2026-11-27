@@ -20,7 +20,7 @@ type Reply = (body: { text: string; table: { rows: WireRow[] } }) => {
   failAfterCost?: string
   refuse?: number
   /** 返事に付けるボタン（offer_action） */
-  action?: "export" | "inquiry_excel"
+  action?: "export"
   /** 呼んだことにする道具（結果まで届ける） */
   tool?: string
   /** 残したことにする要望の数（record_feedback） */
@@ -208,16 +208,11 @@ test("最初はチャットだけ。📎でアップロードすると作業の�
     await page.getByTestId("tab-table").click()
   })
 
-  await test.step("返事のボタンで問い合わせのタブ、道具の結果でそのタブに切り替わる", async () => {
+  await test.step("道具の結果でそのタブに切り替わる", async () => {
     await fakeChat(page, [
-      () => ({ text: "問い合わせの Excel はこちらから。", changes: [], action: "inquiry_excel" }),
       () => ({ text: "7割の設定を見ました。", changes: [], tool: "set_selection" }),
       () => ({ text: "問い合わせに回しました。", changes: [], tool: "ask_customer" }),
     ])
-    await send(page, "問い合わせの Excel を作って")
-    await page.getByTestId("chat-action").click()
-    await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("aria-selected", "true")
-    await page.getByTestId("tab-table").click()
     await send(page, "7割の設定を見て")
     await expect(page.getByTestId("chat-messages")).toContainText("7割の設定を見ました。")
     await expect(page.getByTestId("next-step-export")).toHaveAttribute("aria-selected", "true")

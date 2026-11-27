@@ -112,15 +112,15 @@ describe("並べ方と画面の action（ui）", () => {
     s.actions.setTab("inquiry")
     await settle()
     // 狭い画面で閉じたまま（見ていない）
-    expect(s.store.getState().runtime.hints.inquiry).toBe("hidden")
+    expect(s.store.getState().runtime.inquiryHint).toBe("hidden")
     s.actions.showTab("inquiry")
     await settle()
-    expect(s.store.getState().runtime.hints.inquiry).toBe("shown")
-    s.actions.suggestionSent("inquiry-text")
+    expect(s.store.getState().runtime.inquiryHint).toBe("shown")
+    s.actions.inquirySuggestionSent()
     s.actions.setTab("table")
     s.actions.setTab("inquiry")
     await settle()
-    expect(s.store.getState().runtime.hints.inquiry).toBe("sent")
+    expect(s.store.getState().runtime.inquiryHint).toBe("sent")
   })
 
   test("並べ方は同じ状態なら同じもの（selector が描画ごとに新しいものを返さない）", async () => {
@@ -309,12 +309,12 @@ describe("道具と段の並び", () => {
     await settle()
     s.actions.showTab("inquiry")
     s.actions.showTab("location")
-    s.store.setState((st) => ({ runtime: { ...st.runtime, hints: { ...st.runtime.hints, inquiry: "hidden" } } }))
+    s.store.setState((st) => ({ runtime: { ...st.runtime, inquiryHint: "hidden" } }))
     await settle()
-    expect(s.store.getState().runtime.hints.inquiry).toBe("hidden")
+    expect(s.store.getState().runtime.inquiryHint).toBe("hidden")
     s.actions.closeTool()
     await settle()
-    expect(s.store.getState().runtime.hints.inquiry).toBe("shown")
+    expect(s.store.getState().runtime.inquiryHint).toBe("shown")
   })
 
   test("道具は ui.tool に開き、段・表を選ぶと閉じる。閉じると選んでいた段に戻る", async () => {

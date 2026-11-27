@@ -7,13 +7,12 @@ import type { AiCache } from "../convert/pipeline"
 import type { Rounding } from "../convert/transforms"
 import type { MappingPlan } from "../convert/plan"
 import { savedPlanSchema } from "../convert/plan-schema"
-import type { AnswerReport, CellInquiry } from "../inquiry/inquiry"
 import { proposalSchema, type Proposal } from "../chat/proposals"
 import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inquiry/text"
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
-import { basisSchema, cellEditSchema, fieldIdSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
+import { basisSchema, cellEditSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
 /**
@@ -33,7 +32,6 @@ export type CaseWork = {
   replacements: Replacements<KojiFieldId>
   manual: ReadonlyMap<string, boolean>
   dismissed: ReadonlySet<string>
-  answers: AnswerReport | null
   /** Excel の金額が税込か税抜か。書くのは cases/tax.ts の setTax だけ（出どころ taxBy と一緒に書く） */
   tax: TaxMode
   /** tax を誰が決めたか（cases/tax.ts）。前の作業には無いので、読むときは null */
@@ -56,16 +54,6 @@ export type CaseWork = {
   reportAnswers: Record<string, string>
   /** 問い合わせのメールの件名・前置き（承認した AI の文・職員が直した文。lib/inquiry/text.ts）。前の作業には無いので、読むときは空。前の作業の質問の文は読み捨てる */
   inquiryText: InquiryText
-  /**
-   * 直した Excel・返ってきた顧客の回答の変更案で却下した項目（lib/excel/final-import.ts の changeSignature）。同じ Excel を上げ直しても出し直さない。
-   * 前の作業には無いので、読むときは空
-   */
-  rejectedExcel: string[]
-  /**
-   * 印付きの Excel を書いてみて、元を壊さずに書けなかったこと（変換の元・印を付ける場所の印〔inquiry/marked.ts の placementKey〕・理由）。
-   * 同じ元・同じ場所なら記入用Excelにし、メールの本文も合わせる。問い合わせや列の対応が変わって場所が変われば判定し直す。前の作業には無いので、読むときは null
-   */
-  markFailure: { fileId: string; key: string; reason: string } | null
   /** 表の上の「全件にしますか？」（7割ルールのまま手で載せた行が多いとき）を閉じた。前の作業には無いので、読むときは false */
   allHintClosed: boolean
 }
@@ -82,7 +70,6 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   replacements: {},
   manual: new Map(),
   dismissed: new Set(),
-  answers: null,
   tax: "unknown",
   taxBy: null,
   basis: {},
@@ -95,8 +82,6 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   undo: [],
   reportAnswers: {},
   inquiryText: EMPTY_INQUIRY_TEXT,
-  rejectedExcel: [],
-  markFailure: null,
   allHintClosed: false,
 })
 
@@ -107,34 +92,6 @@ const aiResult: z.ZodType<AiItemResult | { error: string }> = z.union([
   ...[...new Set(Object.values(AI_TASKS).map((t) => t.item))].map((item) => z.strictObject(item.shape)),
   z.strictObject({ error: z.string() }),
 ])
-
-const cellInquiry: z.ZodType<CellInquiry> = z.object({
-  kind: z.literal("cell"),
-  rowKey: z.string(),
-  field: fieldIdSchema,
-  reason: z.enum(["missing", "needsReview"]),
-  current: z.string(),
-})
-const at = { rowKey: z.string(), field: fieldIdSchema }
-
-const answerReport: z.ZodType<AnswerReport> = z.object({
-  edits: z.array(z.tuple([z.string(), cellEditSchema])),
-  applied: z.array(cellInquiry),
-  unknownKeys: z.array(z.string()),
-  unreadable: z.array(z.object({ line: z.number().int(), rowKey: z.string(), reason: z.string() })),
-  duplicateKeys: z.array(z.string()),
-  unanswered: z.array(cellInquiry),
-  confirmed: z.array(cellInquiry),
-  alreadyApplied: z.array(cellInquiry),
-  changed: z.array(z.object({ ...at, now: z.string(), answer: z.string() })),
-  alsoChanged: z.array(z.object({ ...at, was: z.string(), answer: z.string() })),
-  heldBack: z.array(z.object({ ...at, answer: z.string() })),
-  needsCheck: z.array(z.object({ ...at, answer: z.string(), message: z.string() })),
-  invalid: z.array(z.object({ inquiry: cellInquiry, answer: z.string(), message: z.string() })),
-})
-
-/** 覚えておく、却下した直した Excel の項目の数（古いものから捨てる） */
-export const MAX_REJECTED_EXCEL = 20_000
 
 /** 手直しのたびに保存する作業（AI の結果を除く。小さい） */
 export const savedWorkSchema = z
@@ -147,7 +104,6 @@ export const savedWorkSchema = z
   replacements: replacementsSchema,
   manual: z.array(z.tuple([z.string(), z.boolean()])),
   dismissed: z.array(z.string()),
-  answers: answerReport.nullable(),
   tax: taxSchema,
   taxBy: taxBySchema.default(null),
   basis: basisSchema,
@@ -161,8 +117,6 @@ export const savedWorkSchema = z
   undo: z.array(undoEntrySchema).default([]),
   reportAnswers: z.record(z.string(), z.string().max(100)).default({}),
   inquiryText: inquiryTextSchema.default(EMPTY_INQUIRY_TEXT),
-  rejectedExcel: z.array(z.string().max(4000)).max(MAX_REJECTED_EXCEL).default([]),
-  markFailure: z.object({ fileId: z.string().max(64), key: z.string().max(64), reason: z.string().max(200) }).nullable().default(null),
   allHintClosed: z.boolean().default(false),
 })
 export type SavedWork = z.infer<typeof savedWorkSchema>

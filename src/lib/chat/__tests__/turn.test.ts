@@ -63,7 +63,7 @@ describe("チャットの道具（決まった入力で）", () => {
     expect(res).toMatchObject({ ok: true, applied: 2 })
     expect(res.keys).toHaveLength(2)
     const [a, b] = state.pending as Extract<ChatChange, { kind: "add" }>[]
-    expect(a).toMatchObject({ kind: "add", by: "chat", rowKey: res.keys[0] })
+    expect(a).toMatchObject({ kind: "add", rowKey: res.keys[0] })
     expect(a!.cells.client!.value).toBe(personToken("田中花子"))
     expect(Object.values(a!.cells).every((e) => e!.status === "warning" && e!.message!.startsWith(AI_ADDED_NOTE))).toBe(true)
     expect(Object.keys(b!.cells).sort()).toEqual(["client", "gyoshu"])
@@ -383,7 +383,7 @@ describe("顧客の回答を読む（get_inquiries・record_answers）", () => {
     expect(out.cells[0]).toMatchObject({ label: "配置技術者", reason: "データに無い", workName: "〔Ａ〕邸新築に伴う電気工事", client: "〔Ａ〕" })
   })
 
-  test("record_answers は記入用Excelと同じ決まりで値にして、顧客の回答の変更案に溜める（表には入れない）。読めない答えは返す", async () => {
+  test("record_answers は決まった処理で値にして、顧客の回答の変更案に溜める（表には入れない）。読めない答えは返す", async () => {
     const asked: string[] = []
     const state = newTurnState(answering, cannedAnonymize(asked), undefined, null, answers)
     const out = await call(chatTools(state), "record_answers", {

@@ -14,11 +14,11 @@ import type { InquiryText } from "@/lib/inquiry/text"
 import type { ProposalRecord } from "@/lib/chat/proposals"
 import { addressCache } from "@/lib/convert/address"
 import type { FileKind, CaseFile, CaseStatus } from "@/lib/cases/types"
-import type { MappingPlan, SheetGrid } from "@/lib/convert/plan"
+import type { MappingPlan } from "@/lib/convert/plan"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import { changeStatus } from "./actions/case"
-import { downloadCsv, downloadFinalExcel, downloadInquiry } from "./actions/download"
-import { attach, chooseSource, confirmSource, importAnswers, importFinal, keepFile, note } from "./actions/files"
+import { downloadCsv, downloadFinalExcel } from "./actions/download"
+import { attach, chooseSource, confirmSource, keepFile, note } from "./actions/files"
 import { decideProposal, receiveProposal } from "./actions/proposals"
 import * as table from "./actions/table"
 import * as ui from "./actions/ui"
@@ -37,7 +37,7 @@ import { createTableDerive } from "./table"
 export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: () => PeerChannel | null) {
   const store = createCaseStore(initialCaseState(page, deps.chatPrefs.load()))
   const addresses = addressCache(deps.lookupAddresses)
-  const config = { chatEnabled: page.chatEnabled, excelKey: page.excelKey, caseId: page.kase.id, customerName: page.customer.name, previous: page.previous }
+  const config = { chatEnabled: page.chatEnabled, caseId: page.kase.id, customerName: page.customer.name, previous: page.previous }
   const tableOf = createTableDerive(addresses)
   const env: CaseEnv = {
     store,
@@ -58,8 +58,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     supersedeConversion: () => void supersedeConversion(env),
     keepFile: (kind: FileKind, blob: Blob, name: string) => keepFile(env, kind, blob, name),
     note: (n: UploadNote) => note(env, n),
-    importFinal: (f: File, sheets: readonly SheetGrid[]) => importFinal(env, f, sheets),
-    importAnswers: (f: File, kind: "marked" | "answer") => importAnswers(env, f, kind),
     decideProposal: (id: string, indices: number[], decision: "applied" | "rejected") => decideProposal(env, id, indices, decision),
     /** 取り消して（計画を戻したら変換し直す）結果を知らせる（what は通知の言葉。承認・答え・業種の決定など） */
     undoWithNotice: (group: string, what?: string) => table.undoWithNotice(env, group, what),
@@ -77,7 +75,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     confirmSource: (fileId: string, yes: boolean) => confirmSource(env, fileId, yes),
     downloadCsv: () => downloadCsv(env),
     downloadFinalExcel: () => downloadFinalExcel(env),
-    downloadInquiry: () => downloadInquiry(env),
     // 表の手直し・業種・7割と金額・報告の聞き返し（actions/table.ts）
     editCells: (rowKey: string, changes: readonly [KojiFieldId, CellEdit][]) => table.editCells(env, rowKey, changes),
     replaceValue: (field: KojiFieldId, from: string, text: string) => table.replaceValue(env, field, from, text),
@@ -118,7 +115,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     setDragging: (dragging: boolean) => ui.setDragging(env, dragging),
     setChatLoaded: (loaded: boolean) => ui.setChatLoaded(env, loaded),
     setChatSending: (sending: boolean) => ui.setChatSending(env, sending),
-    suggestionSent: (id: string) => ui.suggestionSent(env, id),
+    inquirySuggestionSent: () => ui.inquirySuggestionSent(env),
     setChatOpen: (open: boolean) => ui.setChatOpen(env, open),
     resizeChat: (size: ChatSize | null, save: boolean) => ui.resizeChat(env, size, save),
     chatArrived: (tone: "new" | "error") => ui.chatArrived(env, tone),
@@ -236,11 +233,11 @@ function watch(env: CaseEnv): () => void {
         if (watching) ui.pinCurrentStep(env)
       })
     // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
-    if (s.runtime.hints.inquiry === "hidden" && env.view(s).visible === "inquiry")
+    if (s.runtime.inquiryHint === "hidden" && env.view(s).visible === "inquiry")
       queueMicrotask(() => {
         const now = store.getState()
         // 始める前に、まだ問い合わせの段が見えているかを確かめ直す（同じ操作の中で道具を開いた・閉じたときに出さない）
-        if (watching && now.runtime.hints.inquiry === "hidden" && env.view(now).visible === "inquiry") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
+        if (watching && now.runtime.inquiryHint === "hidden" && env.view(now).visible === "inquiry") setRuntime(store, () => ({ inquiryHint: "shown" }))
       })
   }
   // つないだときの状態でも確かめる（外していた間に決まった計画も変換する）

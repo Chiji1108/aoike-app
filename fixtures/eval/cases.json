@@ -90,69 +90,6 @@
    }
   ]
  },
- "synth-answers-column": {
-  "xlsx": "fixtures/eval/synth-answers/工事経歴.xlsx",
-  "staffCsv": "fixtures/eval/synth-answers/期待.csv",
-  "customerName": "合成サンプル内装",
-  "customerRules": "",
-  "staffErrors": [],
-  "notDerivable": [],
-  "instructions": [],
-  "variants": [
-   "baseline",
-   "answers"
-  ],
-  "answerSheet": {
-   "物流倉庫休憩室内装工事": "担当は山本 健太です",
-   "サンプル病院外来待合室改装工事": "完成は2024年10月",
-   "店舗内装仕上工事": "神奈川県横浜市中区です",
-   "冷凍倉庫事務所間仕切り工事": "2024年11月完成",
-   "共同住宅エントランス改修工事": "東京都世田谷区",
-   "保育園保育室床改修工事": "技術者は山本 健太"
-  },
-  "answerTruth": [
-   {
-    "workName": "物流倉庫休憩室内装工事",
-    "field": "engineer",
-    "value": "山本　健太"
-   },
-   {
-    "workName": "サンプル病院外来待合室改装工事",
-    "field": "endYm",
-    "value": "202410"
-   },
-   {
-    "workName": "店舗内装仕上工事",
-    "field": "prefecture",
-    "value": "神奈川県"
-   },
-   {
-    "workName": "店舗内装仕上工事",
-    "field": "place",
-    "value": "横浜市中区"
-   },
-   {
-    "workName": "冷凍倉庫事務所間仕切り工事",
-    "field": "endYm",
-    "value": "202411"
-   },
-   {
-    "workName": "共同住宅エントランス改修工事",
-    "field": "prefecture",
-    "value": "東京都"
-   },
-   {
-    "workName": "共同住宅エントランス改修工事",
-    "field": "place",
-    "value": "世田谷区"
-   },
-   {
-    "workName": "保育園保育室床改修工事",
-    "field": "engineer",
-    "value": "山本　健太"
-   }
-  ]
- },
  "synth-answers-partial": {
   "xlsx": "fixtures/eval/synth-answers/工事経歴.xlsx",
   "staffCsv": "fixtures/eval/synth-answers/期待.csv",

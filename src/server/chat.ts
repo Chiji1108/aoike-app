@@ -3,7 +3,7 @@ import Anthropic, { toFile } from "@anthropic-ai/sdk"
 import { createUIMessageStream, createUIMessageStreamResponse, generateId, toUIMessageStream, type ModelMessage, type UserModelMessage } from "ai"
 import { z } from "zod"
 import { getCsvDb } from "@/db"
-import { containerName, contentTypeOf, r2KeyOf, type FileKind } from "@/lib/cases/types"
+import { containerName, contentTypeOf, r2KeyOf } from "@/lib/cases/types"
 import { fromWire, caseTableWireSchema } from "@/lib/chat/wire"
 import { ENDED_TEXT, type ChatHistory, type ChatMessage, type ChatMetadata } from "@/lib/chat/messages"
 import { tryParseJson } from "@/lib/json"
@@ -53,9 +53,6 @@ const requestSchema = z.object({
   /** 今の列の対応と計画の元のシートの大きさ（チャットの set_plan の確かめ。変換の元の表が無い案件は null） */
   plan: z.object({ plan: mappingPlanSchema, shape: sheetShapeSchema }).nullable().default(null),
 })
-
-/** AI のコンテナに渡す案件のファイルの種類（届いたファイルと、返ってきた Excel〔印付き・記入用Excel〕。顧客の回答を AI が読む） */
-const CONTAINER_KINDS: ReadonlySet<FileKind> = new Set(["source", "answer"])
 
 /** 止める印を見に行く間隔 */
 const STOP_POLL_MS = 1_000
@@ -122,12 +119,12 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
   const startSession: ChatSession = loaded.doc.session ?? { model: [], container: null, files: [], generated: [] }
   const containerLive = startSession.container !== null && Date.parse(startSession.container.expiresAt) > Date.now() + CONTAINER_MARGIN_MS
 
-  // 案件の届いたファイルと返ってきた Excel（印付き・記入用Excel）をコンテナに渡す。まだ上げていないものは Files API に上げ、上げるたびに記録する（途中で失敗しても、会話を終えるときに消せる）。
+  // 案件の届いたファイル（顧客の回答のファイルも）をコンテナに渡す。まだ上げていないものは Files API に上げ、上げるたびに記録する（途中で失敗しても、会話を終えるときに消せる）。
   // コンテナが新しくなるときは全部を付け直す
   let session = startSession
   const added: ChatSession["files"] = []
   try {
-    for (const f of files.filter((f) => CONTAINER_KINDS.has(f.kind))) {
+    for (const f of files.filter((f) => f.kind === "source")) {
       if (session.files.some((s) => s.caseFileId === f.id)) continue
       const row = await store.getFileRow(db, f.id)
       const object = row && (await env.CSV_FILES.get(row.r2Key))
@@ -166,8 +163,7 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
     ],
   }
   const userUi: ChatMessage = { id: body.id, role: "user", parts: [{ type: "text", text: body.text }] }
-  const answerFiles = new Set(files.filter((f) => f.kind === "answer").map((f) => f.id))
-  const containerFiles: ContainerFile[] = session.files.map((f) => ({ name: f.name, original: f.original, isSource: f.caseFileId === body.sourceFileId, ...(answerFiles.has(f.caseFileId) ? { answer: true as const } : {}) }))
+  const containerFiles: ContainerFile[] = session.files.map((f) => ({ name: f.name, original: f.original, isSource: f.caseFileId === body.sourceFileId }))
   const system = systemPrompt({ ...rules, customerName: customer?.name ?? "" }, body.context, containerFiles, body.table.rule7Tax)
   // 止める: 画面の「止める」（止める印を R2 に置く）か、タブを閉じた（request.signal。本番の enable_request_signal）で AI の呼び出しを止める（工事場所の検索も）
   const abort = new AbortController()
@@ -377,9 +373,7 @@ export async function endChat(caseId: string): Promise<{ id: string; text: strin
 }
 
 /**
- * 画面が作った変更案を置く: 上げ直した最後の Excel の差分（lib/excel/final-import.ts。元の Excel は案件のファイル）、
- * 返ってきた顧客の回答（印付きの Excel・記入用Excel。lib/inquiry）と、
- * 「AI で案を出す」の案（AI の答えは画面が runAiBatch で受け取って案にする）。形は recordable で確かめる。同じ id の変更案は上書きしない。削除と重なったら置いたものを消して断る（削除のあとに R2 に残さない）
+ * 画面が作った変更案を置く: 「AI で案を出す」の案（AI の答えは画面が runAiBatch で受け取って案にする）。形は recordable で確かめる。同じ id の変更案は上書きしない。削除と重なったら置いたものを消して断る（削除のあとに R2 に残さない）
  */
 export async function recordProposal(caseId: string, record: ProposalRecord) {
   const p = record.proposal
@@ -388,10 +382,6 @@ export async function recordProposal(caseId: string, record: ProposalRecord) {
   const db = getCsvDb()
   const kase = await store.getCase(db, caseId)
   if (!kase || kase.deleting) throw new Error("案件が見つかりません")
-  if (p.origin.kind === "excel" || p.origin.kind === "answer") {
-    const file = await store.getFileRow(db, p.origin.fileId)
-    if (file?.caseId !== caseId) throw new Error("変更案の元の Excel が案件にありません")
-  }
   const key = proposalKey(caseId, p.id)
   if (await env.CSV_FILES.head(key)) throw new Error("同じ変更案がもうあります")
   await putProposal(caseId, record)
@@ -403,12 +393,10 @@ export async function recordProposal(caseId: string, record: ProposalRecord) {
 }
 
 /**
- * 画面が作って置く変更案の形: 上げ直した Excel の差分（セル・載せる・足す）、顧客の回答（顧客の答えか確認のセルだけ）か、「AI で案を出す」の業種の案（業種のセルだけ。値は業種コード、承認はチャットの承認と同じ印）
+ * 画面が作って置く変更案の形: 「AI で案を出す」の業種の案（業種のセルだけ。値は業種コード、承認はチャットの承認と同じ印）
  */
 function recordable({ proposal: p, changes }: ProposalRecord) {
   const origin = p.origin
-  if (origin.kind === "excel") return changes.every((c) => c.kind === "cell" || c.kind === "include" || c.kind === "add")
-  if (origin.kind === "answer") return changes.length > 0 && changes.every((c) => c.kind === "cell" && (c.edit.by === "customer" || c.edit.by === "confirmed"))
   if (origin.kind === "fix") return changes.length > 0 && changes.every((c) => c.kind === "cell" && c.field === origin.field && c.edit.by === "chat" && GYOSHU.some((g) => g.code === c.edit.value))
   return false
 }

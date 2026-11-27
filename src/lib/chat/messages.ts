@@ -28,8 +28,8 @@ export type ChatDataParts = {
 
 export type ChatMessage = UIMessage<ChatMetadata, ChatDataParts>
 
-/** 返事に付けるボタン（画面の決まった処理を始める）。export: ダウンロードの前の確認（最後の Excel・CSV）、inquiry_excel: 問い合わせの Excel */
-export const CHAT_ACTIONS = ["export", "inquiry_excel"] as const
+/** 返事に付けるボタン（画面の決まった処理を始める）。export: ダウンロードの前の確認（最後の Excel・CSV） */
+export const CHAT_ACTIONS = ["export"] as const
 export type ChatAction = (typeof CHAT_ACTIONS)[number]
 /**
  * 保存した会話のボタン。edit_excel は前の「編集用の Excel をダウンロードする」（編集用の Excel は最後の Excel に1つにしたので、ダウンロードの前の確認を開く）。

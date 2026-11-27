@@ -41,7 +41,7 @@ export type RowFilter = "fix" | "all"
 const aiGuess = (c: CellResult) => c.guessed === true || (c.status === "ai" && !!c.message)
 
 /** 元データと値が違うセル（ルール・AIで変換、補った値、手直し、顧客の回答）。表のセルの印（data-changed）に使う */
-export const changedCell = (c: CellResult) => c.value !== c.original || c.by === "staff" || c.by === "customer" || c.by === "excel" || c.by === "location"
+export const changedCell = (c: CellResult) => c.value !== c.original || c.by === "staff" || c.by === "customer" || c.by === "location"
 
 /**
  * 職員が直すセルの理由。empty: 必須が空、error: 値がエラー、review: 要確認、guess: AI の推定。

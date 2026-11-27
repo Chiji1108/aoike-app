@@ -27,7 +27,7 @@ describe("承認の取り消し", () => {
       { kind: "cell", rowKey: "r2", field: "workName", edit: chat("新築工事") },
       { kind: "include", rowKey: "r3", include: false },
       { kind: "settings", tax: "included", selection: "all" },
-      { kind: "add", rowKey: "add-1", by: "chat", cells: { workName: chat("足した工事") } },
+      { kind: "add", rowKey: "add-1", cells: { workName: chat("足した工事") } },
     ])
     expect(w.undo).toHaveLength(1)
     const r = undo(reopen(w), w.undo[0]!.id)!
@@ -62,10 +62,9 @@ describe("承認の取り消し", () => {
   })
 
   test("千円未満の扱いの承認も取り消せる（開き直しても）。承認のあとに職員が変えていれば戻さずに数える", () => {
-    const amount = { value: "3500", by: "excel" as const, amount: { raw: "3500.6", transform: "rule.thousandYen" as const } }
+    const amount = chat("3500")
     const w = approve(base, "p1", [{ kind: "settings", rounding: "round" }, { kind: "cell", rowKey: "r1", field: "amount", edit: amount }])
     expect(w.rounding).toBe("round")
-    // 金額の手直しの千円にする前の値も保存して読み直せる（前の保存の手直しには無い）
     expect(reopen(w).edits.get(editKey("r1", "amount"))).toEqual(amount)
     expect(w.undo[0]!.rounding).toEqual(["floor", "round"])
     expect(canUndo(w.undo[0]!)).toBe(true)
@@ -78,7 +77,7 @@ describe("承認の取り消し", () => {
   })
 
   test("足した行のセルを後から変えていれば、行は外さない", () => {
-    let w = approve(base, "p1", [{ kind: "add", rowKey: "add-1", by: "chat", cells: { workName: chat("足した工事") } }])
+    let w = approve(base, "p1", [{ kind: "add", rowKey: "add-1", cells: { workName: chat("足した工事") } }])
     w = { ...w, edits: new Map(w.edits).set(editKey("add-1", "workName"), staff("直した")) }
     const r = undo(w, "u-p1")!
     expect(r.work.added.map((a) => a.key)).toEqual(["add-1"])
@@ -86,7 +85,7 @@ describe("承認の取り消し", () => {
   })
 
   test("足した行の、承認では書いていない項目を後から直していても、行は外さずに数える（その手直しを黙って消さない）", () => {
-    let w = approve(base, "p1", [{ kind: "add", rowKey: "add-1", by: "chat", cells: { workName: chat("足した工事") } }])
+    let w = approve(base, "p1", [{ kind: "add", rowKey: "add-1", cells: { workName: chat("足した工事") } }])
     w = { ...w, edits: new Map(w.edits).set(editKey("add-1", "client"), staff("後から足した注文者")) }
     const r = undo(w, "u-p1")!
     expect(r.work.added.map((a) => a.key)).toEqual(["add-1"])

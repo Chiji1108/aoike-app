@@ -1,4 +1,4 @@
-import { applyEdits, finalizeRows, roundEdits, type CellEdits, type Replacements, type RowResult } from "../convert/convert"
+import { applyEdits, finalizeRows, type CellEdits, type Replacements, type RowResult } from "../convert/convert"
 import { orderKojiRows, selectKojiRows, type Basis, type Rule7Tax, type SelectionMode, type TaxMode } from "../convert/koji-selection"
 import { KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
 import { addedRowResults, type AddedRow } from "./added"
@@ -38,11 +38,9 @@ export const deriveTable = (t: CaseTable) => viewOf(t, editRows(t))
 export const baseRows = (t: Pick<CaseTable, "rows" | "added">) => (t.added.length ? [...t.rows, ...addedRowResults(t.added)] : t.rows)
 
 /**
- * 手直しまで当てた行（個人名は印のまま）。行・足した行・手直し・置換・千円未満の扱いが変わったときだけ作り直せばよい（入れ外し・7割・並びでは変わらない）。
- * 金額の手直しは今の千円未満の扱いで千円にし直す（roundEdits）
+ * 手直しまで当てた行（個人名は印のまま）。行・足した行・手直し・置換が変わったときだけ作り直せばよい（入れ外し・7割・並びでは変わらない）
  */
-export const editRows = (t: Pick<CaseTable, "rows" | "added" | "edits" | "replacements" | "rounding">) =>
-  applyEdits(KOJI_KEIREKI, baseRows(t), { replacements: t.replacements, edits: roundEdits(t.edits, t.rounding) })
+export const editRows = (t: Pick<CaseTable, "rows" | "added" | "edits" | "replacements">) => applyEdits(KOJI_KEIREKI, baseRows(t), { replacements: t.replacements, edits: t.edits })
 
 type Edited = ReturnType<typeof editRows>
 

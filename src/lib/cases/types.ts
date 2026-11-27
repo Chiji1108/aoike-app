@@ -4,18 +4,18 @@ export const CASE_STATUSES = ["converting", "inquiring", "done"] as const
 export type CaseStatus = (typeof CASE_STATUSES)[number]
 export const CASE_STATUS_LABELS: Record<CaseStatus, string> = { converting: "変換中", inquiring: "問い合わせ中", done: "完了" }
 
-/** source: 届いたファイル（Excel・CSV・PDF）。inquiry_sheet: 顧客に送った問い合わせの Excel（印付き・記入用Excel）。answer: 返ってきた Excel。edit_sheet: 職員が直して上げ直した最後の Excel。csv: 出力した CSV。final_sheet: ダウンロードした最後の Excel */
-export const FILE_KINDS = ["source", "inquiry_sheet", "answer", "edit_sheet", "csv", "final_sheet"] as const
+/** source: 届いたファイル（Excel・CSV・PDF・顧客の回答のファイル）。csv: 出力した CSV。final_sheet: ダウンロードした最後の Excel */
+export const FILE_KINDS = ["source", "csv", "final_sheet"] as const
 export type FileKind = (typeof FILE_KINDS)[number]
-export const FILE_KIND_LABELS: Record<FileKind, string> = { source: "届いたファイル", inquiry_sheet: "問い合わせのExcel", answer: "返ってきたExcel", edit_sheet: "直したExcel", csv: "CSV", final_sheet: "最後のExcel" }
+export const FILE_KIND_LABELS: Record<FileKind, string> = { source: "届いたファイル", csv: "CSV", final_sheet: "最後のExcel" }
 
 /**
- * 届いた（received: アップロードしたもの。顧客から届いたファイル・返ってきた Excel・職員が直して上げ直した Excel）か、
+ * 届いた（received: アップロードしたもの）か、
  * 作った（made: この画面でダウンロードしたときに残した控え）か。届いたものは作業の画面の上のファイルの行に、作ったものは見出しの「…」のダウンロードの履歴に出す。
  * 控えはサーバーに残し続ける（あとからそのときの中身をダウンロードできる）
  */
 export type FileOrigin = "received" | "made"
-export const FILE_ORIGINS: Record<FileKind, FileOrigin> = { source: "received", answer: "received", edit_sheet: "received", inquiry_sheet: "made", csv: "made", final_sheet: "made" }
+export const FILE_ORIGINS: Record<FileKind, FileOrigin> = { source: "received", csv: "made", final_sheet: "made" }
 
 /** 作業の画面の上のファイルの行に出すファイル（届いたもの。付けた順） */
 export const receivedFiles = (files: readonly CaseFile[]) => files.filter((f) => FILE_ORIGINS[f.kind] === "received")

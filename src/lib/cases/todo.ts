@@ -112,9 +112,7 @@ export type TodoInput = {
   questions: readonly { id: string; answered: boolean }[]
   inquiries: readonly Inquiry[]
   dismissed: ReadonlySet<string>
-  /** 返ってきた Excel を読んだか（作業の answers） */
-  answersRead: boolean
-  /** 問い合わせを送ったか（案件が問い合わせ中・問い合わせの Excel かメールの下書きを出した） */
+  /** 問い合わせを送ったか（案件が問い合わせ中・メールの下書きを出した） */
   inquirySent: boolean
 }
 
@@ -131,16 +129,15 @@ export function caseTodo(input: TodoInput): CaseTodo {
   for (const p of proposals) {
     if (p.state !== "open") continue
     const kind = p.origin.kind
-    const waiting = kind === "chat" || kind === "excel" || kind === "answer" ? pendingOf(p).length : kind === "fix" ? (outside.get(p.id) ?? 0) : 0
+    const waiting = kind === "chat" ? pendingOf(p).length : kind === "fix" ? (outside.get(p.id) ?? 0) : 0
     const question = p.question !== null && p.question.answer === null
-    // chat・excel・answer は開いていれば数える（開いている変更案には未決の項目か答えていない聞き返しがある）。fix は一覧の外の行に未決があるときだけ
-    if (kind === "chat" || kind === "excel" || kind === "answer" || (kind === "fix" && waiting > 0)) answer.push({ kind: "proposal", proposalId: p.id, origin: kind, waiting, question })
+    // chat は開いていれば数える（開いている変更案には未決の項目か答えていない聞き返しがある）。fix は一覧の外の行に未決があるときだけ
+    if (kind === "chat" || (kind === "fix" && waiting > 0)) answer.push({ kind: "proposal", proposalId: p.id, origin: kind, waiting, question })
   }
 
   const active = input.inquiries.filter((q) => !input.dismissed.has(inquiryKey(q)))
   const left = active.filter((q) => q.kind === "cell").length
-  const answersOpen = proposals.some((p) => p.origin.kind === "answer" && p.state === "open")
-  const state: InquiryState = active.length === 0 || (input.answersRead && !answersOpen) ? "done" : input.inquirySent ? "waiting" : "todo"
+  const state: InquiryState = active.length === 0 ? "done" : input.inquirySent ? "waiting" : "todo"
   const locationOpen = proposals.filter((p) => p.origin.kind === "location" && p.state === "open").length
 
   return {

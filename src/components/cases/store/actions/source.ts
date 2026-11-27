@@ -135,8 +135,7 @@ export async function startPlanning(env: CaseEnv, src: Source, requiredSheet?: s
   const fallback = fallbackFor(g)
   const id = store.getState().runtime.gen.case + 1
   supersedeConversion(env)
-  // 返ってきた Excel の案内は前の元の行の問い合わせへのもの
-  setRuntime(store, (r) => ({ gen: { ...r.gen, case: id }, convertError: null, planDraft: { plan: fallback, source: "rule" }, hints: { ...r.hints, answer: [] } }))
+  setRuntime(store, (r) => ({ gen: { ...r.gen, case: id }, convertError: null, planDraft: { plan: fallback, source: "rule" } }))
   setWork(store, (w) => replanWork(w, src.fileId))
   const current = () => store.getState().runtime.gen.case === id
   let next: SavedPlan
@@ -177,12 +176,12 @@ export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean) 
   setRuntime(store, (r) => ({ gen: { ...r.gen, source: id }, loading: file.name, sourceError: null }))
   const current = () => store.getState().runtime.gen.source === id
   try {
-    const [{ readWorkbook }, { markability }] = await Promise.all([import("@/lib/convert/workbook"), import("@/lib/inquiry/markable")])
+    const { readWorkbook } = await import("@/lib/convert/workbook")
     const bytes = await deps.fetchFile(file.id)
     if (!current()) return
     const sheets = readWorkbook(file.name, bytes)
     if (!primarySheet(SPEC, KOJI_PLAN_HINTS, sheets)) throw new Error("シートが空です")
-    const src: Source = { fileId: file.id, name: file.name, bytes, sheets, markable: markability(file.name, bytes) }
+    const src: Source = { fileId: file.id, name: file.name, sheets }
     setRuntime(store, () => ({ source: src, loading: null }))
     if (replan && env.config.chatEnabled) await startPlanning(env, src)
   } catch (e) {

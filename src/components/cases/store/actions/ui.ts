@@ -5,8 +5,6 @@ import type { ChatAction } from "@/lib/chat/messages"
 import { setRuntime, setUi, type ChatPrefs, type ChatSize, type ChatTarget } from "../create-case-store"
 import type { CaseEnv } from "../env"
 
-/** チャットの案内のうち、問い合わせのメールの下書き（返ってきた Excel の案内はファイルの id） */
-export const INQUIRY_SUGGESTION = "inquiry-text"
 
 /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
 export function setWide(env: CaseEnv, wide: boolean) {
@@ -157,9 +155,9 @@ export function runFixAction(env: CaseEnv, action: FixActionId, keys: readonly s
   setUi(env.store, () => ({ tab: "gyoshu", tool: null, workChoice: true, ...(keys.length === 1 ? { focus: { kind: "gyoshuRow", key: keys[0]! } } : {}) }))
 }
 
-/** 返事のボタン（ダウンロード・問い合わせの段を開く） */
+/** 返事のボタン（ダウンロードの段を開く） */
 export function chatAction(env: CaseEnv, a: ChatAction) {
-  showTab(env, a === "export" ? "export" : "inquiry")
+  showTab(env, a)
 }
 
 /** ダウンロードの段を開く（前の確認はダイアログでなく段の中身） */
@@ -192,9 +190,7 @@ export function setChatSending(env: CaseEnv, sending: boolean) {
   setUi(env.store, (u) => ({ chatTurn: { ...u.chatTurn, sending } }))
 }
 
-/** 案内を送った（返ってきた Excel の案内はファイルの id、問い合わせのメールの下書きは inquiry-text） */
-export function suggestionSent(env: CaseEnv, id: string) {
-  setRuntime(env.store, (r) => ({
-    hints: id === INQUIRY_SUGGESTION ? { ...r.hints, inquiry: "sent" } : { ...r.hints, answer: r.hints.answer.filter((h) => h.fileId !== id) },
-  }))
+/** 「AI でメールの下書きを作る」を送った（この画面ではもう出さない） */
+export function inquirySuggestionSent(env: CaseEnv) {
+  setRuntime(env.store, () => ({ inquiryHint: "sent" }))
 }

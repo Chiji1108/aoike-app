@@ -1,14 +1,9 @@
-import ExcelJS from "exceljs"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
-import { finalSheet } from "@/lib/excel/final-sheet"
-import { finalXlsx } from "@/lib/excel/final-xlsx"
-import { readWorkbook } from "@/lib/convert/workbook"
-import { applyChanges } from "@/lib/chat/proposals"
 import type { SaveRequest, SaveResponse } from "@/lib/cases/autosave"
 import { decisionOf, newProposal, type ChatChange } from "@/lib/chat/proposals"
 import { fixture } from "@/lib/convert/__tests__/helpers"
 import type { MappingPlan } from "@/lib/convert/plan"
-import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
+import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import { receiveProposal } from "../actions/proposals"
 import { fakeDeps, FILES, NO_AI, page } from "./helpers"
 import { setRuntime, setWork } from "../create-case-store"
@@ -30,7 +25,6 @@ function deferred<T>() {
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
 const noChannel = () => null
-const KOJI_FIELDS = KOJI_KEIREKI.fields.map((f) => f.id)
 
 // 画面につなぐ（connect）と window の beforeunload・pagehide を見る
 beforeEach(() => {
@@ -296,29 +290,6 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     first.reject(new Error("送れませんでした"))
     await a
     expect(s.store.getState().runtime.status).toBe("converting")
-  })
-
-  test("直した Excel の変更案を記録している間に元を変えたら、前の元への変更案は閉じて入れる", async () => {
-    const recording = deferred<unknown>()
-    const recordProposal = vi.fn<CaseDeps["recordProposal"]>().mockReturnValueOnce(recording.promise)
-    const s = createCaseSession(page(), fakeDeps({ recordProposal }), noChannel)
-    const add: ChatChange = { kind: "add", rowKey: "add-1", by: "chat", cells: { workName: { value: "合成の工事", by: "chat" }, amount: { value: "1000", by: "chat" } } }
-    setWork(s.store, (w) => applyChanges(w, [], [add]))
-    const view = s.table(s.store.getState()).view!
-    const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load((await finalXlsx(await finalSheet(view, { caseId: "c", sourceFileId: null, excelKey: "1".repeat(64) }))).buffer as ArrayBuffer)
-    const amount = KOJI_FIELDS.indexOf("amount") + 1
-    wb.worksheets[0]!.getRow(view.output.findIndex((r) => r.key === "add-1") + 1).getCell(amount).value = 2000
-    const sheets = readWorkbook("直した.xlsx", new Uint8Array(await wb.xlsx.writeBuffer()))
-    const importing = s.actions.importFinal(new File([new Uint8Array(1)], "直した.xlsx"), sheets)
-    await vi.waitFor(() => expect(recordProposal).toHaveBeenCalledTimes(1))
-    await s.actions.openSource(FILES[0]!, true)
-    recording.resolve(undefined)
-    await importing
-    const excel = s.store.getState().work.proposals.filter((p) => p.origin.kind === "excel")
-    expect(excel.map((p) => p.state)).toEqual(["closed"])
-    // 捨てたことを知らせる（上げたファイルは案件に残る）
-    expect(s.store.getState().runtime.notes.at(-1)).toMatchObject({ tone: "error", text: expect.stringContaining("もう一度アップロード") })
   })
 
   test("工事場所・ルールを外に書いている間に変更案が閉じたら、表に重ねず承認の印も付けない", async () => {

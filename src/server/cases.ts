@@ -4,7 +4,6 @@ import { z } from "zod"
 import { getCsvDb } from "@/db"
 import { MAX_STATE_BYTES, savedAiCacheSchema, savedWorkSchema, type SavedAiCache, type SavedWork } from "@/lib/cases/state"
 import { CASE_STATUSES, isSheetFile, type Case } from "@/lib/cases/types"
-import { excelKeyOf } from "@/lib/excel/excel-key"
 import { tryParseJson } from "@/lib/json"
 import { closeUnrecorded } from "@/lib/chat/proposals"
 import * as store from "./case-store"
@@ -85,9 +84,7 @@ export const getCasePageFn = createServerFn({ method: "GET" })
         closedMissing = closed.closed
       }
     }
-    // 最後の Excel の照合用の鍵（案件ごとにいつも同じ。lib/excel/excel-key.ts）
-    const excelKey = await excelKeyOf(env.BETTER_AUTH_SECRET, kase.id)
-    return { kase, customer: customer!, files, state, chatEnabled: !!env.ANTHROPIC_API_KEY, proposals, unreadableProposals, closedMissing, previous, settings, excelKey }
+    return { kase, customer: customer!, files, state, chatEnabled: !!env.ANTHROPIC_API_KEY, proposals, unreadableProposals, closedMissing, previous, settings }
   })
 
 /**

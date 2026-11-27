@@ -4,8 +4,7 @@ import type { FieldSpec } from "../spec/types"
 import { columnLetter, type FieldPlan, type FlagColumn, type MappingPlan, type SourceRow } from "./plan"
 import { hasPersons, personLetters, readMarked, showPersons, type PersonLetters } from "./persons"
 import { excludedReason, sourceKey } from "./sources"
-import { NO_ADDRESSES } from "./address"
-import { getTransform, isFlagOn, knownNameSplits, normalizePersonName, WITHOUT_AI, type Rounding, type TransformContext, type TransformId } from "./transforms"
+import { getTransform, isFlagOn, knownNameSplits, normalizePersonName, WITHOUT_AI, type TransformContext, type TransformId } from "./transforms"
 import { checkRow, checkValue } from "./validate"
 
 export type CellStatus = "ok" | "changed" | "ai" | "warning" | "error"
@@ -228,7 +227,7 @@ export function resolveRows<F extends string>(drafts: RowDraft<F>[], store: AiRe
  */
 export type CellEdit = {
   value: string
-  by: "staff" | "customer" | "confirmed" | "chat" | "excel" | "location"
+  by: "staff" | "customer" | "confirmed" | "chat" | "location"
   status?: "ai" | "warning" | "error"
   message?: string
   guessed?: true
@@ -236,30 +235,6 @@ export type CellEdit = {
   byAi?: true
   /** 顧客に聞くと決めた（CellResult.ask） */
   ask?: true
-  /**
-   * 千円未満の扱いで値が変わる金額の、千円にする前の値と変換（返ってきた Excel の金額など）。value はそのときの扱いで千円にした値で、
-   * 表は今の扱いで千円にし直す（roundEdits）。この項目より前の手直しには無い（value のまま）
-   */
-  amount?: { raw: string; transform: AmountTransform }
-}
-/** 千円未満の扱いで値が変わる金額の変換 */
-export const AMOUNT_TRANSFORMS = ["rule.thousandYen", "rule.yenToThousand"] as const satisfies readonly TransformId[]
-export type AmountTransform = (typeof AMOUNT_TRANSFORMS)[number]
-
-/**
- * 千円未満の扱い（rounding）で手直しの金額を千円にし直す（amount のある手直しだけ。無ければ同じ Map を返す）。
- * 表を作るとき（cases/view.ts の editRows）にいつも通すので、扱いを画面で切り替えても、承認で変えても、取り消しで戻しても同じになる
- */
-export function roundEdits(edits: CellEdits, rounding: Rounding): CellEdits {
-  let out: Map<string, CellEdit> | null = null
-  const ctx: TransformContext = { rounding, addresses: NO_ADDRESSES }
-  for (const [key, e] of edits) {
-    if (!e.amount) continue
-    const cell = transformCell(e.amount.transform, [e.amount.raw], "", ctx)
-    if (cell.kind !== "done" || cell.cell.status === "error" || cell.cell.value === e.value) continue
-    ;(out ??= new Map(edits)).set(key, { ...e, value: cell.cell.value })
-  }
-  return out ?? edits
 }
 export type CellEdits = ReadonlyMap<string, CellEdit>
 
@@ -268,7 +243,6 @@ const EDITED: Record<CellEdit["by"], Pick<CellResult, "source" | "message">> = {
   customer: { source: "顧客の回答", message: "顧客の回答" },
   confirmed: { source: "顧客が確認", message: "顧客が確認" },
   chat: { source: "チャット（承認）" },
-  excel: { source: "Excel（承認）" },
   location: { source: "場所の調査（承認）" },
 }
 

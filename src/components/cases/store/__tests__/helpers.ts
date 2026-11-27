@@ -20,7 +20,6 @@ export function page(): SessionPage {
     closedMissing: 0,
     settings: { rule7Tax: "excluded" },
     chatEnabled: true,
-    excelKey: "1".repeat(64),
     previousUnsaved: false,
     previous: null,
   }

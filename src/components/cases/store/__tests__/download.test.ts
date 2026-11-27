@@ -15,7 +15,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test("変換し直している間は、前の行を書き出さない（CSV・最後の Excel・問い合わせの Excel のどれも。控えも作らない）。終われば書き出せる", async () => {
+test("変換し直している間は、前の行を書き出さない（CSV・最後の Excel のどちらも。控えも作らない）。終われば書き出せる", async () => {
   const uploadFile = vi.fn(fakeDeps().uploadFile)
   const s = createCaseSession(page(), fakeDeps({ uploadFile }), () => null)
   s.connect()
@@ -26,7 +26,6 @@ test("変換し直している間は、前の行を書き出さない（CSV・�
   expect(s.table(s.store.getState()).reconverting).toBe(true)
   s.actions.downloadCsv()
   await s.actions.downloadFinalExcel()
-  await s.actions.downloadInquiry()
   expect(saved.files).toEqual([])
   expect(uploadFile).not.toHaveBeenCalled()
   await vi.waitFor(() => expect(s.table(s.store.getState()).reconverting).toBe(false))

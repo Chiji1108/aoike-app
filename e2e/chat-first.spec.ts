@@ -161,8 +161,8 @@ test("ファイルをアップロードすると自動で変換して報告で�
     expect(xlsx.suggestedFilename()).toMatch(/\.xlsx$/)
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(fileBytes((await xlsx.path())!))
-    // データのシートと、照合用の隠しシート（上げ直すと表に戻る）
-    expect(wb.worksheets.map((w) => w.state)).toEqual(["visible", "veryHidden"])
+    // シートは1枚
+    expect(wb.worksheets.map((w) => w.state)).toEqual(["visible"])
     const ws = wb.worksheets[0]!
     expect(ws.rowCount).toBe(rows)
     expect(ws.columnCount).toBeLessThanOrEqual(14)
@@ -198,17 +198,4 @@ test("ファイルをアップロードすると自動で変換して報告で�
     await expect(list.locator('[data-kind="source"]')).toHaveCount(1)
     await expect(list.locator('[data-kind="csv"], [data-kind="final_sheet"]')).toHaveCount(0)
   })
-})
-
-test("表ができる前に直した Excel をアップロードしても、黙って捨てずに報告に理由を出す", async ({ page }) => {
-  const { customer } = await openNewCase(page)
-  created.push(customer)
-  const wb = new ExcelJS.Workbook()
-  wb.addWorksheet("工事経歴").addRows([[8, "株式会社テスト"]])
-  wb.addWorksheet("照合用（最後の Excel）").addRows([["aoike-final-check", "1"]])
-  await page.getByTestId("chat-file-input").setInputFiles({ name: "直した.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) })
-  const upload = page.getByTestId("report-upload")
-  await expect(upload).toContainText("直した.xlsx")
-  await expect(upload).toContainText("表がまだありません")
-  await expect(upload).toHaveAttribute("data-tone", "error")
 })

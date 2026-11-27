@@ -60,7 +60,7 @@ export function createTableDerive(addresses: ReturnType<typeof addressCache>) {
       }, 0)
     return { floor: total("floor"), round: total("round") }
   })
-  const editedOf = memoLast((rows: RowResult<KojiFieldId>[] | null, w: Pick<CaseState["work"], "added" | "edits" | "replacements" | "rounding">) =>
+  const editedOf = memoLast((rows: RowResult<KojiFieldId>[] | null, w: Pick<CaseState["work"], "added" | "edits" | "replacements">) =>
     rows ? editRows({ rows, ...w }) : null,
   )
   const selectedOf = memoLast((edited: ReturnType<typeof editedOf>, w: Pick<CaseState["work"], "manual" | "tax" | "basis" | "rule7Tax" | "selection">) =>
@@ -70,7 +70,7 @@ export function createTableDerive(addresses: ReturnType<typeof addressCache>) {
     rows && edited && selected ? orderAndFinalize({ rows, added, replacements }, edited, selected) : null,
   )
   // editRows・selectRows に渡す項目は、作業の参照ではなく項目ごとに比べる（関係ない作業の変更で作り直さない）
-  const editInput = memoLast((added: CaseState["work"]["added"], edits: CaseState["work"]["edits"], replacements: CaseState["work"]["replacements"], rounding: Rounding) => ({ added, edits, replacements, rounding }))
+  const editInput = memoLast((added: CaseState["work"]["added"], edits: CaseState["work"]["edits"], replacements: CaseState["work"]["replacements"]) => ({ added, edits, replacements }))
   const selectInput = memoLast(
     (manual: CaseState["work"]["manual"], tax: CaseState["work"]["tax"], basis: CaseState["work"]["basis"], rule7Tax: CaseState["work"]["rule7Tax"], selection: CaseState["work"]["selection"]) => ({ manual, tax, basis, rule7Tax, selection }),
   )
@@ -95,7 +95,7 @@ export function createTableDerive(addresses: ReturnType<typeof addressCache>) {
     else if (!w.plan || !w.sourceFileId) lastRows = null
     const rows = freshRows ?? lastRows
     const reconverting = !freshRows && !!rows
-    const edited = editedOf(rows, editInput(w.added, w.edits, w.replacements, w.rounding))
+    const edited = editedOf(rows, editInput(w.added, w.edits, w.replacements))
     const selected = selectedOf(edited, selectInput(w.manual, w.tax, w.basis, w.rule7Tax, w.selection))
     const view = viewOf(rows, w.added, edited, selected, w.replacements)
     const out: TableDerived = {
