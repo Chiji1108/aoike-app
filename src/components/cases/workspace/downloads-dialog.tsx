@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item"
 import { FILE_KIND_LABELS, downloadHistory, fileUrl } from "@/lib/cases/types"
 
-const dayText = (ms: number) => new Date(ms).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric" })
+/** 控えは年をまたいで残る（来年の「去年のやり方」が読む）ので、年も出す */
+const dayText = (ms: number) => new Date(ms).toLocaleDateString("ja-JP", { timeZone: "Asia/Tokyo", year: "numeric", month: "numeric", day: "numeric" })
 const timeText = (ms: number) => new Date(ms).toLocaleTimeString("ja-JP", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit" })
 
 /**

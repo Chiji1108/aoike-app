@@ -21,7 +21,13 @@ export const FILE_ORIGINS: Record<FileKind, FileOrigin> = { source: "received", 
 export const receivedFiles = (files: readonly CaseFile[]) => files.filter((f) => FILE_ORIGINS[f.kind] === "received")
 
 /** ダウンロードの履歴（作った控え。新しい順） */
-export const downloadHistory = (files: readonly CaseFile[]) => files.filter((f) => FILE_ORIGINS[f.kind] === "made").sort((a, b) => b.createdAt - a.createdAt)
+/** 新しい順。同じ時刻なら後から足したもの（files の後ろ）を先に */
+export const downloadHistory = (files: readonly CaseFile[]) =>
+  files
+    .map((f, i) => ({ f, i }))
+    .filter(({ f }) => FILE_ORIGINS[f.kind] === "made")
+    .sort((a, b) => b.f.createdAt - a.f.createdAt || b.i - a.i)
+    .map(({ f }) => f)
 
 export const FILE_STATUSES = ["pending", "ready"] as const
 

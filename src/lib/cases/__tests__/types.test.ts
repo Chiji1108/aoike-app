@@ -28,3 +28,8 @@ test("ファイルの行には届いた（アップロードした）ファイ�
   // 元の並びは変えない
   expect(files[0]!.name).toBe("元.xlsx")
 })
+
+test("同じ時刻に残した控えは、後から足したものを先に出す", () => {
+  const files = [file("工事経歴書.csv", "csv", 5), file("工事経歴書.xlsx", "final_sheet", 5)]
+  expect(downloadHistory(files).map((f) => f.name)).toEqual(["工事経歴書.xlsx", "工事経歴書.csv"])
+})
