@@ -146,12 +146,12 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
  * 取り消しの記録に残し、通知の「取り消す」で戻せる。職員が選んだので「答える」の載せる工事にも答えたことにする
  */
 export function changeSelection(env: CaseEnv, mode: SelectionMode) {
-  // 同じ選び方を職員がもう決めているときだけ何もしない（既定値・引き継いだ値と同じ値を選んでも、職員が決めた値になる）
+  // 同じ選び方にもう答えているときだけ何もしない（既定値と同じ値を選んでも、答えたことになる）
   const now = env.store.getState().work
-  if (now.selection === mode && now.selectionBy === "staff") return
+  if (now.selection === mode && now.selectionAnswered) return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
-  // 職員が決めた値として出どころと一緒に書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
-  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, "staff"))
+  // 選び方と一緒に「答えた」を書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
+  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, true))
   notifyCommitted(env, `載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, id, "載せる工事の切り替え")
 }
 
@@ -196,7 +196,7 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
   if (id === "selection") {
     // 載せる工事（7割ルール／全件）。答えたあとも表の見出しのチェック・ダウンロードの段の7割と金額で変えられる
     if (value !== "rule7" && value !== "all") return
-    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => setSelection(w, value, "staff"))
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => setSelection(w, value, true))
     return
   }
   if (id === "tax") {

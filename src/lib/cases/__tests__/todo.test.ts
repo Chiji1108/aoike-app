@@ -140,23 +140,25 @@ test("表がまだ無くても、答える（変更案）とチャットの答�
 })
 
 test("報告の聞き返し: 表ができてから。税は誰も決めていなければ聞き、決まるか「分からない」で答えた。計画の聞き返しは exclude・keep だけを答えと見なす", () => {
-  // 載せる工事は去年から引き継いだ（聞かない）形を基本にする
-  const base = { hasTable: true, selectionBy: "previous" as const, tax: "unknown" as const, taxBy: null, reportAnswers: {}, asks: [{ id: "plan-ask-0", key: "ask:doubtful:1:k" }] }
+  // 載せる工事はもう答えた形を基本にする（いつも最初に出る）
+  const base = { hasTable: true, selectionAnswered: true, tax: "unknown" as const, taxBy: null, reportAnswers: {}, asks: [{ id: "plan-ask-0", key: "ask:doubtful:1:k" }] }
   expect(reportQuestionStates({ ...base, hasTable: false })).toEqual([])
   expect(reportQuestionStates(base)).toEqual([
+    { id: "selection", answered: true },
     { id: "tax", answered: false },
     { id: "plan-ask-0", answered: false },
   ])
-  // 載せる工事は selectionBy だけで決める: まだ誰も決めていなければ最初に聞き、職員が決めたら答えた（答える・表の見出し・7割と金額・変更案の承認のどれでも同じ）
-  expect(reportQuestionStates({ ...base, selectionBy: null })[0]).toEqual({ id: "selection", answered: false })
-  expect(reportQuestionStates({ ...base, selectionBy: "staff" })[0]).toEqual({ id: "selection", answered: true })
+  // 載せる工事はどの案件でも最初に聞き、答えたかは selectionAnswered だけで決める（答える・表の見出し・7割と金額・変更案の承認のどれでも同じ）
+  expect(reportQuestionStates({ ...base, selectionAnswered: false })[0]).toEqual({ id: "selection", answered: false })
   // 計画が決めた税は聞かない
-  expect(reportQuestionStates({ ...base, tax: "included", taxBy: "plan" }).map((q) => q.id)).toEqual(["plan-ask-0"])
+  expect(reportQuestionStates({ ...base, tax: "included", taxBy: "plan" }).map((q) => q.id)).toEqual(["selection", "plan-ask-0"])
   expect(reportQuestionStates({ ...base, tax: "excluded", taxBy: "staff", reportAnswers: { tax: "excluded", "ask:doubtful:1:k": "keep" } })).toEqual([
+    { id: "selection", answered: true },
     { id: "tax", answered: true },
     { id: "plan-ask-0", answered: true },
   ])
   expect(reportQuestionStates({ ...base, taxBy: "staff", reportAnswers: { tax: "ask", "ask:doubtful:1:k": "other" } })).toEqual([
+    { id: "selection", answered: true },
     { id: "tax", answered: true },
     { id: "plan-ask-0", answered: false },
   ])

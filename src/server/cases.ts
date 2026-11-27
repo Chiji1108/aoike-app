@@ -3,7 +3,6 @@ import { createServerFn } from "@tanstack/react-start"
 import { z } from "zod"
 import { getCsvDb } from "@/db"
 import { MAX_STATE_BYTES, savedAiCacheSchema, savedWorkSchema, type SavedAiCache, type SavedWork } from "@/lib/cases/state"
-import { previousSelection } from "@/lib/cases/selection"
 import { CASE_STATUSES, isSheetFile, type Case } from "@/lib/cases/types"
 import { planColumns } from "@/lib/convert/plan"
 import { excelKeyOf } from "@/lib/excel/excel-key"
@@ -116,10 +115,10 @@ async function previousOf(db: store.Db, kase: Case) {
     /** 去年の列の対応（列の計画の AI に参考として渡す） */
     plan: plan ?? null,
     /**
-     * 去年の載せる工事（7割ルール／全件。今年の既定にして聞かない）。去年に変換して出した表の選び方だけを使う
-     * （作業が読めない・変換していない・既定値のまま誰も決めていなければ null で、今年は聞く。lib/cases/selection.ts）
+     * 去年の載せる工事（7割ルール／全件）。今年の「答える」の載せる工事のおすすめに出すだけ（引き継がない。lib/cases/selection-advice.ts）。
+     * 去年に変換して出した表の選び方（作業が読めない・変換していなければ null）
      */
-    selection: previousSelection(saved),
+    selection: saved?.converted ? saved.selection : null,
   }
 }
 

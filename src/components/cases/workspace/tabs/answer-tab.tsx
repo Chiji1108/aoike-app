@@ -1,19 +1,15 @@
-import { Info } from "lucide-react"
 import { QuestionItem } from "@/components/cases/question-item"
-import { useCase, useCaseActions, useCaseView } from "@/components/cases/store/context"
-import { SELECTION_LABELS } from "@/lib/convert/koji-selection"
+import { useCaseActions, useCaseView } from "@/components/cases/store/context"
 import { PROPOSAL_QUESTION, useAnswerQuestions, type AnswerQuestion } from "../hooks"
 import { StepDone } from "../step-done"
 
 /**
  * 「答える」の段: 載せる工事（最初に聞く）・税込か税抜か・計画の聞き返しはその場で答え、チャットの変更案・AI の聞き返しは中身をチャットで確かめる（そこへ移る）。
- * 答えたものは下にまとめ、取り消せる。去年で載せる工事が決まっていれば聞かずに知らせだけ出す。聞き返しに答える場所はここだけ（チャットの報告は数の1行）
+ * 答えたものは下にまとめ、取り消せる。載せる工事はどの案件でも最初に1回聞く（去年の選び方はおすすめに出すだけ）。聞き返しに答える場所はここだけ（チャットの報告は数の1行）
  */
 export function AnswerTab() {
   const actions = useCaseActions()
   const todo = useCaseView((v) => v.todo)
-  // 去年から引き継いだ選び方のままの間だけ知らせる（表の見出し・7割と金額などで職員が変えたら出さない。lib/cases/selection.ts）
-  const carried = useCase((s) => (s.work.selectionBy === "previous" ? s.work.selection : null))
   const { questions, chatAsks } = useAnswerQuestions()
   const all = [...questions, ...chatAsks]
   const open = all.filter((q) => q.question.answered === null)
@@ -24,12 +20,6 @@ export function AnswerTab() {
   }
   return (
     <div className="grid max-w-3xl gap-4 text-sm" data-testid="answer-step" data-left={todo.answer.length}>
-      {carried && (
-        <p className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-muted-foreground" data-testid="selection-carried">
-          <Info className="size-4 shrink-0" />
-          載せる工事は去年と同じ: {SELECTION_LABELS[carried]}。表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でいつでも変えられます
-        </p>
-      )}
       {open.length > 0 && <List title={`答える（あと ${todo.answer.length}）`} items={open} onAnswer={onAnswer} testId="answer-open" />}
       {open.length === 0 && done.length === 0 && (
         <p className="text-muted-foreground" data-testid="answer-none">

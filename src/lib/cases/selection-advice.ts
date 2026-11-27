@@ -2,12 +2,12 @@ import { SELECTION_LABELS, type GyoshuSummary, type SelectionMode } from "@/lib/
 
 /**
  * 載せる工事（7割ルール／全件）のおすすめ。「答える」の最初の聞き返しの選択肢に「（おすすめ）」を添える（決まった処理。判断の決まりはここ1か所）。
- * 聞くか・答えたか・去年から引き継ぐかは、作業の selectionBy だけで決める（lib/cases/selection.ts。ここでは決めない）。
- * - 去年の案件で選び方を決めていれば、それ（引き継がずに聞いている＝前に保存した今年の作業）
+ * 聞くか・答えたかは作業の selectionAnswered だけで決める（lib/cases/selection.ts。どの案件でも1回聞き、ここでは決めない）。
+ * - 去年の案件の選び方があれば、それ（理由は「去年は全件でした」。引き継がずにおすすめに出すだけ）
  * - データがすでに顧客の側で絞られていそうなら全件: 載せうる行が少ない（1行以上 FEW_ROWS 行以下。0 行は数で決めない）、
  *   または決算書の額を入れた業種で、表の合計がその決算書の額の FILTERED_RATIO 以下（7割で選んだあとの一覧が届いたように見える）。
  *   比べるのは決算書の額を入れた業種の行だけで、金額は7割の計算の税（rule7Tax）にそろえた業種ごとの集計（summarizeKoji。7割の表と同じ数）
- * - ほかは7割ルール（理由は、去年の案件が無ければ初めての顧客、あれば去年は決めていなかった）
+ * - ほかは7割ルール（理由は、去年の案件が無ければ初めての顧客、あれば去年は表を出していなかった）
  * 顧客ルール（文章のルール）からは引かない（決まった形の項目が無い）
  */
 
@@ -19,7 +19,7 @@ export const FILTERED_RATIO = 0.85
 export type SelectionAdvice = { recommended: SelectionMode; reason: string }
 
 export function selectionAdvice(input: {
-  /** 去年の案件（無ければ null）と、去年に決めた選び方（既定値のままなら null。lib/cases/selection.ts の previousSelection） */
+  /** 去年の案件（無ければ null）と、去年に変換して出した選び方（変換していなければ null） */
   previous: { selection: SelectionMode | null } | null
   /** 載せうる行（除外していない行）の数 */
   rows: number
@@ -34,5 +34,5 @@ export function selectionAdvice(input: {
   const table = entered.reduce((s, g) => s + g.total, 0)
   if (book > 0 && table <= book * FILTERED_RATIO)
     return { recommended: "all", reason: `表の合計が決算書の額の ${Math.round((table / book) * 100)}% で、顧客の側で選んだ一覧に見えます` }
-  return { recommended: "rule7", reason: input.previous ? "去年は選び方を決めていなかったので、7割ルールから始めます" : "初めての顧客は7割ルールから始めます" }
+  return { recommended: "rule7", reason: input.previous ? "去年は表を出していなかったので、7割ルールから始めます" : "初めての顧客は7割ルールから始めます" }
 }

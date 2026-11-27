@@ -5,7 +5,6 @@ import type { CaseDeps } from "../deps"
 import { createCaseSession } from "../session"
 import { currentStep, nextStep, stepDone } from "@/lib/cases/steps"
 import { newProposal } from "@/lib/chat/proposals"
-import { lastSelectionUndo } from "@/lib/cases/undo"
 import { receiveProposal } from "../actions/proposals"
 import { fakeDeps, FILES, page } from "./helpers"
 
@@ -297,9 +296,9 @@ describe("段（済んでも勝手に移らない）", () => {
     const s = await converted(true)
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
     s.actions.answerReport("selection", "all")
-    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionBy: "staff" })
+    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionAnswered: true })
     s.actions.undoWithNotice("report:selection", "答え")
-    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
   })
 })
@@ -330,25 +329,27 @@ describe("道具と段の並び", () => {
   })
 })
 
-describe("載せる工事を誰が決めたか（selectionBy）", () => {
+describe("載せる工事に答えたか（selectionAnswered）", () => {
   test("表の見出し・7割と金額（changeSelection）で選んでも答えたことになり、取り消すと聞き直す", async () => {
     const s = await converted(true)
     s.actions.changeSelection("all")
-    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionBy: "staff" })
+    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionAnswered: true })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
   })
 
   test("今と同じ7割ルール（既定値）を7割と金額で選んでも、職員が決めた値になって答えたことになる。もう職員が決めた同じ値なら何もしない", async () => {
     const s = await converted(true)
-    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
     s.actions.changeSelection("rule7")
-    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
-    // 「答える」の載せる工事の行の「取り消す」は、この記録を指す
-    expect(lastSelectionUndo(s.store.getState().work.undo)).toEqual({ kind: "undo", proposalId: expect.stringMatching(/^selection:/) })
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: true })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
     const undo = s.store.getState().work.undo.length
     s.actions.changeSelection("rule7")
     expect(s.store.getState().work.undo).toHaveLength(undo)
+    // その切り替えのふつうの取り消しで、答えていない形に戻り、また聞く
+    s.actions.undoWithNotice(s.store.getState().work.undo.at(-1)!.proposalId)
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
   })
 
   test("チャットの変更案（settings.selection）を承認すると答えたことになり、承認を取り消すと聞き直す", async () => {
@@ -356,13 +357,10 @@ describe("載せる工事を誰が決めたか（selectionBy）", () => {
     const change = { kind: "settings" as const, selection: "all" as const }
     receiveProposal(s.store, { proposal: newProposal("p-sel", { kind: "chat", messageId: "m" }, [change], null), changes: [change] }, "replace")
     await s.actions.decideProposal("p-sel", [0], "applied")
-    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionBy: "staff" })
-    // 変更案の承認は、ほかの変更も一緒に戻るので「答える」の行からは取り消さない（出どころだけ書く）
-    expect(lastSelectionUndo(s.store.getState().work.undo)).toEqual({ kind: "proposal" })
+    expect(s.store.getState().work).toMatchObject({ selection: "all", selectionAnswered: true })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
     s.actions.undoWithNotice("p-sel")
-    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
-    expect(lastSelectionUndo(s.store.getState().work.undo)).toBeNull()
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionAnswered: false })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
   })
 })

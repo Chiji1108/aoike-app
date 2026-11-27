@@ -9,7 +9,7 @@ import { foundSchema, siteRefSchema, SOURCE_LABELS, type Found } from "../locati
 import { planPatchSchema, type PlanPatch } from "../convert/plan-patch"
 import { proposedRuleSourceSchema, ruleScopeSchema, type ProposedRuleSource, type RuleScope } from "./rules"
 import { setTax, type TaxBy } from "../cases/tax"
-import { setSelection, type SelectionBy } from "../cases/selection"
+import { setSelection } from "../cases/selection"
 import { applyInquiryChange, introSchema, subjectSchema, type InquiryText } from "../inquiry/text"
 
 /**
@@ -35,8 +35,6 @@ export type ChatChange =
       kind: "settings"
       tax?: TaxMode
       selection?: SelectionMode
-      /** 載せる工事を今と同じ値で決める（まだ誰も決めていない案件。値は変えず、承認すると職員が決めた値になる。lib/cases/selection.ts） */
-      decideSelection?: true
       basis?: Basis
       rounding?: Rounding
     }
@@ -221,8 +219,8 @@ export type Overlay = {
   taxBy?: TaxBy | null
   basis: Basis
   selection: SelectionMode
-  /** 選び方の出どころ（案件の作業だけが持つ。cases/selection.ts） */
-  selectionBy?: SelectionBy | null
+  /** 載せる工事に答えたか（案件の作業だけが持つ。cases/selection.ts） */
+  selectionAnswered?: boolean
   /** 金額の千円未満の扱い（変えたら行を変換し直すのは重ねる側。案件の画面は作業から変換し直し、チャットの表は reroundRows） */
   rounding: Rounding
   added: readonly AddedRow[]
@@ -291,7 +289,7 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
   }
   const next = { ...target, edits, manual, basis, rounding, added, inquiryText }
   const taxed = tax === undefined ? next : setTax(next, tax, "staff")
-  return selection === undefined ? taxed : setSelection(taxed, selection, "staff")
+  return selection === undefined ? taxed : setSelection(taxed, selection, true)
 }
 
 /** 調べた工事場所のセルに添える文（出どころ・根拠の URL・AI の迷った点） */
@@ -312,7 +310,6 @@ export const chatChangeSchema: z.ZodType<ChatChange> = z.discriminatedUnion("kin
       kind: z.literal("settings"),
       tax: taxSchema.optional(),
       selection: selectionSchema.optional(),
-      decideSelection: z.literal(true).optional(),
       alreadyApplied: z.boolean().optional(),
       basis: basisSchema.optional(),
       rounding: roundingSchema.optional(),

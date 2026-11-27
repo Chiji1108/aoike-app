@@ -44,7 +44,7 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
   created.push(customer)
   await attachAndConvert(page, FIXTURE, { table: false })
   await expect(page.getByTestId("format-diff")).toHaveCount(0)
-  // 2025年度は載せる工事を聞かれ、7割ルールと答える（決めた選び方だけを翌年に引き継ぐ。既定値のままなら翌年も聞く）
+  // 2025年度は載せる工事を聞かれ、7割ルールと答える（翌年はこの選び方をおすすめに出す）
   await page.locator('[data-testid="answer-section"] [data-question="selection"] [data-value="rule7"]').click()
   await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveAttribute("data-answered", "7割ルール")
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
@@ -71,16 +71,12 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await expect(diff).toContainText("足された列: L列「担当部署」")
   })
 
-  await test.step("載せる工事は去年（2025年度）に変換した選び方を使い、答えるの段で聞かずに知らせだけ出す", async () => {
+  await test.step("載せる工事は去年から引き継がず今年も聞く。去年（2025年度）の選び方はおすすめと理由に出す", async () => {
     await openTab(page, "answer")
-    await expect(page.getByTestId("selection-carried")).toContainText("去年と同じ: 7割ルール")
-    await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveCount(0)
-    // 表の見出しで選び方を変えると、引き継いだ知らせは出さない（取り消すと戻る）
-    await openTab(page, "table")
-    await page.getByTestId("include-all").click()
-    await expect(page.getByTestId("selection-carried")).toHaveCount(0)
-    await page.locator("[data-sonner-toast]").filter({ hasText: "全件にしました" }).last().getByRole("button", { name: "取り消す" }).click()
-    await expect(page.getByTestId("selection-carried")).toHaveCount(1)
+    const q = page.locator('[data-testid="answer-section"] [data-question="selection"]')
+    await expect(q).toHaveAttribute("data-pending", "1")
+    await expect(q.locator('[data-value="rule7"]')).toHaveText("7割ルール（おすすめ）")
+    await expect(q.getByTestId("report-question-detail")).toContainText("去年は7割ルールでした")
   })
 
   await test.step("全件を載せる切り替えで、載る件数が変わり、戻すと元の件数", async () => {

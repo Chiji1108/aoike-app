@@ -9,7 +9,6 @@ import { INQUIRY_SUGGESTION, REVIEW_SUGGESTION } from "@/components/cases/store/
 import type { ProposalActions } from "@/components/chat/proposal-card"
 import type { Suggestion } from "@/components/chat/chat-panel"
 import { awaitsAnswer } from "@/lib/cases/todo"
-import { lastSelectionUndo } from "@/lib/cases/undo"
 import { carryoverReady } from "@/lib/chat/carryover"
 import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
 import { REVIEW_PROMPT } from "@/lib/chat/review"
@@ -64,7 +63,6 @@ export function useReportQuestions(): ReportQuestion[] {
   )
   const tax = useCase((s) => s.work.tax)
   const selection = useCase((s) => s.work.selection)
-  const selectionUndo = useCase(useShallow((s) => lastSelectionUndo(s.work.undo)))
   const reportAnswers = useCase((s) => s.work.reportAnswers)
   const undoStates = useCase((s) => derive(s).undoStates)
   return useMemo(() => {
@@ -81,9 +79,8 @@ export function useReportQuestions(): ReportQuestion[] {
           detail: [advice.reason, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でも変えられます"].filter(Boolean).join("。"),
           options: (["rule7", "all"] as const).map((v) => ({ value: v, label: `${SELECTION_LABELS[v]}${v === recommended ? "（おすすめ）" : ""}` })),
           answered: answered ? SELECTION_LABELS[selection] : null,
-          // 取り消せるのは選び方だけを変えた記録（答える・表の見出し・7割と金額）。変更案で決めたときは出どころだけ書く（lib/cases/undo.ts の lastSelectionUndo）
-          ...(answered && selectionUndo?.kind === "proposal" ? { detail: "チャットの変更案で決めました（取り消すときはチャットの変更案から）" } : {}),
-          undo: answered && selectionUndo?.kind === "undo" && undoStates.get(selectionUndo.proposalId)?.can ? () => actions.undoWithNotice(selectionUndo.proposalId, "載せる工事") : null,
+          // ここで答えたものはここで取り消せる（ふつうの答えの記録）。表の見出し・7割と金額・変更案で決めたものは、それぞれの取り消しから戻す
+          undo: answered ? undoAnswer(id) : null,
         }
       }
       if (id === "tax") {
@@ -120,7 +117,7 @@ export function useReportQuestions(): ReportQuestion[] {
         undo: label !== null ? undoAnswer(r.key) : null,
       }
     })
-  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, selectionUndo, reportAnswers, undoStates])
+  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, reportAnswers, undoStates])
 }
 
 /** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き・振り返り）。押すと決まった指示を送る */

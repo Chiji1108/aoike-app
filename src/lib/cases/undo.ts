@@ -6,7 +6,7 @@ import { hasExclusion, withExclusions, type ValueFilter } from "../convert/plan"
 import { basisSchema, cellEditSchema, roundingSchema } from "../schemas"
 import type { Rounding } from "../convert/transforms"
 import { setTax, taxSettingSchema, type TaxBy, type TaxSetting } from "./tax"
-import { selectionSettingSchema, setSelection, type SelectionBy, type SelectionSource } from "./selection"
+import { selectionSettingSchema, setSelection, type SelectionSource } from "./selection"
 import type { AddedRow } from "./added"
 import { addedRowSchema } from "./added"
 import type { SavedPlan } from "./state"
@@ -27,7 +27,7 @@ export type Undoable = {
   tax: TaxSetting["tax"]
   taxBy: TaxBy | null
   selection: SelectionMode
-  selectionBy: SelectionBy | null
+  selectionAnswered: boolean
   basis: Basis
   /** 金額の千円未満の扱い（戻すと変換し直す。行は作業の rounding から作るので、作業の値だけを戻す） */
   rounding: Rounding
@@ -62,7 +62,7 @@ export type UndoEntry = {
   added: AddedRow[]
   /** 税の設定と出どころ（一緒に戻す） */
   tax?: Pair<TaxSetting>
-  /** 載せる工事の選び方と出どころ（一緒に戻す。前の版の記録は値だけ） */
+  /** 載せる工事の選び方と答えたか（一緒に戻す） */
   selection?: Pair<SelectionSource>
   basis?: Pair<Basis>
   /** 千円未満の扱い（この項目より前の記録には無い） */
@@ -135,8 +135,8 @@ export function undoEntry(
     ...(before.tax !== after.tax || before.taxBy !== after.taxBy
       ? { tax: [{ tax: before.tax, taxBy: before.taxBy }, { tax: after.tax, taxBy: after.taxBy }] as Pair<TaxSetting> }
       : {}),
-    ...(before.selection !== after.selection || before.selectionBy !== after.selectionBy
-      ? { selection: [{ selection: before.selection, selectionBy: before.selectionBy }, { selection: after.selection, selectionBy: after.selectionBy }] as Pair<SelectionSource> }
+    ...(before.selection !== after.selection || before.selectionAnswered !== after.selectionAnswered
+      ? { selection: [{ selection: before.selection, selectionAnswered: before.selectionAnswered }, { selection: after.selection, selectionAnswered: after.selectionAnswered }] as Pair<SelectionSource> }
       : {}),
     ...(!same(before.basis, after.basis) ? { basis: [before.basis, after.basis] as Pair<Basis> } : {}),
     ...(before.rounding !== after.rounding ? { rounding: [before.rounding, after.rounding] as Pair<Rounding> } : {}),
@@ -179,23 +179,6 @@ export const canUndo = (e: UndoEntry) =>
 
 /** 変換の報告の聞き返しの答えの記録の印（聞き返しの鍵ごと。税は tax、載せる工事は selection、計画の聞き返しは askKey） */
 export const reportUndoId = (key: string) => `report:${key}`
-
-/**
- * 「答える」の載せる工事の行の取り消し（1か所で決める）。選び方を変えた、取り消せる一番新しい記録を見て:
- * - 選び方だけを変えた記録（答えるの答え report:selection・表の見出しや7割と金額の切り替え selection:）なら、その記録を取り消せる（undo）
- * - チャットの変更案の承認なら、ほかの変更も一緒に戻ってしまうので行からは取り消さない（proposal。取り消しはチャットの変更案の側から）
- * - 無ければ null（中身を捨てた記録・取り消した記録は見ない）
- */
-export type SelectionUndo = { kind: "undo"; proposalId: string } | { kind: "proposal" } | null
-
-export function lastSelectionUndo(list: readonly UndoEntry[]): SelectionUndo {
-  for (let i = list.length - 1; i >= 0; i--) {
-    const e = list[i]!
-    if (!e.selection || !canUndo(e)) continue
-    return e.proposalId === reportUndoId("selection") || e.proposalId.startsWith(SELECTION_UNDO) ? { kind: "undo", proposalId: e.proposalId } : { kind: "proposal" }
-  }
-  return null
-}
 
 export type UndoResult<W> = { work: W; reverted: number; kept: number; planChanged: boolean }
 
@@ -269,7 +252,7 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
   }
   const tax = revert(entry.tax, { tax: work.tax, taxBy: work.taxBy })
   // 載せる工事の選び方と出どころも税と同じく、数える前に戻す（戻した・あとで変えたので残した件数に入る）
-  const selection = revert(entry.selection, { selection: work.selection, selectionBy: work.selectionBy })
+  const selection = revert(entry.selection, { selection: work.selection, selectionAnswered: work.selectionAnswered })
   // メールの件名・前置きごとに戻す（あとで直した文は残す）
   const text = entry.inquiryText ? revertInquiryText(work.inquiryText, entry.inquiryText) : { text: work.inquiryText, reverted: 0, kept: 0 }
   reverted += text.reverted
@@ -289,7 +272,7 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
   // 聞き返しの答えの記録は、答え1つを1件と数える（答えで変えた設定・計画は答えの一部）
   const answers = entry.reportAnswers?.length ? entry.reportAnswers.filter(([k, , after]) => (work.reportAnswers[k] ?? null) === after).length : null
   const counts = answers === null ? { reverted, kept } : { reverted: answers, kept: entry.reportAnswers!.length - answers }
-  return { work: setSelection(setTax(next, tax.tax, tax.taxBy), selection.selection, selection.selectionBy), ...counts, planChanged: plan !== work.plan }
+  return { work: setSelection(setTax(next, tax.tax, tax.taxBy), selection.selection, selection.selectionAnswered), ...counts, planChanged: plan !== work.plan }
 }
 
 const pair = <T extends z.ZodType>(s: T) => z.tuple([s, s])

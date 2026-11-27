@@ -49,11 +49,10 @@ const short = (s: string) => ([...s].length > SHORT_NAME ? `${[...s].slice(0, SH
 const BY_NOTE: Partial<Record<Extract<ChatChange, { kind: "cell" }>["edit"]["by"], string>> = { customer: "（顧客の回答）", confirmed: "（顧客が確認）" }
 
 /** 7割と金額の設定の変更（変更案の settings・チャットの set_selection の入力）を言葉にする。振り返りの材料も同じ言葉で出す */
-export function describeSettings(c: { tax?: TaxMode; selection?: SelectionMode; decideSelection?: true; basis?: Basis; rounding?: Rounding }): string[] {
+export function describeSettings(c: { tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }): string[] {
   return [
     c.tax && `Excel の金額: ${TAX_LABELS[c.tax]}`,
-    // 今と同じ値で決めるだけの案は、何も変えない案に見えないように「決める」と書く
-    c.selection && (c.decideSelection ? `載せる工事を${SELECTION_LABELS[c.selection]}に決める` : `載せる工事: ${SELECTION_LABELS[c.selection]}`),
+    c.selection && `載せる工事: ${SELECTION_LABELS[c.selection]}`,
     c.rounding && `千円未満: ${ROUNDING_LABELS[c.rounding]}`,
     c.basis && `基準額: ${Object.entries(c.basis).map(([code, b]) => `業種${code} 合計${b?.total ?? "-"}・元請${b?.motouke ?? "-"}千円`).join("、")}`,
   ].filter((x): x is string => !!x)

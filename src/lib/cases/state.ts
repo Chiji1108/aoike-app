@@ -13,7 +13,6 @@ import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inqu
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
-import { selectionBySchema, type SelectionBy } from "./selection"
 import { basisSchema, cellEditSchema, fieldIdSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
@@ -42,10 +41,10 @@ export type CaseWork = {
   basis: Basis
   /** 7割の計算（基準額が税抜か税込か）。新しい案件は事務所の設定、この項目より前に保存した作業は税抜（前はいつも税抜） */
   rule7Tax: Rule7Tax
-  /** 載せる工事の選び方（koji-selection.ts の SelectionMode）。書くのは cases/selection.ts の setSelection だけ（出どころ selectionBy と一緒に書く） */
+  /** 載せる工事の選び方（koji-selection.ts の SelectionMode）。書くのは cases/selection.ts の setSelection だけ（答えたか selectionAnswered と一緒に書く） */
   selection: SelectionMode
-  /** selection を誰が決めたか（cases/selection.ts）。null は既定値のまま */
-  selectionBy: SelectionBy | null
+  /** 「答える」の載せる工事に答えたか（cases/selection.ts。どの案件でも1回だけ聞く） */
+  selectionAnswered: boolean
   rounding: Rounding
   /** チャットの変更案の状態（中身は R2。lib/chat/proposals.ts）。この項目より前に保存した作業には無いので、読むときは空 */
   proposals: Proposal[]
@@ -89,7 +88,7 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   basis: {},
   rule7Tax,
   selection: "rule7",
-  selectionBy: null,
+  selectionAnswered: false,
   rounding: "floor",
   proposals: [],
   added: [],
@@ -153,9 +152,9 @@ export const savedWorkSchema = z
   taxBy: taxBySchema.default(null),
   basis: basisSchema,
   rule7Tax: rule7TaxSchema.default("excluded"),
-  /** 載せる工事の選び方と、誰が決めたか（lib/cases/selection.ts）。どちらも必ず持つ（無い前の形は読めない。移行 drizzle/csv/0011 でそろえた） */
+  /** 載せる工事の選び方と、答えたか（lib/cases/selection.ts）。どちらも必ず持つ（無い前の形は読めない。移行 drizzle/csv/0011 でそろえた） */
   selection: selectionSchema,
-  selectionBy: selectionBySchema,
+  selectionAnswered: z.boolean(),
   rounding: roundingSchema,
   proposals: z.array(proposalSchema).default([]),
   added: z.array(addedRowSchema).max(MAX_ADDED_ROWS).default([]),

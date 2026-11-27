@@ -184,20 +184,11 @@ describe("チャットの道具（決まった入力で）", () => {
     ])
   })
 
-  test("set_selection の載せる工事は、まだ誰も決めていなければ今と同じ値でも変更案にし（承認すると答えたことになる）、決めたあとは今と同じなら変更案にしない", async () => {
-    const undecided = newTurnState({ ...table, selection: "rule7", selectionBy: null })
-    await call(chatTools(undecided), "set_selection", { selection: "rule7" })
-    expect(undecided.pending).toEqual([{ kind: "settings", selection: "rule7", decideSelection: true }])
-    // 何も変えない案に見えないように「決める」と書く
-    expect(describeSettings(undecided.pending[0] as Extract<ChatChange, { kind: "settings" }>)).toEqual(["載せる工事を7割ルールに決める"])
+  test("set_selection は今と同じ値なら変更案にしない。変更案の言葉は「載せる工事: ◯◯」", async () => {
+    const state = newTurnState({ ...table, selection: "rule7" })
+    expect(await call(chatTools(state), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
+    expect(state.pending).toEqual([])
     expect(describeSettings({ selection: "all" })).toEqual(["載せる工事: 全件"])
-    const decided = newTurnState({ ...table, selection: "rule7", selectionBy: "staff" })
-    expect(await call(chatTools(decided), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
-    expect(decided.pending).toEqual([])
-    // 誰が決めたかの無い表（前の画面が送った表）は分からないので、今までどおり同じ値では変更案にしない
-    const unknown = newTurnState({ ...table, selection: "rule7" })
-    expect(await call(chatTools(unknown), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
-    expect(unknown.pending).toEqual([])
   })
 
   test(`道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで。超えたら動かさずに返す`, async () => {

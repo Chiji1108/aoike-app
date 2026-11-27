@@ -129,7 +129,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
   const tableWire = () => {
     const { work: w } = store.getState()
     const { rows } = env.table(store.getState())
-    return rows ? toWire({ rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, selectionBy: w.selectionBy, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }) : null
+    return rows ? toWire({ rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }) : null
   }
 
   /** チャットに送る表と文脈（送る瞬間の状態から作る。送れないときは null） */

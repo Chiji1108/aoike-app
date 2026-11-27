@@ -13,15 +13,11 @@ const change: ChatChange = { kind: "inquiryMail", subject: "確認のお願い",
 const store = () => createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], previousUnsaved: false, state: null, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" } }))
 
 describe("案件のストア", () => {
-  test("載せる工事は、新しい案件にだけ去年の案件で決めた選び方を引き継ぐ（無ければ7割ルール）。保存した作業は開いただけでは変えない", () => {
+  test("載せる工事は去年から引き継がない（新しい案件はいつも7割ルールのまま答えていない）。保存した作業はそのまま読む", () => {
     const base = { kase: { status: "converting" as const, costUsd: 0 }, files: [], previousUnsaved: false, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" as const } }
-    expect(initialCaseState({ ...base, state: null, previous: { selection: "all" } }).work).toMatchObject({ selection: "all", selectionBy: "previous" })
-    expect(initialCaseState({ ...base, state: null, previous: { selection: null } }).work.selection).toBe("rule7")
-    expect(initialCaseState({ ...base, state: null }).work.selection).toBe("rule7")
-    // 前に保存した今年の作業は、まだ誰も決めていなくても変えない（「答える」で聞き、去年の値をおすすめにする）。職員が決めた値も変えない
-    const saved = (by: "staff" | null) => ({ work: toSavedWork({ ...newWork("f"), converted: true, selection: "rule7", selectionBy: by }), aiCache: [] })
-    expect(initialCaseState({ ...base, state: saved(null), previous: { selection: "all" } }).work).toMatchObject({ selection: "rule7", selectionBy: null })
-    expect(initialCaseState({ ...base, state: saved("staff"), previous: { selection: "all" } }).work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
+    expect(initialCaseState({ ...base, state: null }).work).toMatchObject({ selection: "rule7", selectionAnswered: false })
+    const saved = { work: toSavedWork({ ...newWork("f"), converted: true, selection: "all", selectionAnswered: true }), aiCache: [] }
+    expect(initialCaseState({ ...base, state: saved }).work).toMatchObject({ selection: "all", selectionAnswered: true })
   })
 
   test("変更案は中身と一緒に1回で入り、派生は同じ状態なら同じ参照を返す", () => {
