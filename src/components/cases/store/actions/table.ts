@@ -3,7 +3,7 @@ import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { CONFIRM_LABEL, shortLabel } from "@/components/convert/status"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
-import { pendingGyoshuItems } from "@/lib/cases/todo"
+import { answeringCells, pendingGyoshuItems } from "@/lib/cases/todo"
 import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
@@ -155,18 +155,19 @@ export function changeSelection(env: CaseEnv, mode: SelectionMode) {
 }
 
 /**
- * 「残りは聞かない」: まだ答えのないセルの問い合わせをまとめて外す（顧客が分からないと答えた残りなど。税込・税抜は外さない）。
+ * 「残りは聞かない」: まだ答えのないセルの問い合わせをまとめて外す（顧客が分からないと答えた残りなど。税込・税抜と、回答の変更案で承認を待つセルは外さない）。
  * 1回の操作を1つの取り消しの記録に。外すものはその時点の問い合わせから読む
  */
 export function dismissRemaining(env: CaseEnv) {
   const id = `${DISMISS_UNDO}${crypto.randomUUID()}`
   let n = 0
   const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
+    const answering = answeringCells(s.work.proposals, s.contents)
     const keys = env
       .view(s)
       .inquiries.filter((q) => q.kind === "cell")
       .map(inquiryKey)
-      .filter((k) => !s.work.dismissed.has(k))
+      .filter((k) => !s.work.dismissed.has(k) && !answering.has(k))
     n = keys.length
     return n ? { ...s.work, dismissed: new Set([...s.work.dismissed, ...keys]) } : s.work
   })
@@ -197,8 +198,6 @@ export const setBasis = (env: CaseEnv, code: string, side: "total" | "motouke", 
   update(env, "basis", (prev) => ({ ...prev, [code]: { ...prev[code], [side]: v } }))
 /** 手動の入れ外しを戻す */
 export const clearManual = (env: CaseEnv) => update(env, "manual", () => new Map())
-/** 「全件にしますか？」を閉じる */
-export const closeAllHint = (env: CaseEnv) => update(env, "allHintClosed", () => true)
 
 /** 変更案の聞き返しに答える（変更案があれば「はい」で承認できるようになる。いいえで全部を却下） */
 export function answerProposal(env: CaseEnv, id: string, a: "yes" | "no") {
@@ -236,7 +235,7 @@ export function answerAsk(env: CaseEnv, key: string, value: "exclude" | "keep") 
   const { store } = env
   const s0 = store.getState()
   const plan0 = s0.work.plan
-  const ask = plan0?.plan.asks?.find((a) => askKey(a) === key)
+  const ask = plan0?.plan.asks.find((a) => askKey(a) === key)
   if (!ask || !plan0) {
     toast.info("計画を立て直したので、この聞き返しはもうありません（答えていません）")
     return
@@ -261,7 +260,7 @@ export function answerAsk(env: CaseEnv, key: string, value: "exclude" | "keep") 
   commit(store, { group: reportUndoId(key), kind: "approval", exclusions: added }, (s) => {
     const w = s.work
     // 間に計画が立て直されて聞き返しが無くなっていれば答えない
-    if (!w.plan || !w.plan.plan.asks?.some((a) => askKey(a) === key)) return w
+    if (!w.plan || !w.plan.plan.asks.some((a) => askKey(a) === key)) return w
     let plan = w.plan
     if (added.length) {
       const { grid } = env.table(s)

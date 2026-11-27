@@ -54,7 +54,7 @@ describe("業種シートに分かれ、業種を○で表す表", () => {
       startYm: { kind: "column", column: 5, transform: "rule.yearMonth" },
       endYm: { kind: "column", column: 6, transform: "rule.yearMonth" },
     })
-    expect(plan.rowFilter).toEqual({ excludeHidden: false, excludeColumns: [16] })
+    expect(plan.rowFilter).toEqual({ excludeHidden: false, excludeColumns: [16], excludeValues: [] })
     expect(plan.skipRows).toEqual([5])
   })
 

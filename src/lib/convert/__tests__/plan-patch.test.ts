@@ -120,13 +120,9 @@ describe("出さない行の差分（計画の聞き返しの答えとチャッ�
     // 外すと、その分だけ外れる
     const removed = applyPlanPatch(KOJI_KEIREKI, again.plan, patch({ excludeRows: { remove: [{ column: "K", values: ["追加工事あり"] }] }, reason: "x" }), shape)
     if (!removed.ok) throw new Error(removed.problems.join())
-    expect(removed.plan.rowFilter.excludeValues).toBeUndefined()
+    expect(removed.plan.rowFilter.excludeValues).toEqual([])
     expect(removed.plan.rowFilter.excludeColumns).toEqual([0])
     expect(describePlanPatch({ excludeRows: { add: [{ column: 10, values: ["追加工事あり"] }], remove: [{ column: 0, values: [] }] }, reason: "" })).toEqual(["出さない行に足す: K列が「追加工事あり」の行", "出さない行から外す: A列に値がある行"])
-  })
-  test("前の版の変更案の「値があれば出さない列」（入れ替え）も読める", () => {
-    const r = applyPlanPatch(KOJI_KEIREKI, plan, { excludeColumns: [0], reason: "x" }, shape)
-    expect(r.ok && r.plan.rowFilter.excludeColumns).toEqual([0])
   })
 })
 
@@ -135,5 +131,5 @@ test("値の除外の対象の行は、理由を付けて出さない（全角�
   const filter = { excludeHidden: false, excludeColumns: [], excludeValues: [{ column: 1, values: ["未成"] }] }
   expect(excludedReason({ sheet: "s", row: 1, cells: ["1", " 未成 "], hidden: false }, filter)).toBe("B列が「未成」")
   expect(excludedReason({ sheet: "s", row: 2, cells: ["1", "完成"], hidden: false }, filter)).toBeUndefined()
-  expect(excludedReason({ sheet: "s", row: 3, cells: ["1", "完成"], hidden: false }, { excludeHidden: false, excludeColumns: [] })).toBeUndefined()
+  expect(excludedReason({ sheet: "s", row: 3, cells: ["1", "完成"], hidden: false }, { excludeHidden: false, excludeColumns: [], excludeValues: [] })).toBeUndefined()
 })

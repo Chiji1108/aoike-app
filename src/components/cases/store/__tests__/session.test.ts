@@ -9,7 +9,7 @@ import { fakeDeps, FILES, NO_AI, page } from "./helpers"
 import { setRuntime, setWork } from "../create-case-store"
 import type { CaseDeps } from "../deps"
 import { createCaseSession } from "../session"
-import { savesSettled, type PeerChannel } from "../sync"
+import { savesSettled } from "../sync"
 
 /** 待たせておき、あとで返す（外の処理の返事の順を決める） */
 function deferred<T>() {
@@ -24,9 +24,8 @@ function deferred<T>() {
 /** 待っている処理（microtask・タイマー）を進める */
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
-const noChannel = () => null
 
-// 画面につなぐ（connect）と window の beforeunload・pagehide を見る
+// 画面につなぐ（connect）と window の beforeunload を見る
 beforeEach(() => {
   vi.stubGlobal("window", new EventTarget())
 })
@@ -38,7 +37,7 @@ describe("待つ処理（偽の deps）", () => {
   test("計画を待つ間に元を変えたら、前の元の計画は捨てる（費用は足す）", async () => {
     const first = deferred<Awaited<ReturnType<CaseDeps["planWithAi"]>>>()
     const planWithAi = vi.fn<CaseDeps["planWithAi"]>().mockReturnValueOnce(first.promise).mockResolvedValue({ ...NO_AI, usd: 0.01 })
-    const s = createCaseSession(page(), fakeDeps({ planWithAi }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ planWithAi }))
     const opening = s.actions.openSource(FILES[0]!, true)
     await vi.waitFor(() => expect(planWithAi).toHaveBeenCalledTimes(1))
     expect(s.store.getState().runtime.planDraft).not.toBeNull()
@@ -63,7 +62,7 @@ describe("待つ処理（偽の deps）", () => {
   test("読んでいる間に別の元を読み始めたら、前の元は入れない", async () => {
     const slow = deferred<Uint8Array>()
     const fetchFile = vi.fn<CaseDeps["fetchFile"]>().mockReturnValueOnce(slow.promise).mockResolvedValue(fixture("sample-messy.xlsx"))
-    const s = createCaseSession(page(), fakeDeps({ fetchFile }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ fetchFile }))
     const opening = s.actions.openSource(FILES[0]!, false)
     await vi.waitFor(() => expect(fetchFile).toHaveBeenCalledTimes(1))
     await s.actions.openSource(FILES[1]!, false)
@@ -77,7 +76,7 @@ describe("待つ処理（偽の deps）", () => {
     const blocked = deferred<Awaited<ReturnType<CaseDeps["runAiBatch"]>>>()
     let blocking = true
     const runAiBatch = vi.fn<CaseDeps["runAiBatch"]>(async () => (blocking ? blocked.promise : NO_AI))
-    const s = createCaseSession(page(), fakeDeps({ runAiBatch }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ runAiBatch }))
     s.connect()
     /** 変換を終えた（converted になった）ときの計画 */
     const convertedWith: unknown[] = []
@@ -104,7 +103,7 @@ describe("待つ処理（偽の deps）", () => {
   test("ルールの書き込みが途中で失敗したら、書けた分だけ承認する（承認の記録も書けた分）", async () => {
     const rule = (text: string): ChatChange => ({ kind: "rule", scope: "customer", text })
     const approveRule = vi.fn<CaseDeps["approveRule"]>().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("書けませんでした"))
-    const s = createCaseSession(page(), fakeDeps({ approveRule }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ approveRule }))
     const changes = [rule("一"), rule("二"), rule("三")]
     receiveProposal(s.store, { proposal: newProposal("p", { kind: "chat", messageId: "m" }, changes, null), changes }, "replace")
     const deciding = s.actions.decideProposal("p", [0, 1, 2], "applied")
@@ -121,7 +120,7 @@ describe("待つ処理（偽の deps）", () => {
   test("状態の変更が失敗したら、その後に変えていなければ元に戻す", async () => {
     const failing = deferred<unknown>()
     const updateStatus = vi.fn<CaseDeps["updateStatus"]>().mockReturnValueOnce(failing.promise).mockResolvedValue(undefined)
-    const s = createCaseSession(page(), fakeDeps({ updateStatus }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ updateStatus }))
     const first = s.actions.changeStatus("inquiring")
     await s.actions.changeStatus("done")
     failing.reject(new Error("送れませんでした"))
@@ -130,26 +129,6 @@ describe("待つ処理（偽の deps）", () => {
   })
 })
 
-/** 同じブラウザのタブの間の道（BroadcastChannel の代わり。送った知らせは、ほかのタブに届く） */
-function channelBus() {
-  const tabs = new Set<(data: unknown) => void>()
-  return (): PeerChannel => {
-    let receive: ((data: unknown) => void) | null = null
-    const deliver = (data: unknown) => receive?.(data)
-    tabs.add(deliver)
-    return {
-      post: (m) => {
-        for (const t of tabs) if (t !== deliver) t(structuredClone(m))
-      },
-      listen: (r) => {
-        receive = r
-      },
-      close: () => void tabs.delete(deliver),
-    }
-  }
-}
-
-
 describe("画面を離れる・待っている間に変わる（PR #24 の指摘）", () => {
   test("画面を離れたら、待っている計画の結果を入れず、自動の変換も始めず、そのあとの変更は保存しない。最後の保存は savesSettled で待てる", async () => {
     const plan = deferred<Awaited<ReturnType<CaseDeps["planWithAi"]>>>()
@@ -157,7 +136,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     const saving = deferred<SaveResponse>()
     const saveState = vi.fn<CaseDeps["saveState"]>().mockReturnValueOnce(saving.promise).mockImplementation(async (req) => ({ ok: true, version: req.version + 1 }))
     const runAiBatch = vi.fn<CaseDeps["runAiBatch"]>(async () => NO_AI)
-    const s = createCaseSession(page(), fakeDeps({ planWithAi, saveState, runAiBatch }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ planWithAi, saveState, runAiBatch }))
     const disconnect = s.connect()
     const opening = s.actions.openSource(FILES[0]!, true)
     await vi.waitFor(() => expect(planWithAi).toHaveBeenCalledTimes(1))
@@ -182,7 +161,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
   })
 
   test("外してすぐつなぎ直すと（React の StrictMode・同じ画面に戻る）、捨てた元の読み込みと計画をやり直す", async () => {
-    const s = createCaseSession(page(), fakeDeps(), noChannel)
+    const s = createCaseSession(page(), fakeDeps())
     setWork(s.store, (w) => ({ ...w, sourceFileId: "f1" }))
     s.connect()()
     s.connect()
@@ -191,89 +170,19 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     await vi.waitFor(() => expect(s.store.getState().work.converted).toBe(true))
   })
 
-  test("外すときは最後の保存が終わって saved を送ってから bye を送る（別のタブに「保存された」が届く）", async () => {
-    const bus = channelBus()
-    const a = createCaseSession(page(), fakeDeps(), bus)
-    const b = createCaseSession(page(), fakeDeps(), bus)
-    const offA = a.connect()
-    b.connect()
-    setWork(a.store, (w) => ({ ...w, rounding: "round" }))
-    offA()
-    await savesSettled("c")
-    expect(b.store.getState().sync.peer).toBe("saved")
-  })
-
-  test("外してすぐつなぎ直したタブ（StrictMode）は、前の道の遅れた bye で閉じたと数えられず、自分の前の道の知らせも数えない", async () => {
-    const bus = channelBus()
-    const a = createCaseSession(page(), fakeDeps(), bus)
-    const b = createCaseSession(page(), fakeDeps(), bus)
-    b.connect()
-    a.connect()()
-    a.connect()
-    await savesSettled("c")
-    expect(b.store.getState().sync.peer).toBe("open")
-    expect(a.store.getState().sync.peer).toBe("open")
-  })
-
-  test("閉じた（bye を送った）タブは、そのあとに届いた知らせで足し直さない。自分が隠れる（pagehide）ときは知っているタブを空にする", () => {
-    let send!: (data: unknown) => void
-    const posted: unknown[] = []
-    const s = createCaseSession(page(), fakeDeps(), () => ({ post: (m) => void posted.push(m.kind), listen: (r) => void (send = r), close: () => undefined }))
-    s.connect()
-    send({ kind: "hello", tab: "x" })
-    expect(s.store.getState().sync.peer).toBe("open")
-    send({ kind: "bye", tab: "x" })
-    expect(s.store.getState().sync.peer).toBe("none")
-    send({ kind: "here", tab: "x" })
-    expect(s.store.getState().sync.peer).toBe("none")
-    // 開き直したタブ（hello）は足す
-    send({ kind: "hello", tab: "x" })
-    send({ kind: "hello", tab: "y" })
-    expect(s.store.getState().sync.peer).toBe("open")
-    window.dispatchEvent(new Event("pagehide"))
-    expect(posted.at(-1)).toBe("bye")
-    // 隠れたら知っているタブを忘れ、開いている印を外す。また返事が来れば立てる
-    expect(s.store.getState().sync.peer).toBe("none")
-    send({ kind: "here", tab: "y" })
-    expect(s.store.getState().sync.peer).toBe("open")
-  })
-
-  test("閉じたタブの bye のあとに届いた最後の保存（saved）は受けて、保存された印を付ける（開いているタブには数えない）", () => {
-    let send!: (data: unknown) => void
-    const s = createCaseSession(page(), fakeDeps(), () => ({ post: () => undefined, listen: (r) => void (send = r), close: () => undefined }))
-    s.connect()
-    send({ kind: "hello", tab: "x" })
-    send({ kind: "bye", tab: "x" })
-    send({ kind: "saved", tab: "x" })
-    expect(s.store.getState().sync.peer).toBe("saved")
-  })
-
-  test("外すと開いている印を外す", () => {
-    let send!: (data: unknown) => void
-    const s = createCaseSession(page(), fakeDeps(), () => ({ post: () => undefined, listen: (r) => void (send = r), close: () => undefined }))
-    const off = s.connect()
-    send({ kind: "hello", tab: "x" })
-    expect(s.store.getState().sync.peer).toBe("open")
-    off()
-    expect(s.store.getState().sync.peer).toBe("none")
-  })
-
   test("離れるときに保存できなければ最後の1回であきらめ、savesSettled が false を返す（送り直して新しい画面とぶつからない）。新しい画面は報告に出す", async () => {
     const saveState = vi.fn<CaseDeps["saveState"]>(async () => {
       throw new Error("つながりません")
     })
-    const posted: string[] = []
-    const s = createCaseSession(page(), fakeDeps({ saveState }), () => ({ post: (m) => void posted.push(m.kind), listen: () => undefined, close: () => undefined }))
+    const s = createCaseSession(page(), fakeDeps({ saveState }))
     const off = s.connect()
     setWork(s.store, (w) => ({ ...w, rounding: "round" }))
     off()
-    expect(posted).toEqual(["hello"])
     expect(await savesSettled("c")).toBe(false)
-    expect(posted).toEqual(["hello", "bye"])
     const calls = saveState.mock.calls.length
     await new Promise((r) => setTimeout(r, 1_100))
     expect(saveState.mock.calls.length).toBe(calls)
-    const next = createCaseSession({ ...page(), previousUnsaved: true }, fakeDeps(), noChannel)
+    const next = createCaseSession({ ...page(), previousUnsaved: true }, fakeDeps())
     expect(next.store.getState().runtime.previousUnsaved).toBe(true)
   })
 
@@ -281,7 +190,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     const first = deferred<unknown>()
     const second = deferred<unknown>()
     const updateStatus = vi.fn<CaseDeps["updateStatus"]>().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
-    const s = createCaseSession(page(), fakeDeps({ updateStatus }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ updateStatus }))
     const a = s.actions.changeStatus("inquiring")
     const b = s.actions.changeStatus("done")
     second.reject(new Error("送れませんでした"))
@@ -295,7 +204,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
   test("ルールを外に書いている間に変更案が閉じたら、表に重ねず承認の印も付けない", async () => {
     const writing = deferred<undefined>()
     const approveRule = vi.fn<CaseDeps["approveRule"]>().mockReturnValueOnce(writing.promise)
-    const s = createCaseSession(page(), fakeDeps({ approveRule }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ approveRule }))
     const location = {
       kind: "location",
       prefecture: "東京都",
@@ -325,7 +234,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     const blocked = deferred<Awaited<ReturnType<CaseDeps["runAiBatch"]>>>()
     let blocking = true
     const runAiBatch = vi.fn<CaseDeps["runAiBatch"]>(async () => (blocking ? blocked.promise : NO_AI))
-    const s = createCaseSession(page(), fakeDeps({ runAiBatch }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ runAiBatch }))
     s.connect()
     await s.actions.openSource(FILES[0]!, true)
     await vi.waitFor(() => expect(runAiBatch).toHaveBeenCalled())
@@ -342,7 +251,7 @@ describe("保存・同期（sync.ts）", () => {
   test("作業が変わったときだけ保存し、保存の状態をストアに入れる（保存しない状態の変化では送らない）", async () => {
     const saves: SaveRequest[] = []
     const saveState = async (req: SaveRequest): Promise<SaveResponse> => (saves.push(req), { ok: true, version: req.version + 1 })
-    const s = createCaseSession(page(), fakeDeps({ saveState }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ saveState }))
     const disconnect = s.connect()
     setRuntime(s.store, () => ({ costUsd: 1 }))
     expect(s.store.getState().sync.status.kind).toBe("saved")
@@ -353,37 +262,4 @@ describe("保存・同期（sync.ts）", () => {
     expect(s.store.getState().sync.status.kind).toBe("saved")
     disconnect()
   })
-
-  test("同じ案件を別のタブで開くと互いに印を付け、片方が保存するともう片方に「保存された」の印。閉じたら印を外す", async () => {
-    const bus = channelBus()
-    const a = createCaseSession(page(), fakeDeps(), bus)
-    const b = createCaseSession(page(), fakeDeps(), bus)
-    const offA = a.connect()
-    expect(a.store.getState().sync.peer).toBe("none")
-    const offB = b.connect()
-    expect(a.store.getState().sync.peer).toBe("open")
-    expect(b.store.getState().sync.peer).toBe("open")
-
-    setWork(a.store, (w) => ({ ...w, rounding: "round" }))
-    await a.settle()
-    expect(b.store.getState().sync.peer).toBe("saved")
-    expect(a.store.getState().sync.peer).toBe("open")
-
-    offB()
-    await savesSettled("c")
-    expect(a.store.getState().sync.peer).toBe("none")
-    offA()
-  })
-
-  test("形の違う知らせは無視する", () => {
-    let send: ((data: unknown) => void) | null = null
-    const s = createCaseSession(page(), fakeDeps(), () => ({ post: () => undefined, listen: (r) => void (send = r), close: () => undefined }))
-    const off = s.connect()
-    send!({ kind: "saved" })
-    send!({ kind: "reload", tab: "x" })
-    send!("saved")
-    expect(s.store.getState().sync.peer).toBe("none")
-    off()
-  })
-
 })

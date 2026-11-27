@@ -1,12 +1,12 @@
 import { rowFix } from "@/components/convert/status"
 import { askPrompt } from "@/lib/cases/ask-prompt"
 import { layoutOf } from "@/lib/cases/layout"
-import { isSheetFile, type CaseFile } from "@/lib/cases/types"
+import { isSheetFile, type CaseFile, type CaseStatus } from "@/lib/cases/types"
 import { selectionAdvice } from "@/lib/cases/selection-advice"
 import { activeView, type WorkView } from "@/lib/cases/steps"
 import { caseTodo, reportQuestionStates } from "@/lib/cases/todo"
 import { editKey, type RowResult } from "@/lib/convert/convert"
-import { manualIncludedCount, summarizeKoji } from "@/lib/convert/koji-selection"
+import { summarizeKoji } from "@/lib/convert/koji-selection"
 import { askKey, type PlanAsk, type PlanAskKind } from "@/lib/convert/plan"
 import { askTargets, sourceKey } from "@/lib/convert/sources"
 import { collectInquiries } from "@/lib/inquiry/inquiry"
@@ -82,11 +82,9 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       questions: ReturnType<typeof questionStatesOf>,
       inquiries: ReturnType<typeof inquiriesOf>,
       dismissed: CaseState["work"]["dismissed"],
-      inquiring: boolean,
-    ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, questions, inquiries, dismissed, inquiring }),
+      status: CaseStatus,
+    ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, questions, inquiries, dismissed, status }),
   )
-  /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
-  const manualIncludedOf = memoLast((inclusion: TableDerived["inclusion"]) => manualIncludedCount(inclusion))
   /** 届いた表のファイル（ファイルの一覧が変わったときだけ作り直す） */
   const sheetFilesOf = memoLast((files: CaseState["runtime"]["files"]) => files.filter((f) => f.kind === "source" && isSheetFile(f.name)))
   const layoutOfInput = memoLast((wide: boolean, hasTable: boolean, workReady: boolean, workChoice: boolean | null, chatCollapsed: boolean) =>
@@ -123,8 +121,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       askRows,
       questionStates,
       selectionAdvice: advice,
-      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, rt.status === "inquiring"),
-      manualIncluded: manualIncludedOf(t.inclusion),
+      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, rt.status),
       noSheetSource,
       sourceChoices,
       // チャットに送れるか（変換した、または変換の元の表が無い）
@@ -157,7 +154,6 @@ export type CaseView = {
   questionStates: ReturnType<typeof reportQuestionStates>
   selectionAdvice: ReturnType<typeof selectionAdvice>
   todo: ReturnType<typeof caseTodo>
-  manualIncluded: number
   noSheetSource: boolean
   /** 元を選んでもらう届いた表のファイル（元を選んでいない・表を一から作るのでもないときだけ） */
   sourceChoices: readonly CaseFile[]

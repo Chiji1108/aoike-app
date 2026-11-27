@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import { Ellipsis, History, Trash2, TriangleAlert } from "lucide-react"
 import { useCase, useCaseActions } from "@/components/cases/store/context"
-import type { PeerState } from "@/components/cases/store/create-case-store"
 import { Cost } from "@/components/cost"
 import { Segmented } from "@/components/segmented"
 import { Button } from "@/components/ui/button"
@@ -9,7 +8,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { CASE_STATUSES, CASE_STATUS_LABELS, downloadHistory } from "@/lib/cases/types"
 import { CASE_COST_NOTICE_USD } from "@/lib/cost"
-import { cn } from "@/lib/utils"
 import { useFx } from "./tools"
 
 /** 案件の画面の見出し: 顧客への道・案件の名前・保存の状態・案件の状態・「…」（費用と削除） */
@@ -17,7 +15,6 @@ export function CaseHeader({ customer, fiscalYear }: { customer: { id: string; n
   const actions = useCaseActions()
   const status = useCase((s) => s.runtime.status)
   const saveStatus = useCase((s) => s.sync.status)
-  const peer = useCase((s) => s.sync.peer)
   return (
     <>
       <div className="min-w-0">
@@ -33,7 +30,7 @@ export function CaseHeader({ customer, fiscalYear }: { customer: { id: string; n
         <h1 className="truncate text-lg font-semibold tracking-tight">{`${customer.name} ${fiscalYear}年度`}</h1>
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        <SaveIndicator status={saveStatus} peer={peer} />
+        <SaveIndicator status={saveStatus} />
         <Segmented label="案件の状態" value={status} options={CASE_STATUSES.map((s) => ({ value: s, label: CASE_STATUS_LABELS[s] }))} onChange={(s) => void actions.changeStatus(s)} testId="case-status" />
         <CaseMenu />
       </div>
@@ -78,11 +75,8 @@ function CaseMenu() {
   )
 }
 
-/**
- * 保存の状態（保存できないときだけ目立たせる）と、同じブラウザの別のタブ（sync.ts）。別のタブで開いている・保存したことは、ぶつかる前に出す
- * （保存がもう止まっている〔別の画面が先に保存した・削除〕ときは、保存の状態の文だけ）
- */
-function SaveIndicator({ status, peer }: { status: SaveStatus; peer: PeerState }) {
+/** 保存の状態（保存できないときだけ目立たせる） */
+function SaveIndicator({ status }: { status: SaveStatus }) {
   const text = {
     saved: "保存しました",
     pending: "保存しています…",
@@ -93,22 +87,9 @@ function SaveIndicator({ status, peer }: { status: SaveStatus; peer: PeerState }
   }[status.kind]
   // 保存できているあいだは目立たせない（読み上げには伝える）。保存できないときだけ目立たせる
   const quiet = status.kind === "saved" || status.kind === "pending"
-  const stopped = status.kind === "conflict" || status.kind === "gone"
-  const peerText = {
-    none: null,
-    open: "別のタブでもこの案件を開いています（両方で変えると、あとから保存した方は保存できません）",
-    saved: "別のタブでこの案件が保存されました。再読み込みしてください（この画面で変えても保存できません）",
-  }[peer]
   return (
-    <>
-      <span role="status" className={quiet ? "sr-only" : "basis-full text-xs font-medium text-red-700"} data-testid="save-status" data-status={status.kind}>
-        {text}
-      </span>
-      {peerText && !stopped && (
-        <span role="status" className={cn("basis-full text-xs font-medium", peer === "saved" ? "text-red-700" : "text-amber-700")} data-testid="peer-status" data-peer={peer}>
-          {peerText}
-        </span>
-      )}
-    </>
+    <span role="status" className={quiet ? "sr-only" : "basis-full text-xs font-medium text-red-700"} data-testid="save-status" data-status={status.kind}>
+      {text}
+    </span>
   )
 }

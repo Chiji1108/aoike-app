@@ -1,7 +1,8 @@
 import { countFixes, fixActionGroups, gyoshuTodo, type FixActionGroup, type FixCounts, type FixKind, type RowFix } from "@/components/convert/status"
-import type { RowResult, CellEdit } from "@/lib/convert/convert"
+import { editKey, type RowResult, type CellEdit } from "@/lib/convert/convert"
 import type { Inclusion, TaxMode } from "@/lib/convert/koji-selection"
 import type { TaxBy } from "@/lib/cases/tax"
+import type { CaseStatus } from "@/lib/cases/types"
 import { decisionOf, pendingOf, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
 import { codeLabel } from "@/lib/spec/code-sets"
@@ -32,6 +33,21 @@ export function pendingGyoshuItems(proposals: readonly Proposal[], contents: Rea
   return out
 }
 
+/**
+ * 顧客の回答の変更案（チャットの record_answers）で、承認を待っているセル（editKey）。答えは届いているので、問い合わせの「まだ答えのない」に数えず、
+ * 「残りは聞かない」でも外さない（承認か却下は「答える」で決める）
+ */
+export function answeringCells(proposals: readonly Proposal[], contents: ReadonlyMap<string, readonly ChatChange[]>): Set<string> {
+  const out = new Set<string>()
+  for (const p of proposals) {
+    if (p.state !== "open") continue
+    contents.get(p.id)?.forEach((c, i) => {
+      if (c.kind === "cell" && c.edit.by === "customer" && decisionOf(p, i) === "pending") out.add(editKey(c.rowKey, c.field))
+    })
+  }
+  return out
+}
+
 /** 業種の一覧の1行（業種のタブ） */
 export type GyoshuItem = {
   key: string
@@ -54,7 +70,7 @@ export type AnswerItem =
 
 /**
  * 問い合わせの段: todo まだ送っていない、waiting 送った・返事待ち（案件が問い合わせ中で、答えのない問い合わせが残っている。税込・税抜も顧客に聞くので数える）、
- * done 済み（聞くことが無い）。送ったかは案件の状態（問い合わせ中）だけで決める
+ * done 済み（聞くことが無い・案件が完了）。送ったかは案件の状態（問い合わせ中）だけで決める
  */
 export type InquiryState = "todo" | "waiting" | "done"
 
@@ -67,8 +83,11 @@ export type CaseTodo = {
   fix: FixCounts
   /** 直す行のうち、まとめて頼める直し方 */
   fixActions: FixActionGroup[]
-  /** 問い合わせ。active は外していない問い合わせ（セル・案件全体）、left は外していないセルの問い合わせ */
-  inquiry: { active: number; left: number; state: InquiryState }
+  /**
+   * 問い合わせ。active はまだ答えのない問い合わせ（外したもの・回答の変更案で承認を待つセルを除く。完了した案件は 0）、
+   * left はそのうちセルの問い合わせ、topics は案件全体の問い合わせ（税込・税抜など）
+   */
+  inquiry: { active: number; left: number; topics: number; state: InquiryState }
   /** 工事場所の開いている変更案 */
   location: { open: number }
   /** CSV に載せる件数 */
@@ -115,8 +134,8 @@ export type TodoInput = {
   questions: readonly { id: string; answered: boolean }[]
   inquiries: readonly Inquiry[]
   dismissed: ReadonlySet<string>
-  /** 案件が問い合わせ中か（問い合わせの段の「送った」・案件の状態の切り替え） */
-  inquiring: boolean
+  /** 案件の状態（問い合わせ中なら送った・返事待ち、完了なら問い合わせは済み） */
+  status: CaseStatus
 }
 
 export function caseTodo(input: TodoInput): CaseTodo {
@@ -138,9 +157,13 @@ export function caseTodo(input: TodoInput): CaseTodo {
     if (kind === "chat" || (kind === "fix" && waiting > 0)) answer.push({ kind: "proposal", proposalId: p.id, origin: kind, waiting, question })
   }
 
-  const active = input.inquiries.filter((q) => !input.dismissed.has(inquiryKey(q)))
-  const left = active.filter((q) => q.kind === "cell").length
-  const state: InquiryState = active.length === 0 ? "done" : input.inquiring ? "waiting" : "todo"
+  // まだ答えのない問い合わせ（外したもの・回答の変更案で承認を待つセルを除く。完了した案件は無し）。段の数・バッジ・状態はみなこれを使う
+  const answering = answeringCells(proposals, input.contents)
+  const unanswered =
+    input.status === "done" ? [] : input.inquiries.filter((q) => !input.dismissed.has(inquiryKey(q)) && (q.kind === "case" || !answering.has(inquiryKey(q))))
+  const left = unanswered.filter((q) => q.kind === "cell").length
+  const topics = unanswered.length - left
+  const state: InquiryState = unanswered.length === 0 ? "done" : input.status === "inquiring" ? "waiting" : "todo"
   const locationOpen = proposals.filter((p) => p.origin.kind === "location" && p.state === "open").length
 
   return {
@@ -148,10 +171,10 @@ export function caseTodo(input: TodoInput): CaseTodo {
     gyoshu: { rows, pending },
     fix: countFixes(shown, inclusion, rowFixes),
     fixActions: fixActionGroups(shown, inclusion, rowFixes),
-    inquiry: { active: active.length, left, state },
+    inquiry: { active: unanswered.length, left, topics, state },
     location: { open: locationOpen },
     exportRows: input.exportRows,
-    badges: { gyoshu: rows.length, inquiry: active.length, location: locationOpen },
+    badges: { gyoshu: rows.length, inquiry: unanswered.length, location: locationOpen },
   }
 }
 

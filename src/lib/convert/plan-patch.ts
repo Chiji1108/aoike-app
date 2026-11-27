@@ -60,8 +60,6 @@ export type PlanPatch = {
   dataEnd?: number
   excludeHidden?: boolean
   skipRows?: number[]
-  /** 前の版の変更案の「値があれば出さない列」（送ると今のものと入れ替える）。読むだけで、新しい差分は excludeRows */
-  excludeColumns?: number[]
   /** 出さない行を足す・外す（今のものに重ねる。計画の聞き返しの答えとチャットの set_plan で同じ） */
   excludeRows?: { add: ValueFilter[]; remove: ValueFilter[] }
   amountUnit?: "yen" | "thousandYen"
@@ -75,7 +73,6 @@ export const planPatchSchema: z.ZodType<PlanPatch> = z.object({
   dataEnd: z.number().int().min(0).optional(),
   excludeHidden: z.boolean().optional(),
   skipRows: z.array(z.number().int().min(0)).max(2000).optional(),
-  excludeColumns: z.array(z.number().int().min(0)).max(100).optional(),
   excludeRows: z.object({ add: z.array(valueFilterSchema).max(20), remove: z.array(valueFilterSchema).max(20) }).optional(),
   amountUnit: z.enum(["yen", "thousandYen"]).optional(),
   reason: z.string().max(500),
@@ -130,7 +127,7 @@ export const sheetShapeSchema: z.ZodType<SheetShape> = z.object({ rows: z.number
 
 /** 差分に何も入っていない（理由だけ） */
 export const isEmptyPatch = (p: PlanPatch) =>
-  !p.fields && p.headerRow === undefined && p.dataStart === undefined && p.dataEnd === undefined && p.excludeHidden === undefined && !p.skipRows && !p.excludeColumns && !p.excludeRows && p.amountUnit === undefined
+  !p.fields && p.headerRow === undefined && p.dataStart === undefined && p.dataEnd === undefined && p.excludeHidden === undefined && !p.skipRows && !p.excludeRows && p.amountUnit === undefined
 
 /**
  * 差分を計画に重ねる。合わない項目が1つでもあれば、どれも重ねずに理由を返す（AI が直して出し直す。黙って一部だけ入れない）。
@@ -163,9 +160,8 @@ export function applyPlanPatch<F extends string>(
   const skipRows = patch.skipRows ?? plan.skipRows.filter((r) => r >= start && r <= end)
   const outside = skipRows.filter((r) => r < start || r > end)
   if (outside.length) problems.push(`飛ばす行 ${outside.map((r) => r + 1).join("・")}行目 はデータの範囲の外です`)
-  const replaced = patch.excludeColumns ? { ...plan.rowFilter, excludeColumns: patch.excludeColumns } : plan.rowFilter
-  const rowFilter = patch.excludeRows ? withExclusions(replaced, patch.excludeRows.add, patch.excludeRows.remove) : replaced
-  const wide = [...rowFilter.excludeColumns, ...(rowFilter.excludeValues ?? []).map((f) => f.column)].filter((c) => c >= shape.columns)
+  const rowFilter = patch.excludeRows ? withExclusions(plan.rowFilter, patch.excludeRows.add, patch.excludeRows.remove) : plan.rowFilter
+  const wide = [...rowFilter.excludeColumns, ...rowFilter.excludeValues.map((f) => f.column)].filter((c) => c >= shape.columns)
   if (wide.length) problems.push(`除外の列 ${[...new Set(wide)].map(columnLetter).join("・")} はシートの範囲の外です`)
   const primary = workbook?.find((s) => s.name === plan.sheets[0])
   if (workbook && primary)
@@ -214,7 +210,6 @@ export function beforeOf(plan: MappingPlan<KojiFieldId>, patch: PlanPatch): Plan
     ...(patch.dataEnd !== undefined ? { dataEnd: plan.dataRows.end } : {}),
     ...(patch.excludeHidden !== undefined ? { excludeHidden: plan.rowFilter.excludeHidden } : {}),
     ...(patch.skipRows ? { skipRows: plan.skipRows } : {}),
-    ...(patch.excludeColumns ? { excludeColumns: plan.rowFilter.excludeColumns } : {}),
     ...(patch.amountUnit ? { amountUnit: plan.amountUnit } : {}),
     reason: "",
   }
@@ -224,7 +219,6 @@ export function beforeOf(plan: MappingPlan<KojiFieldId>, patch: PlanPatch): Plan
 export const exclusionText = (x: ValueFilter) => (x.values.length ? `${columnLetter(x.column)}列が「${x.values.join("」「")}」の行` : `${columnLetter(x.column)}列に値がある行`)
 
 const rowsText = (rows: number[]) => (rows.length ? rows.map((r) => r + 1).join("・") + "行目" : "なし")
-const colsText = (cols: number[]) => (cols.length ? cols.map(columnLetter).join("・") : "なし")
 
 /** 差分を職員向けの文にする（変更案に出す）。before は変更案を作ったときの値（あれば「前 → 後」の形にする） */
 export function describePlanPatch(patch: PlanPatch, before?: PlanPatch, spec: CsvSpec<KojiFieldId> = KOJI_KEIREKI): string[] {
@@ -239,7 +233,6 @@ export function describePlanPatch(patch: PlanPatch, before?: PlanPatch, spec: Cs
   line("データの最後の行", patch.dataEnd, before?.dataEnd, (r) => `${r + 1}行目`)
   line("隠れた行", patch.excludeHidden, before?.excludeHidden, (v) => (v ? "出さない" : "出す"))
   line("飛ばす行", patch.skipRows, before?.skipRows, rowsText)
-  line("値があれば出さない列", patch.excludeColumns, before?.excludeColumns, colsText)
   // 出さない行は差分（足す・外す）なので「前 → 後」にしない
   if (patch.excludeRows?.add.length) lines.push(`出さない行に足す: ${patch.excludeRows.add.map(exclusionText).join("・")}`)
   if (patch.excludeRows?.remove.length) lines.push(`出さない行から外す: ${patch.excludeRows.remove.map(exclusionText).join("・")}`)

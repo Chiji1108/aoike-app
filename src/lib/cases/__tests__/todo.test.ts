@@ -5,7 +5,7 @@ import type { Inclusion } from "@/lib/convert/koji-selection"
 import { answer, decide, discard, newProposal, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
-import { awaitsAnswer, caseTodo, reportAsks, reportQuestionStates, tabBadge, type TodoInput } from "../todo"
+import { answeringCells, awaitsAnswer, caseTodo, reportAsks, reportQuestionStates, tabBadge, type TodoInput } from "../todo"
 
 // 4行: r0・r1 は業種が空（r0 は載せる、r1 は7割の選び直しで載りうる）、r2 は業種を職員が決めた（一覧の外）、r3 は工事名がエラーで載せる
 const shown = [0, 1, 2, 3].map((i) => kojiRow({ workName: `工事${i}`, amount: String((i + 1) * 100) }, i))
@@ -39,7 +39,7 @@ function input(proposals: { p: Proposal; changes: ChatChange[] }[], over: Partia
     questions: [],
     inquiries: [],
     dismissed: new Set(),
-    inquiring: false,
+    status: "converting",
     ...over,
   }
 }
@@ -116,14 +116,34 @@ describe("直す・問い合わせ・タブの数", () => {
       { kind: "cell", rowKey: r3, field: "workName", reason: "missing", current: "" },
     ]
     const todo = caseTodo(input([], { inquiries, dismissed: new Set([inquiryKey(inquiries[2]!)]) }))
-    expect(todo.inquiry).toEqual({ active: 2, left: 1, state: "todo" })
+    expect(todo.inquiry).toEqual({ active: 2, left: 1, topics: 1, state: "todo" })
     expect(tabBadge(todo, "inquiry")).toBe(2)
     expect(tabBadge(todo, "table")).toBe(0)
     // 問い合わせ中で、答えのない問い合わせが残っていれば返事待ち（税込・税抜だけが残っても顧客に聞いているので返事待ち）
-    expect(caseTodo(input([], { inquiries, inquiring: true })).inquiry).toEqual({ active: 3, left: 2, state: "waiting" })
+    expect(caseTodo(input([], { inquiries, status: "inquiring" })).inquiry).toEqual({ active: 3, left: 2, topics: 1, state: "waiting" })
     const cells = inquiries.filter((q) => q.kind === "cell").map(inquiryKey)
-    expect(caseTodo(input([], { inquiries, dismissed: new Set(cells), inquiring: true })).inquiry).toEqual({ active: 1, left: 0, state: "waiting" })
-    expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)), inquiring: true })).inquiry).toEqual({ active: 0, left: 0, state: "done" })
+    expect(caseTodo(input([], { inquiries, dismissed: new Set(cells), status: "inquiring" })).inquiry).toEqual({ active: 1, left: 0, topics: 1, state: "waiting" })
+    expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)), status: "inquiring" })).inquiry).toEqual({ active: 0, left: 0, topics: 0, state: "done" })
+    // 完了した案件は、聞くことが残っていても済み（数も 0。送った・返事待ちに戻さない）
+    const done = caseTodo(input([], { inquiries, status: "done" }))
+    expect(done.inquiry).toEqual({ active: 0, left: 0, topics: 0, state: "done" })
+    expect(tabBadge(done, "inquiry")).toBe(0)
+  })
+  test("顧客の回答の変更案で承認を待つセルは、まだ答えのない問い合わせに数えない（決めると外れる・却下すれば戻る）", () => {
+    const inquiries: Inquiry[] = [
+      { kind: "cell", rowKey: r0, field: "client", reason: "missing", current: "" },
+      { kind: "cell", rowKey: r3, field: "workName", reason: "missing", current: "" },
+    ]
+    const reply = proposal("a1", { kind: "chat", messageId: "m" }, [{ kind: "cell", rowKey: r0, field: "client", edit: { value: "合成の会社", by: "customer" } }])
+    const answering = caseTodo(input([reply], { inquiries, status: "inquiring" }))
+    expect(answering.inquiry).toEqual({ active: 1, left: 1, topics: 0, state: "waiting" })
+    expect(tabBadge(answering, "inquiry")).toBe(1)
+    expect(answeringCells([reply.p], new Map([[reply.p.id, reply.changes]]))).toEqual(new Set([inquiryKey(inquiries[0]!)]))
+    const rejected = { p: decide(reply.p, [0], "rejected"), changes: reply.changes }
+    expect(caseTodo(input([rejected], { inquiries, status: "inquiring" })).inquiry).toMatchObject({ left: 2 })
+    // 職員の手直し（顧客の回答でない）の変更案は数えたまま
+    const chat = proposal("c1", { kind: "chat", messageId: "m" }, [{ kind: "cell", rowKey: r0, field: "client", edit: { value: "合成の会社", by: "chat" } }])
+    expect(caseTodo(input([chat], { inquiries, status: "inquiring" })).inquiry).toMatchObject({ left: 2 })
   })
 })
 

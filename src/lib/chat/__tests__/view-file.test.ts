@@ -7,7 +7,7 @@ import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
 import type { ChatChange } from "../proposals"
 import { chatTools, IMAGE_READ_NOTE, MAX_TOOL_CALLS, newTurnState, withCacheBreakpoint } from "../turn"
 import { APICallError } from "ai"
-import { imageInfo, unviewableAfter, viewIdle, viewStepFinished, MAX_VIEW_CALLS, MAX_VIEW_IMAGE_BYTES, MAX_VIEW_IMAGE_PX, MAX_VIEW_IMAGES_PER_CHAT, MAX_VIEW_PAGES, MAX_VIEW_PAGES_PER_CHAT, newViewState, parsePages, viewedInHistory, viewFile, viewResultOutput, type FileViewer, type ViewResult } from "../view-file"
+import { imageInfo, unviewableAfter, viewIdle, viewStepFinished, MAX_VIEW_CALLS, MAX_VIEW_IMAGE_BYTES, MAX_VIEW_IMAGE_PX, MAX_VIEW_IMAGES_PER_CHAT, MAX_VIEW_PAGES_PER_CHAT, newViewState, parsePages, viewedInHistory, viewFile, viewResultOutput, type FileViewer, type ViewResult } from "../view-file"
 import { deriveTable } from "../../cases/view"
 import { cellFix } from "../../../components/convert/status"
 import { viewKindOf } from "../view-kind"
@@ -234,13 +234,6 @@ describe("ページの上限", () => {
     expect(parsePages("3-2", 4)).toContain("読めません")
     expect(parsePages("0", 4)).toContain("読めません")
     expect(parsePages("2-5", 4)).toContain("4 ページです")
-  })
-
-  test(`1回に見られるのは ${MAX_VIEW_PAGES} ページまで。ページの多い PDF を pages なしで見ようとすると、総ページ数と分け方を返す`, async () => {
-    const { uploads, state } = viewerOf({ "file-1.pdf": await pdfOf(MAX_VIEW_PAGES + 5) })
-    const r = await viewFile(state, { file: "file-1.pdf" })
-    expect(r).toMatchObject({ ok: false, totalPages: MAX_VIEW_PAGES + 5, error: expect.stringContaining(`1-${MAX_VIEW_PAGES}`) })
-    expect(uploads).toEqual([])
   })
 
   test(`1つの会話で見られるのは ${MAX_VIEW_PAGES_PER_CHAT} ページ・画像 ${MAX_VIEW_IMAGES_PER_CHAT} 枚まで（履歴で見た分と合わせる）。超えたら職員に伝えるよう返す`, async () => {

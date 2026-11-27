@@ -28,9 +28,6 @@ export function withPlanTax<T extends TaxSource>(t: T, plan: Pick<MappingPlan<st
   return t.taxBy === "plan" ? setTax(t, "unknown", null) : t
 }
 
-/** 取り消しの記録に残す税の設定（前の版の記録は値だけなので、出どころは分からない＝null として読む） */
-export const taxSettingSchema = z.union([
-  z.object({ tax: taxSchema, taxBy: taxBySchema }),
-  taxSchema.transform((tax) => ({ tax, taxBy: null })),
-])
+/** 取り消しの記録に残す税の設定 */
+export const taxSettingSchema = z.object({ tax: taxSchema, taxBy: taxBySchema })
 export type TaxSetting = TaxSource

@@ -28,7 +28,7 @@ import { inquiryNumbers } from "../inquiry/email"
 import type { AddressLookup } from "../convert/address"
 import type { AiCache, AiCaller } from "../convert/pipeline"
 import type { Rounding } from "../convert/transforms"
-import { MAX_VIEW_CALLS, MAX_VIEW_PAGES, MAX_VIEW_PAGES_PER_CHAT, newViewState, viewFile, viewStepFinished, viewFileInputSchema, viewResultOutput, type FileViewer, type ViewFileInput, type ViewResult, type ViewState } from "./view-file"
+import { MAX_VIEW_CALLS, MAX_VIEW_PAGES_PER_CHAT, newViewState, viewFile, viewStepFinished, viewFileInputSchema, viewResultOutput, type FileViewer, type ViewFileInput, type ViewResult, type ViewState } from "./view-file"
 
 /**
  * チャットの1回の指示。AI はコード実行（Anthropic のコンテナ）で元のファイルと今の表を読み、表の変更はコードから呼ぶ道具
@@ -77,7 +77,7 @@ export function systemPrompt(rules: ChatRules, caseContext: string, files: reado
 ${fileLines || "（なし）"}
 - 今の表は、事務所の変換（列の対応＋決まった変換＋AI の整形）で作ったもの。コードから await get_table({}) で読む（JSON 文字列。行は key・source・included・cells・issues を持つ）。
 - 表を直すのは必ずコードから: await set_cells({"changes":[{"key","field","value"}]})、await set_include({"rows":[{"key","include"}]})、await ask_customer({"items":[{"key","field","reason"}]})。
-- 文字の層の無い PDF（スキャン・手書き。pypdf で文字が取れない）と画像（JPEG・PNG など）は、view_file を直接呼んでファイルそのものを見て読む（コードからは呼ばない）。PDF は pages でページを指定する（1回${MAX_VIEW_PAGES}ページ・1つの会話で${MAX_VIEW_PAGES_PER_CHAT}ページまで。見たページは以後の往復でも読み直すので、要るページだけを見る）。文字の層のある PDF は pypdf で読む方が安い。上限で見られなかったページは、返事で職員に伝える。
+- 文字の層の無い PDF（スキャン・手書き。pypdf で文字が取れない）と画像（JPEG・PNG など）は、view_file を直接呼んでファイルそのものを見て読む（コードからは呼ばない）。PDF は pages でページを指定する（1つの会話で${MAX_VIEW_PAGES_PER_CHAT}ページまで。見たページは以後の往復でも読み直すので、要るページだけを見る）。ファイルは必要なページだけをまとめて見る（同じファイルを細かく分けて何度も呼ばない）。文字の層のある PDF は pypdf で読む方が安い。上限で見られなかったページは、返事で職員に伝える。
   - 見て読んだ値は add_rows・set_cells・record_answers に read_from:"image" を付けて送る（道具がセルのメモに印を付ける）。読めない・自信の無い字は推測で埋めず空にする（空の欄は顧客への問い合わせに回る）。
 - 元のファイルの表に無い工事は await add_rows({"rows":[{"cells":{"field":"value"}}]}) で足す（変換の元の表が無い PDF だけの案件は、これで一から表を作る）。足した行はすべて要確認になる。返る keys で、続けて set_cells などに使える。
 - 変換の元のほかのファイル（技術者の一覧・別の年の表など）も読んで使ってよい（例: 技術者の一覧から配置技術者を埋める）。
@@ -174,7 +174,7 @@ export type TurnState = {
   inquiry: InquiryDeps | null
   /** 案件のファイルを AI に見せる状態（view_file。見せた数・範囲・上げたファイル）。無ければ道具は使えない */
   view: ViewState | null
-  /** view_file を呼んだ回数（ほかの道具の toolCalls とは別に数える） */
+  /** view_file を呼んだ回数（ほかの道具の toolCalls とは別に数える。写真の多い案件でも表を直す道具まで届く） */
   viewCalls: number
 }
 
@@ -408,7 +408,7 @@ export function chatTools(state: TurnState) {
     view_file: tool({
       description:
         `案件のファイル（PDF・JPEG・PNG・GIF・WebP の画像）をそのまま見る。文字の層の無い PDF（スキャン・手書き）や画像を読むときに使う。file はコンテナの中の名前（例 file-2.pdf）、` +
-        `pages は PDF のページ（1 から。例「1-5」。省くと全部。1回${MAX_VIEW_PAGES}ページ・1つの会話で${MAX_VIEW_PAGES_PER_CHAT}ページまで）。` +
+        `pages は PDF のページ（1 から。例「1-5」。省くと全部。1つの会話で${MAX_VIEW_PAGES_PER_CHAT}ページまで）。` +
         "見せたファイルは以後の往復でも読み直すので、要るページだけを見る。{ok, file, pages?:{from, to, total}} とファイルを返す（見られなければ ok:false と error）。",
       inputSchema: viewFileInputSchema,
       execute: limited<ViewFileInput, ViewResult>("viewCalls", MAX_VIEW_CALLS, (error) => ({ ok: false, error }), async (input, { abortSignal }) => {

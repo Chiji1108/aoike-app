@@ -17,7 +17,7 @@ afterEach(() => {
 
 test("変換し直している間は、前の行を書き出さない（CSV・最後の Excel のどちらも。控えも作らない）。終われば書き出せる", async () => {
   const uploadFile = vi.fn(fakeDeps().uploadFile)
-  const s = createCaseSession(page(), fakeDeps({ uploadFile }), () => null)
+  const s = createCaseSession(page(), fakeDeps({ uploadFile }))
   s.connect()
   await s.actions.openSource(FILES[0]!, true)
   await vi.waitFor(() => expect(s.table(s.store.getState()).hasTable).toBe(true))

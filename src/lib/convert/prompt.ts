@@ -41,9 +41,7 @@ export function systemPrompt<F extends string>(spec: CsvSpec<F>) {
           .join(", ")}`,
     )
     .join("\n")
-  // どの項目にも使えない変換（前の版の保存済みの計画を読むためだけに残したもの）は出さない
   const transforms = Object.values(TRANSFORMS)
-    .filter((t: Transform) => spec.fields.some((f) => transformsFor(f.valueType).some((x) => x.id === t.id)))
     .map((t: Transform) => `- ${t.id}: ${t.label}${t.multiColumn ? "（複数列可。columns の順に渡す）" : ""}`)
     .join("\n")
   // 頼むときだけ使う作業（onDemand）の指示は、頼むときの文に書く（batchUserMessage）

@@ -20,5 +20,5 @@ export function setSelection<T extends { selection: SelectionMode; selectionAnsw
  */
 export const selectionSettled = (now: { selection: SelectionMode; selectionAnswered?: boolean }, mode: SelectionMode) => now.selection === mode && now.selectionAnswered === true
 
-/** 取り消しの記録に残す選び方と答えたか（今の形だけ。前の版の値だけの記録は読まない〔移行 drizzle/csv/0011 で空にした〕） */
+/** 取り消しの記録に残す選び方と答えたか */
 export const selectionSettingSchema = z.object({ selection: selectionSchema, selectionAnswered: z.boolean() })

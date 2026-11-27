@@ -112,8 +112,6 @@ describe("承認と聞き返し", () => {
     const work = { ...newWork(), proposals: [open, decide(open, [0], "rejected")] }
     const saved = savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(work))))
     expect(fromSaved(saved, []).proposals).toEqual(work.proposals)
-    const { proposals: _, ...older } = toSavedWork(newWork())
-    expect(savedWorkSchema.parse(older).proposals).toEqual([])
   })
 
   test("大きな変更案でも、案件の作業に入るのは件数と決めた番号だけ（中身は別に置く）なので、作業は保存の上限に近づかない", () => {
@@ -160,14 +158,9 @@ describe("足した行の上限", () => {
 })
 
 describe("問い合わせのメールの下書きの変更案", () => {
-  test("保存の形で読み直せる。表は変えず、メールの件名と前置きに重ねる。前の形の質問の文は読めるが、承認しても何もしない", () => {
-    const changes: ChatChange[] = [
-      { kind: "inquiry", id: "q1", text: "この工事は引渡日を完成日としてよいですか。" },
-      { kind: "inquiryMail", subject: "件名", intro: "前置き" },
-    ]
+  test("保存の形で読み直せる。表は変えず、メールの件名と前置きに重ねる", () => {
+    const changes: ChatChange[] = [{ kind: "inquiryMail", subject: "件名", intro: "前置き" }]
     expect(z.array(chatChangeSchema).parse(JSON.parse(JSON.stringify(changes)))).toEqual(changes)
-    // 前の形の記録（targets 付き）も読む
-    expect(chatChangeSchema.parse({ kind: "inquiry", id: "q", text: "前の質問", targets: [{ field: "endYm" }] })).toEqual({ kind: "inquiry", id: "q", text: "前の質問" })
     const target = { edits: new Map(), manual: new Map(), tax: "unknown" as const, basis: {}, selection: "rule7" as const, rounding: "floor" as const, added: [], inquiryText: EMPTY_INQUIRY_TEXT }
     const applied = applyChanges(target, [], changes)
     expect({ ...applied, inquiryText: target.inquiryText }).toEqual(target)

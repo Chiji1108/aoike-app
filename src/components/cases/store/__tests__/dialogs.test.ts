@@ -5,7 +5,6 @@ import { setWork } from "../create-case-store"
 import { createCaseSession } from "../session"
 import { fakeDeps, FILES, page } from "./helpers"
 
-const noChannel = () => null
 
 beforeEach(() => {
   vi.stubGlobal("window", new EventTarget())
@@ -16,7 +15,7 @@ afterEach(() => {
 
 /** 合成のサンプルを変換し終えた画面の1回分 */
 async function converted() {
-  const s = createCaseSession(page(), fakeDeps(), noChannel)
+  const s = createCaseSession(page(), fakeDeps())
   s.connect()
   await s.actions.openSource(FILES[0]!, true)
   await vi.waitFor(() => expect(s.table(s.store.getState()).hasTable).toBe(true))

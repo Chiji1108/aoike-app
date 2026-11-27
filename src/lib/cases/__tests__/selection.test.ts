@@ -60,7 +60,7 @@ describe("載せる工事を聞くか・答えたか・おすすめ（組み合�
     { name: "去年なし", previous: null, answered: false, recommended: "rule7", reason: "初めての顧客は7割ルールから始めます" },
     { name: "去年は全件", previous: { selection: "all" }, answered: false, recommended: "all", reason: "去年は全件でした" },
     { name: "去年は7割ルール", previous: { selection: "rule7" }, answered: false, recommended: "rule7", reason: "去年は7割ルールでした" },
-    { name: "去年は表を出していない", previous: { selection: null }, answered: false, recommended: "rule7", reason: "去年は表を出していなかったので、7割ルールから始めます" },
+    { name: "去年は載せる工事を決めていない", previous: { selection: null }, answered: false, recommended: "rule7", reason: "去年は載せる工事を決めていなかったので、7割ルールから始めます" },
     { name: "去年は全件 × 今年に答えたあと", previous: { selection: "all" }, answered: true, recommended: "all", reason: "去年は全件でした" },
   ] as const
   test.each(cases)("$name", ({ previous, answered, recommended, reason }) => {

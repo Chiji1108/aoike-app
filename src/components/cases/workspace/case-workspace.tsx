@@ -4,7 +4,6 @@ import { CaseSessionContext } from "@/components/cases/store/context"
 import { serverDeps } from "@/components/cases/store/deps"
 import type { CaseLoaderData } from "@/components/cases/store/env"
 import { createCaseSession } from "@/components/cases/store/session"
-import { broadcastChannel } from "@/components/cases/store/sync"
 import { CaseDialogs } from "./dialogs"
 import { CaseHeader } from "./case-header"
 import { CaseLayout } from "./case-layout"
@@ -19,8 +18,8 @@ const WIDE_QUERY = "(min-width: 1280px)"
  * （部品はストアの一部を読み、action で変える。key={kase.id} なので案件が変われば作り直す）
  */
 export function CaseWorkspace(page: CaseLoaderData) {
-  const [session] = useState(() => createCaseSession(page, serverDeps(page.kase.id), broadcastChannel(page.kase.id)))
-  // 保存の層と別のタブとの道をつなぐ（初めてつないだときに変換の元・去年の Excel を読み始める）
+  const [session] = useState(() => createCaseSession(page, serverDeps(page.kase.id)))
+  // 保存の層をつなぐ（初めてつないだときに変換の元・去年の Excel を読み始める）
   useEffect(() => session.connect(), [session])
   // 画面の幅をストアに入れる（並べ方・タブの開き方は action と layoutOf が読む。サーバーで描くときは狭い画面のまま）
   useEffect(() => {

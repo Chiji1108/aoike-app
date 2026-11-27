@@ -6,7 +6,7 @@ import { errorMessage } from "@/lib/errors"
 import { setRuntime, setUi } from "../create-case-store"
 import type { SheetGrid } from "@/lib/convert/plan"
 import type { CaseEnv } from "../env"
-import { openSource } from "./source"
+import { openSource, readSourceSheets } from "./source"
 import { chatArrived } from "./ui"
 
 /** アップロードしたファイルをどう扱ったかを報告に残す（最後の10件）。チャットの窓をたたんでいれば未読の印を付ける */
@@ -40,12 +40,11 @@ export async function attach(env: CaseEnv, list: readonly File[]) {
   const { store } = env
   let hasSource = !!store.getState().work.sourceFileId
   for (const f of list) {
-    // 表のファイルは保存の前に読めるか確かめる（壊れた・パスワード付きのファイルは保存せずに知らせる）。読んだシートは元を開くときに使う
+    // 表のファイルは保存の前に読めるか確かめる（壊れた・パスワード付き・中身のあるシートが無いファイルは保存せずに知らせる）。読んだシートは元を開くときに使う
     let sheets: SheetGrid[] | undefined
     if (isSheetFile(f.name)) {
       try {
-        const { readWorkbook } = await import("@/lib/convert/workbook")
-        sheets = readWorkbook(f.name, new Uint8Array(await f.arrayBuffer()))
+        sheets = await readSourceSheets(f.name, new Uint8Array(await f.arrayBuffer()))
       } catch (e) {
         const text = `読めないファイルです（${errorMessage(e, "表として読めませんでした")}）。保存していません`
         toast.error(`${f.name}: ${text}`)

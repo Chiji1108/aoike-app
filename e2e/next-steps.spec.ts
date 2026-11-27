@@ -201,6 +201,15 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
     await expect(page.getByTestId("next-step-export")).toHaveAttribute("title", /問い合わせ \d+件（送った・返事待ち）/)
   })
 
+  await test.step("案件を完了にすると、聞くことが残っていても問い合わせの段は済み。「送った」は出さない（問い合わせ中に戻さない）", async () => {
+    await page.getByTestId("case-status-done").click()
+    await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("data-state", "done")
+    await expect(page.getByTestId("inquiry-sent")).toHaveCount(0)
+    await expect(page.getByTestId("inquiry-sent-state")).toHaveText("案件は完了しています")
+    await page.getByTestId("case-status-inquiring").click()
+    await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("data-state", "waiting")
+  })
+
   await test.step("ダウンロードの右上の点の意味（残り）は、ツールチップとダウンロードの段で同じ言葉。残りを押すとその段へ移る", async () => {
     const button = page.getByTestId("next-step-export")
     const title = (await button.getAttribute("title")) ?? ""

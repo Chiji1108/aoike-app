@@ -37,7 +37,7 @@ const inferPlan = (() => {
   fields.workName = { kind: "column", column: 0, transform: "rule.text" }
   fields.prefecture = { kind: "column", column: 0, transform: "ai.inferPrefecture" }
   fields.place = { kind: "column", column: 0, transform: "ai.inferPlace" }
-  return { sheets: ["s"], headerRow: 0, dataRows: { start: 1, end: 1 }, skipRows: [], rowFilter: { excludeHidden: false, excludeColumns: [] }, amountUnit: "thousandYen", fields, unusedColumns: [], notes: [] } satisfies MappingPlan<KojiFieldId>
+  return { sheets: ["s"], headerRow: 0, dataRows: { start: 1, end: 1 }, skipRows: [], rowFilter: { excludeHidden: false, excludeColumns: [], excludeValues: [] }, amountUnit: "thousandYen", fields, unusedColumns: [], notes: [], asks: [] } satisfies MappingPlan<KojiFieldId>
 })()
 
 const cells = (qs: Inquiry[]) => qs.flatMap((q) => (q.kind === "cell" ? [`${q.rowKey}:${q.field}:${q.reason}`] : [`case:${q.topic}`]))
@@ -363,7 +363,7 @@ describe("AI が読んだ回答を値にする", () => {
   test("注文者の答えは、計画が法人だけの元データに匿名化しない変換・指示文の AI を使っていても、必ず匿名化を通す", async () => {
     const blank = kojiRow({ ...full, client: "" }, 8)
     const plans = [
-      { kind: "column" as const, column: 3, transform: "rule.fullWidthText" as const },
+      { kind: "column" as const, column: 3, transform: "rule.text" as const },
       { kind: "column" as const, column: 3, transform: "ai.freeform" as const, instruction: "C列の略称を正式名に" },
     ]
     for (const client of plans) {

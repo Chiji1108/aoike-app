@@ -115,7 +115,7 @@ describe("承認の取り消し", () => {
   })
 
   test("計画を戻すと planChanged。今の計画が承認のあとに変わっていれば戻さない", () => {
-    const plan: SavedPlan = { plan: { sheets: ["s"], headerRow: 0, dataRows: { start: 1, end: 2 }, skipRows: [], rowFilter: { excludeHidden: true, excludeColumns: [] }, amountUnit: "yen", fields: {} as never, unusedColumns: [], notes: [] }, source: "ai" }
+    const plan: SavedPlan = { plan: { sheets: ["s"], headerRow: 0, dataRows: { start: 1, end: 2 }, skipRows: [], rowFilter: { excludeHidden: true, excludeColumns: [], excludeValues: [] }, amountUnit: "yen", fields: {} as never, unusedColumns: [], notes: [], asks: [] }, source: "ai" }
     const before: CaseWork = { ...base, plan }
     const after: CaseWork = { ...before, plan: { ...plan, plan: { ...plan.plan, amountUnit: "thousandYen" as const } } }
     const entry = undoEntry(before, after, { id: "u", proposalId: "p", kind: "approval", label: "計画", at: 0 })!
@@ -208,19 +208,12 @@ describe("承認の取り消し", () => {
     expect(list.filter((e) => kindOf(e) === "approval")).toHaveLength(UNDO_LIMITS.approval.entries)
     expect(list.filter((e) => kindOf(e) === "op")).toHaveLength(UNDO_LIMITS.op.entries)
   })
-
-  test("前の版で保存した作業（取り消しの記録が無い）も読める", () => {
-    const { undo: _u, reportAnswers: _r, ...old } = toSavedWork(newWork("f"))
-    const read = savedWorkSchema.parse(JSON.parse(JSON.stringify(old)))
-    expect(read.undo).toEqual([])
-    expect(read.reportAnswers).toEqual({})
-  })
 })
 
 describe("問い合わせのメールの下書きの承認の取り消し", () => {
   const text = applyInquiryChange(EMPTY_INQUIRY_TEXT, { kind: "inquiryMail", subject: "AI の件名", intro: "AI の前置き" })
 
-  test("承認した件名・前置きを取り消すと前の文面に戻る。前の作業（文面の無い保存）は空の文面として読む。承認のあとに職員が直していたら残す", () => {
+  test("承認した件名・前置きを取り消すと前の文面に戻る。承認のあとに職員が直していたら残す", () => {
     const before = newWork("f")
     const after = { ...before, inquiryText: text }
     const entry = undoEntry(before, after, { id: "u", proposalId: "p1", kind: "approval", label: "p1", at: 0 })!
@@ -232,8 +225,6 @@ describe("問い合わせのメールの下書きの承認の取り消し", () =
     const r = undo(edited, "u")!
     expect(r).toMatchObject({ kept: 1, reverted: 1 })
     expect(r.work.inquiryText).toEqual({ ...EMPTY_INQUIRY_TEXT, subject: "職員の件名" })
-    const { inquiryText: _, ...old } = toSavedWork(newWork("f"))
-    expect(savedWorkSchema.parse(old).inquiryText).toEqual(EMPTY_INQUIRY_TEXT)
   })
 })
 
@@ -252,8 +243,8 @@ describe("報告の聞き返しの答えの取り消し", () => {
     expect(r.reverted).toBe(1)
   })
   test("計画の聞き返しの答えで足した出さない行は、取り消すとそれだけを外す（答えのあとに足した除外・変えた計画は残す）", () => {
-    const rf = { excludeHidden: false, excludeColumns: [] }
-    const plan: SavedPlan = { plan: { sheets: ["s"], headerRow: 0, dataRows: { start: 1, end: 2 }, skipRows: [], rowFilter: rf, amountUnit: "yen", fields: {} as never, unusedColumns: [], notes: [] }, source: "ai" }
+    const rf = { excludeHidden: false, excludeColumns: [], excludeValues: [] }
+    const plan: SavedPlan = { plan: { sheets: ["s"], headerRow: 0, dataRows: { start: 1, end: 2 }, skipRows: [], rowFilter: rf, amountUnit: "yen", fields: {} as never, unusedColumns: [], notes: [], asks: [] }, source: "ai" }
     const before: CaseWork = { ...newWork("f"), plan }
     const x = { column: 3, values: ["未成"] }
     const answered: CaseWork = { ...before, plan: { ...plan, plan: { ...plan.plan, rowFilter: { ...rf, excludeValues: [x] } } }, reportAnswers: { "plan-ask-0": "exclude" } }
@@ -262,7 +253,7 @@ describe("報告の聞き返しの答えの取り消し", () => {
     // 答えのあとにチャットで別の列を除外した
     const later: CaseWork = { ...answered, plan: { ...plan, plan: { ...plan.plan, skipRows: [2], rowFilter: { ...rf, excludeColumns: [5], excludeValues: [x] } } }, undo: [entry] }
     const r = undo(later, "u3")!
-    expect(r.work.plan!.plan.rowFilter).toEqual({ excludeHidden: false, excludeColumns: [5] })
+    expect(r.work.plan!.plan.rowFilter).toEqual({ excludeHidden: false, excludeColumns: [5], excludeValues: [] })
     expect(r.work.plan!.plan.skipRows).toEqual([2])
     expect(r.work.reportAnswers).toEqual({})
     expect(r.planChanged).toBe(true)

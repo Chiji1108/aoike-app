@@ -1,10 +1,9 @@
 import { expect, test, type Page } from "@playwright/test"
-import { callsServerFn, deleteCustomer, openNewCase, openTab, reload, showAllRows } from "./helpers"
+import { callsServerFn, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
 
 /**
  * 表から「全件を載せる」: 「載せる」の見出しのチェックで7割と金額のタブの「載せる工事」を切り替え（取り消せる）、
- * 行の Shift＋クリック（Shift＋Space）で範囲をまとめて入れ外しし（1回で取り消しの記録1件）、
- * 7割ルールのまま手で載せた行が多くなると「全件にしますか？」を出す。列の対応は見出しからの推定にする（計画の AI を断る）
+ * 行の Shift＋クリック（Shift＋Space）で範囲をまとめて入れ外しする（1回で取り消しの記録1件）。列の対応は見出しからの推定にする（計画の AI を断る）
  */
 
 const LARGE = new URL("../fixtures/sample-large.xlsx", import.meta.url).pathname
@@ -47,7 +46,7 @@ const scrollTable = (page: Page, to: "top" | number) =>
     table.parentElement!.scrollTop = to === "top" ? 0 : to
   }, to)
 
-test("見出しのチェックで全件と7割ルールを切り替え（7割と金額のタブも同じ・取り消せる）、Shift で範囲をまとめて入れ外しし、手で載せた行が多いと全件を勧める", async ({ page }) => {
+test("見出しのチェックで全件と7割ルールを切り替え（7割と金額のタブも同じ・取り消せる）、Shift で範囲をまとめて入れ外しする", async ({ page }) => {
   await convert(page)
   await showAllRows(page)
 
@@ -149,36 +148,6 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     for (const [j, i] of [1, 2, 3, 4].entries()) await expect(row(page, i)).toHaveAttribute("data-included", was[j]!)
   })
 
-  await test.step("7割ルールのまま手で載せた行が10行以上になると「全件にしますか？」。「全件にする」で全件になり、案内は消える", async () => {
-    await expect(page.getByTestId("all-hint")).toHaveCount(0)
-    // 描いている行のうち載せていない行の最初から最後までを Shift＋クリックで載せる（10行以上になるまで、下へ進めながら）
-    for (let i = 0; i < 6 && !(await page.getByTestId("all-hint").isVisible()); i++) {
-      const off = await renderedIndices(page, "0")
-      if (off.length >= 2) {
-        await rowBox(page, off[0]!).click()
-        await rowBox(page, off.at(-1)!).click({ modifiers: ["Shift"] })
-      }
-      await scrollTable(page, (i + 1) * 1200)
-    }
-    await expect(page.getByTestId("all-hint")).toBeVisible()
-    await expect(page.getByTestId("all-hint")).toContainText("全件にしますか？")
-    await page.getByTestId("all-hint-apply").click()
-    await expect(header(page)).toHaveAttribute("data-selection", "all")
-    await expect(page.getByTestId("all-hint")).toHaveCount(0)
-  })
-
-  await test.step("閉じると、7割ルールに戻しても案件ではもう出さない（開き直しても）", async () => {
-    await header(page).click()
-    await expect(page.getByTestId("all-hint")).toBeVisible()
-    await page.getByTestId("all-hint-close").click()
-    await expect(page.getByTestId("all-hint")).toHaveCount(0)
-    await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
-    await reload(page)
-    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
-    await showAllRows(page)
-    await expect(header(page)).toHaveAttribute("data-selection", "rule7")
-    await expect(page.getByTestId("all-hint")).toHaveCount(0)
-  })
 })
 
 test("ほかの段を開いて表に戻っても、表のスクロールの位置はずれない（隠れている間は行の高さを測らない）", async ({ page }) => {

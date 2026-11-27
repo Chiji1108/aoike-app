@@ -145,6 +145,6 @@ export function excludedReason(row: SourceRow, filter: RowFilter): string | unde
   if (filter.excludeHidden && row.hidden) return "非表示の行"
   const marked = filter.excludeColumns.find((c) => row.cells[c]?.trim())
   if (marked !== undefined) return `${columnLetter(marked)}列（除外の印）に値がある`
-  const value = filter.excludeValues?.find((f) => matchesValues(f, row.cells))
+  const value = filter.excludeValues.find((f) => matchesValues(f, row.cells))
   return value ? `${columnLetter(value.column)}列が「${row.cells[value.column]!.trim()}」` : undefined
 }

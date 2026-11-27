@@ -17,17 +17,17 @@ export function InquiryTab() {
   const { shown, rows, reconverting } = useTable(useShallow((t) => ({ shown: t.shown, rows: t.rows, reconverting: t.reconverting })))
   const added = useCase((s) => s.work.added)
   const numbers = useMemo(() => inquiryNumbers({ rows: rows ?? [], added }), [rows, added])
-  const { inquiries, waiting, active, left, chatCanSend } = useCaseView(
+  const { inquiries, waiting, left, topics, chatCanSend } = useCaseView(
     useShallow((v) => ({
       inquiries: v.inquiries,
       waiting: v.todo.inquiry.state === "waiting",
-      active: v.todo.inquiry.active,
       left: v.todo.inquiry.left,
+      topics: v.todo.inquiry.topics,
       chatCanSend: v.chatCanSend,
     })),
   )
   const pendingInquiryText = useCase((s) => derive(s).pendingInquiryText)
-  const { dismissed, text, inquiring } = useCase(useShallow((s) => ({ dismissed: s.work.dismissed, text: s.work.inquiryText, inquiring: s.runtime.status === "inquiring" })))
+  const { dismissed, text, status } = useCase(useShallow((s) => ({ dismissed: s.work.dismissed, text: s.work.inquiryText, status: s.runtime.status })))
   if (!shown) return null
   return (
     <>
@@ -57,7 +57,7 @@ export function InquiryTab() {
               </Button>
             )}
           </div>
-          {active > left && (
+          {topics > 0 && (
             <p className="text-xs text-muted-foreground" data-testid="inquiry-tax-left">
               金額の税込・税抜もまだ聞いています（答えはダウンロードの段の「7割と金額」で入れます）。
             </p>
@@ -71,7 +71,7 @@ export function InquiryTab() {
         text={text}
         onText={actions.setInquiryText}
         onToggle={actions.toggleInquiry}
-        inquiring={inquiring}
+        status={status}
         onSent={() => void actions.changeStatus("inquiring")}
         busy={reconverting}
         numbers={numbers}

@@ -49,7 +49,7 @@ const requestSchema = z.object({
   context: z.string().max(50_000),
   sourceFileId: z.string().max(64).nullable(),
   /** 今の列の対応と計画の元のシートの大きさ（チャットの set_plan の確かめ。変換の元の表が無い案件は null） */
-  plan: z.object({ plan: mappingPlanSchema, shape: sheetShapeSchema }).nullable().default(null),
+  plan: z.object({ plan: mappingPlanSchema, shape: sheetShapeSchema }).nullable(),
 })
 
 /** 止める印を見に行く間隔 */

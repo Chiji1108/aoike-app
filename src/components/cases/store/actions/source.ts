@@ -90,6 +90,14 @@ export function supersedeConversion(env: CaseEnv) {
   return next
 }
 
+/** 表のファイルを変換の元として読む。表として読めない・中身のあるシートが無ければ投げる（付けるときは保存の前に確かめる） */
+export async function readSourceSheets(name: string, bytes: Uint8Array): Promise<SheetGrid[]> {
+  const { readWorkbook } = await import("@/lib/convert/workbook")
+  const sheets = readWorkbook(name, bytes)
+  if (!primarySheet(SPEC, KOJI_PLAN_HINTS, sheets)) throw new Error("シートが空です")
+  return sheets
+}
+
 /** 去年の Excel を1回だけ読む（読めなければ null） */
 export function loadPreviousSheets(env: CaseEnv): Promise<SheetGrid[] | null> {
   const file = env.config.previous?.source
@@ -179,12 +187,10 @@ export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean, 
   try {
     let sheets = read
     if (!sheets) {
-      const { readWorkbook } = await import("@/lib/convert/workbook")
       const bytes = await deps.fetchFile(file.id)
       if (!current()) return "superseded"
-      sheets = readWorkbook(file.name, bytes)
+      sheets = await readSourceSheets(file.name, bytes)
     }
-    if (!primarySheet(SPEC, KOJI_PLAN_HINTS, sheets)) throw new Error("シートが空です")
     const src: Source = { fileId: file.id, name: file.name, sheets }
     setRuntime(store, () => ({ source: src, loading: null }))
     if (replan && env.config.chatEnabled) await startPlanning(env, src)

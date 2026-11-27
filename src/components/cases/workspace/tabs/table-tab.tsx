@@ -5,7 +5,6 @@ import { derive } from "@/components/cases/store/derive"
 import { PreviewTable } from "@/components/convert/preview-table"
 import { CONFIRM_LABEL, type TableFilter } from "@/components/convert/status"
 import { editSession } from "@/lib/convert/convert"
-import { ALL_HINT_MANUAL } from "@/lib/convert/koji-selection"
 import { tableKindOf } from "@/lib/cases/steps"
 import { KOJI_KEIREKI } from "@/lib/spec/koji-keireki"
 
@@ -18,11 +17,10 @@ export function TableTab() {
   const { shown, inclusion, letters, output, reconverting } = useTable(
     useShallow((t) => ({ shown: t.shown, inclusion: t.inclusion, letters: t.letters, output: t.output, reconverting: t.reconverting })),
   )
-  const { rowFixes, todo, askRows, manualIncluded, view, visible } = useCaseView(
-    useShallow((v) => ({ rowFixes: v.rowFixes, todo: v.todo, askRows: v.askRows, manualIncluded: v.manualIncluded, view: v.view, visible: v.visible })),
+  const { rowFixes, todo, askRows, view, visible } = useCaseView(
+    useShallow((v) => ({ rowFixes: v.rowFixes, todo: v.todo, askRows: v.askRows, view: v.view, visible: v.visible })),
   )
   const selection = useCase((s) => s.work.selection)
-  const allHintClosed = useCase((s) => s.work.allHintClosed)
   const filter = useCase((s) => s.ui.filter)
   const lastConfirm = useCase((s) => derive(s).lastOp.confirm)
   if (!shown || !output) return null
@@ -34,11 +32,6 @@ export function TableTab() {
   const reason = kind === "fix" && filter?.reason && todo.fix.byKind[filter.reason] > 0 ? filter.reason : undefined
   const ask = kind === "all" && filter?.ask && askRows.some((a) => a.id === filter.ask) ? filter.ask : undefined
   const tableFilter: TableFilter = { kind, ...(reason ? { reason } : {}), ...(ask ? { ask } : {}) }
-  /** 7割ルールのまま手で載せた行が多ければ、表の上で全件を勧める */
-  const allHint =
-    selection === "rule7" && !allHintClosed && manualIncluded >= ALL_HINT_MANUAL
-      ? { count: manualIncluded, onAll: () => actions.changeSelection("all"), onClose: actions.closeAllHint }
-      : null
   return (
     <>
       {reconverting && (
@@ -63,7 +56,6 @@ export function TableTab() {
         onToggleRange={actions.toggleRange}
         selection={selection}
         onSelection={actions.changeSelection}
-        allHint={allHint}
         filter={tableFilter}
         onFilterChange={actions.setFilter}
         fixes={rowFixes}
