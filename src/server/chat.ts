@@ -38,7 +38,6 @@ import { serverAddressLookup, serverPlaceIndex } from "./place-index"
 import { personalChecker } from "./location-guard"
 import { namesOfSaved, readSavedCase } from "./case-names"
 import { guardPersonal, type Site } from "@/lib/location/sites"
-import { GYOSHU } from "@/lib/spec/code-sets"
 import { unviewableAfter, viewIdle, type FileViewer } from "@/lib/chat/view-file"
 
 
@@ -357,35 +356,6 @@ async function deleteAnthropicFiles(ids: readonly string[]) {
 export async function endChat(caseId: string): Promise<{ id: string; text: string } | null> {
   const ended: ChatMessage = { id: generateId(), role: "system", parts: [{ type: "text", text: ENDED_TEXT }] }
   return (await endSession(bucket(), caseId, deleteAnthropicFiles, ended)) ? { id: ended.id, text: ENDED_TEXT } : null
-}
-
-/**
- * 画面が作った変更案を置く: 「AI で案を出す」の案（AI の答えは画面が runAiBatch で受け取って案にする）。形は recordable で確かめる。同じ id の変更案は上書きしない。削除と重なったら置いたものを消して断る（削除のあとに R2 に残さない）
- */
-export async function recordProposal(caseId: string, record: ProposalRecord) {
-  const p = record.proposal
-  const fresh = p.state === "open" && p.count === record.changes.length && !p.applied.length && !p.rejected.length && p.question === null
-  if (!fresh || !recordable(record)) throw new Error("変更案の形が正しくありません")
-  const db = getCsvDb()
-  const kase = await store.getCase(db, caseId)
-  if (!kase || kase.deleting) throw new Error("案件が見つかりません")
-  const key = proposalKey(caseId, p.id)
-  if (await env.CSV_FILES.head(key)) throw new Error("同じ変更案がもうあります")
-  await putProposal(caseId, record)
-  const after = await store.getCase(db, caseId)
-  if (!after || after.deleting) {
-    await env.CSV_FILES.delete(key)
-    throw new Error("案件が見つかりません")
-  }
-}
-
-/**
- * 画面が作って置く変更案の形: 「AI で案を出す」の業種の案（業種のセルだけ。値は業種コード、承認はチャットの承認と同じ印）
- */
-function recordable({ proposal: p, changes }: ProposalRecord) {
-  const origin = p.origin
-  if (origin.kind === "fix") return changes.length > 0 && changes.every((c) => c.kind === "cell" && c.field === origin.field && c.edit.by === "chat" && GYOSHU.some((g) => g.code === c.edit.value))
-  return false
 }
 
 async function putProposal(caseId: string, record: ProposalRecord) {

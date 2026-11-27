@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest"
 import { AI_TASKS, parseAiResponse } from "../ai-tasks"
 import { dominantGyoshu, GYOSHU_BASIS_LABELS, GYOSHU_GUESS_RULE, gyoshuTrend, suggestionEdits, suggestionInput, trendText, type GyoshuSuggestion } from "../gyoshu-guess"
 import { systemPrompt } from "../../chat/turn"
-import { approvedChange } from "../../chat/proposals"
 import { batchUserMessage, systemPrompt as convertSystemPrompt } from "../prompt"
 import { KOJI_KEIREKI } from "../../spec/koji-keireki"
 import { kojiRow } from "./helpers"
@@ -55,16 +54,11 @@ describe("業種の推定", () => {
       ["s!8", "8", "trend"],
       ["s!9", "8", "workName"],
     ])
-    // 工事名・傾向から決めた値は推定の印で見せる（承認で外す: approvedChange）。元データの記載から決めた値は推定にしない
+    // 工事名・傾向から決めた値は推定の印で見せる（業種の一覧で案のまま決めると外す）。元データの記載から決めた値は推定にしない
     expect(edits[0]!.edit).toEqual({ value: "8", by: "chat", message: `AI の案（${GYOSHU_BASIS_LABELS.trend}）: ほかの工事 8 件中 7 件が電気`, guessed: true })
     expect(edits[1]!.edit.guessed).toBe(true)
     const fromSource = suggestionEdits(new Map([[0, rows[8]!]]), new Map([[0, { id: 0, value: "8", basis: "source", confident: true, note: "電工" }]]), trend)
     expect(fromSource.edits[0]!.edit.guessed).toBeUndefined()
-    const proposal = { origin: { kind: "fix" as const, runId: "r", field: "gyoshu" as const } }
-    const change = { kind: "cell" as const, rowKey: "s!8", field: "gyoshu" as const, edit: edits[0]!.edit }
-    expect(approvedChange(proposal, change)).toEqual({ ...change, edit: { value: "8", by: "chat", message: edits[0]!.edit.message } })
-    // チャットの推定の印は承認しても残す
-    expect(approvedChange({ origin: { kind: "chat", messageId: "m" } }, change)).toBe(change)
   })
 
   test("AI の答えの形は固定の schema で確かめ、頼んでいない id は捨てる", () => {

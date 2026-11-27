@@ -24,7 +24,6 @@ const rowFixes: ReadonlyMap<string, RowFix<KojiFieldId>> = new Map([
   [r3, { fixes: [{ field: "workName" as const, kind: "error" as const }], ask: [] }],
 ])
 
-const gyoshuChange = (rowKey: string, value: string): ChatChange => ({ kind: "cell", rowKey, field: "gyoshu", edit: { value, by: "chat", guessed: true, message: "工事名から" } })
 const cellChange = (rowKey: string): ChatChange => ({ kind: "cell", rowKey, field: "workName", edit: { value: "直した", by: "chat" } })
 const proposal = (id: string, origin: ProposalOrigin, changes: ChatChange[], question: string | null = null) => ({ p: newProposal(id, origin, changes, question), changes })
 
@@ -36,6 +35,7 @@ function input(proposals: { p: Proposal; changes: ChatChange[] }[], over: Partia
     exportRows: 3,
     proposals: proposals.map((x) => x.p),
     contents: new Map(proposals.map((x) => [x.p.id, x.changes])),
+    gyoshuPlans: new Map(),
     questions: [],
     inquiries: [],
     dismissed: new Set(),
@@ -44,26 +44,18 @@ function input(proposals: { p: Proposal; changes: ChatChange[] }[], over: Partia
   }
 }
 
-describe("業種の AI の案（fix）", () => {
-  test("一覧の行の未決は業種を決める（行ごと）に数え、答えるには数えない。一覧の「案」は変更案の値", () => {
-    const fix = proposal("f1", { kind: "fix", runId: "x", field: "gyoshu" }, [gyoshuChange(r0, "01"), gyoshuChange(r1, "02")])
-    const todo = caseTodo(input([fix]))
+describe("業種の AI の案", () => {
+  test("一覧の行の「案」は業種の AI の案（無ければ今の値）。答えるには数えない。一覧の外の行の案は出さない", () => {
+    const plans = new Map([
+      [r0, { value: "01", by: "chat" as const, guessed: true as const, message: "工事名から" }],
+      [r2, { value: "02", by: "chat" as const, message: "記載から" }],
+    ])
+    const todo = caseTodo(input([], { gyoshuPlans: plans }))
     expect(todo.answer).toEqual([])
     expect(todo.gyoshu.rows.map((r) => r.key)).toEqual([r1, r0]) // 金額の大きい順
     expect(todo.gyoshu.rows.find((r) => r.key === r0)!.plan).toEqual({ value: "01", note: "工事名から" })
-    expect(todo.gyoshu.pending.size).toBe(2)
+    expect(todo.gyoshu.rows.find((r) => r.key === r1)!.plan).toBeNull()
     expect(todo.badges.gyoshu).toBe(2)
-    expect(awaitsAnswer(todo, "f1")).toBe(false)
-  })
-  test("一覧の外の行に未決があれば、その変更案を答えるに1件（承認待ちは一覧の外の項目の数）", () => {
-    const fix = proposal("f1", { kind: "fix", runId: "x", field: "gyoshu" }, [gyoshuChange(r0, "01"), gyoshuChange(r2, "02"), gyoshuChange(r3, "03")])
-    const todo = caseTodo(input([fix]))
-    expect(todo.answer).toEqual([{ kind: "proposal", proposalId: "f1", origin: "fix", waiting: 2, question: false }])
-    expect(awaitsAnswer(todo, "f1")).toBe(true)
-    // 一覧の外の項目を決めると答えるから外れる
-    const decided = caseTodo(input([{ ...fix, p: decide(fix.p, [1, 2], "rejected") }]))
-    expect(decided.answer).toEqual([])
-    expect(decided.gyoshu.rows.length).toBe(2)
   })
 })
 
@@ -83,8 +75,8 @@ describe("答える", () => {
     )
     expect(todo.answer).toEqual([
       { kind: "question", id: "tax" },
-      { kind: "proposal", proposalId: "c1", origin: "chat", waiting: 1, question: true },
-      { kind: "proposal", proposalId: "e1", origin: "chat", waiting: 2, question: false },
+      { kind: "proposal", proposalId: "c1", waiting: 1, question: true },
+      { kind: "proposal", proposalId: "e1", waiting: 2, question: false },
     ])
     // チャットの報告の1行「聞き返しが N件あります」は報告の聞き返しだけ（変更案はチャットの流れにある）
     expect(reportAsks(todo)).toBe(1)
@@ -94,11 +86,11 @@ describe("答える", () => {
     expect(awaitsAnswer(todo, "a1")).toBe(false)
     // 聞き返しに「はい」と答えても、承認するまでは答えるに残る
     const yes = caseTodo(input([{ ...chat, p: answer(chat.p, "yes") }]))
-    expect(yes.answer).toEqual([{ kind: "proposal", proposalId: "c1", origin: "chat", waiting: 1, question: false }])
+    expect(yes.answer).toEqual([{ kind: "proposal", proposalId: "c1", waiting: 1, question: false }])
   })
   test("変更案の無い聞き返し（中身が空の変更案）も、答えるまでは1件", () => {
     const ask = proposal("c2", { kind: "chat", messageId: "m" }, [], "どちらですか")
-    expect(caseTodo(input([ask])).answer).toEqual([{ kind: "proposal", proposalId: "c2", origin: "chat", waiting: 0, question: true }])
+    expect(caseTodo(input([ask])).answer).toEqual([{ kind: "proposal", proposalId: "c2", waiting: 0, question: true }])
   })
 })
 
@@ -149,9 +141,8 @@ describe("直す・問い合わせ・タブの数", () => {
 
 test("表がまだ無くても、答える（変更案）とチャットの答えを待つ印は数える。表に依る数は 0", () => {
   const chat = proposal("c1", { kind: "chat", messageId: "m" }, [cellChange(r3)])
-  const fix = proposal("f1", { kind: "fix", runId: "x", field: "gyoshu" }, [gyoshuChange(r0, "01")])
-  const todo = caseTodo(input([chat, fix], { shown: [], inclusion: new Map(), rowFixes: new Map(), exportRows: 0 }))
-  expect(todo.answer.map((a) => a.kind === "proposal" && a.proposalId)).toEqual(["c1", "f1"])
+  const todo = caseTodo(input([chat], { shown: [], inclusion: new Map(), rowFixes: new Map(), exportRows: 0 }))
+  expect(todo.answer.map((a) => a.kind === "proposal" && a.proposalId)).toEqual(["c1"])
   expect(awaitsAnswer(todo, "c1")).toBe(true)
   expect(todo.fix.rows).toBe(0)
   expect(todo.gyoshu.rows).toEqual([])

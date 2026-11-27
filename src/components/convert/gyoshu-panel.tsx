@@ -7,7 +7,7 @@ import type { FieldChoices } from "@/lib/spec/choices"
 import type { GyoshuItem } from "@/lib/cases/todo"
 import { cn } from "@/lib/utils"
 import { CellPicker } from "./cell-picker"
-import { summaryText, type FixRun } from "./fix-suggestion"
+import { summaryText, type FixRun } from "./gyoshu-suggestion"
 import { FIX_LABELS } from "./status"
 
 /**
@@ -114,7 +114,7 @@ export function GyoshuPanel({
       )}
       {suggest.running === null && suggest.last && (
         <p className={cn("text-xs", suggest.last.error ? "text-red-700" : "text-muted-foreground")} data-testid="gyoshu-suggest-summary">
-          {summaryText(suggest.last, true)}
+          {summaryText(suggest.last)}
           {suggest.last.error && ` ${suggest.last.failed.length} 行は AI を呼べませんでした（${suggest.last.error}）。`}
         </p>
       )}

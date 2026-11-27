@@ -3,14 +3,11 @@ import { Paperclip } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { CaseReport, type ReportProps } from "@/components/cases/case-report"
 import { useCase, useCaseActions, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
-import { derive } from "@/components/cases/store/derive"
-import { FixSuggestionPanel } from "@/components/convert/fix-suggestion"
 import { Button } from "@/components/ui/button"
 import { reportPhase } from "@/lib/cases/phase"
 import { reportAsks } from "@/lib/cases/todo"
 import { ATTACH_ACCEPT } from "@/lib/cases/types"
 import { TAX_LABELS } from "@/lib/convert/koji-selection"
-import { useGyoshuSuggest, useProposalActions } from "./hooks"
 import { useLocationTool } from "./tools"
 
 /** チャット（Markdown の描画・AI SDK）は画面を開いたあとに読み込む */
@@ -18,7 +15,7 @@ const ChatPanel = lazy(() => import("@/components/chat/chat-panel").then((m) => 
 
 
 /**
- * チャットの欄の中身: チャット（変換の報告・業種の AI の案を流れに出す）。
+ * チャットの欄の中身: チャット（変換の報告を流れの最初に出す）。
  * チャットが使えない（APIキーが無い）ときは、報告と📎と同じアップロードの入口をチャットの代わりに出す
  */
 export function ChatColumn() {
@@ -26,7 +23,7 @@ export function ChatColumn() {
   if (config.chatEnabled)
     return (
       <Suspense fallback={<div className="h-full" />}>
-        <ChatPanel report={<ChatReport />} tail={<FixTail />} />
+        <ChatPanel report={<ChatReport />} />
       </Suspense>
     )
   return <NoChat />
@@ -143,15 +140,4 @@ function ChatReport() {
       }}
     />
   )
-}
-
-/** チャットの流れの最後に出す「AI で案を出す」の結果と変更案 */
-function FixTail() {
-  const proposalActions = useProposalActions()
-  const view = useTable((t) => t.view)
-  const contents = useCase((s) => s.contents)
-  const busy = useCase((s) => s.runtime.busy.rule)
-  const fix = useCase((s) => derive(s).panels.fix)
-  const suggest = useGyoshuSuggest()
-  return <FixSuggestionPanel state={suggest.state} proposals={fix} changes={contents} view={view} actions={proposalActions} busy={busy} onRetry={suggest.canSuggest ? suggest.run : null} />
 }

@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { AI_TASKS, type AiItemResult } from "../convert/ai-tasks"
-import type { CellEdits, Replacements } from "../convert/convert"
+import type { CellEdit, CellEdits, Replacements } from "../convert/convert"
 import type { Basis, Rule7Tax, SelectionMode, TaxMode } from "../convert/koji-selection"
 import type { AiCache } from "../convert/pipeline"
 import type { Rounding } from "../convert/transforms"
@@ -53,6 +53,11 @@ export type CaseWork = {
   reportAnswers: Record<string, string>
   /** 問い合わせのメールの件名・前置き（承認した AI の文・職員が直した文。lib/inquiry/text.ts） */
   inquiryText: InquiryText
+  /**
+   * 業種の AI の案（行 → 案の値・根拠。lib/convert/gyoshu-guess.ts）。業種の一覧の「案」に出すだけで、表の値には入れない。
+   * 一覧で決めた行（案のまま・違う値）は外す
+   */
+  gyoshuPlans: ReadonlyMap<string, CellEdit>
 }
 
 export type SavedPlan = { plan: MappingPlan<KojiFieldId>; source: "ai" | "rule"; notice?: string }
@@ -79,6 +84,7 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   undo: [],
   reportAnswers: {},
   inquiryText: EMPTY_INQUIRY_TEXT,
+  gyoshuPlans: new Map(),
 })
 
 // ---- 保存する形（D1 の csv_case_states.json）。Map・Set は組の配列にする ----
@@ -113,6 +119,7 @@ export const savedWorkSchema = z
   undo: z.array(undoEntrySchema),
   reportAnswers: z.record(z.string(), z.string().max(100)),
   inquiryText: inquiryTextSchema,
+  gyoshuPlans: z.array(z.tuple([z.string(), cellEditSchema])),
 })
 export type SavedWork = z.infer<typeof savedWorkSchema>
 
@@ -121,14 +128,14 @@ export const savedAiCacheSchema = z.array(z.tuple([z.string(), aiResult]))
 export type SavedAiCache = z.infer<typeof savedAiCacheSchema>
 
 export function toSavedWork({ aiCache: _, ...w }: CaseWork): SavedWork {
-  return { ...w, edits: [...w.edits], manual: [...w.manual], dismissed: [...w.dismissed] }
+  return { ...w, edits: [...w.edits], manual: [...w.manual], dismissed: [...w.dismissed], gyoshuPlans: [...w.gyoshuPlans] }
 }
 
 export const toSavedAiCache = (cache: AiCache): SavedAiCache => [...cache]
 
 /** 保存した作業を読む */
 export function fromSaved(w: SavedWork, aiCache: SavedAiCache): CaseWork {
-  return { ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) }
+  return { ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed), gyoshuPlans: new Map(w.gyoshuPlans) }
 }
 
 /** D1 の1行に入る大きさ（D1 の上限は 2,000,000 バイト。少し余裕を持たせる）。作業と AI の結果はそれぞれ別の行 */

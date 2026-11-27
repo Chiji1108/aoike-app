@@ -82,6 +82,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps) {
     toggleRange: (keys: readonly string[], included: boolean, skipped: number) => table.toggleRange(env, keys, included, skipped),
     confirmCell: (rowKey: string, field: KojiFieldId) => table.confirmCell(env, rowKey, field),
     decideGyoshu: (decisions: readonly GyoshuDecision[], how: "plan" | "pick") => table.decideGyoshu(env, decisions, how),
+    addGyoshuPlans: (plans: readonly { rowKey: string; edit: CellEdit }[]) => table.addGyoshuPlans(env, plans),
     changeSelection: (mode: SelectionMode) => table.changeSelection(env, mode),
     toggleInquiry: (key: string, ask: boolean) => table.toggleInquiry(env, key, ask),
     dismissRemaining: () => table.dismissRemaining(env),

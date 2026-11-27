@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { fixture } from "@/lib/convert/__tests__/helpers"
-import type { ChatPrefs } from "../create-case-store"
+import { setWork, type ChatPrefs } from "../create-case-store"
 import type { CaseDeps } from "../deps"
 import { createCaseSession } from "../session"
 import { currentStep, nextStep, stepDone } from "@/lib/cases/steps"
 import { newProposal, type ChatChange } from "@/lib/chat/proposals"
 import { inquiryKey } from "@/lib/inquiry/inquiry"
+import { editKey, type CellEdit } from "@/lib/convert/convert"
 import { receiveProposal } from "../actions/proposals"
 import { fakeDeps, FILES, page } from "./helpers"
 
@@ -157,6 +158,29 @@ describe("並べ方と画面の action（ui）", () => {
     const dismissed = s.store.getState().work.dismissed
     expect(dismissed.has(inquiryKey(target))).toBe(false)
     expect(cells.slice(1).every((q) => dismissed.has(inquiryKey(q)))).toBe(true)
+  })
+
+  test("業種の AI の案は一覧の「案」に出るだけで表は変えない。案のまま決めると推定の印を外して入り、違う値なら職員の値。決めた行の案は外す（取り消しても案は戻らない）", async () => {
+    const s = await converted(true)
+    const rows = () => s.view(s.store.getState()).todo.gyoshu.rows
+    // 業種を空にした2行（業種を決める一覧に出る）
+    const keys = s.table(s.store.getState()).shown!.slice(0, 2).map((r) => r.key)
+    setWork(s.store, (w) => ({ ...w, edits: new Map([...w.edits, ...keys.map((k): [string, CellEdit] => [editKey(k, "gyoshu"), { value: "", by: "staff" }])]) }))
+    const [a, b] = keys.map((k) => rows().find((r) => r.key === k))
+    expect(a && b).toBeTruthy()
+    const before = s.store.getState().work.edits
+    const plan = { value: "8", by: "chat" as const, guessed: true as const, message: "AI の案（工事名から）: 合成" }
+    s.actions.addGyoshuPlans([{ rowKey: a!.key, edit: plan }, { rowKey: b!.key, edit: plan }])
+    expect(s.store.getState().work.edits).toBe(before)
+    expect(rows().find((r) => r.key === a!.key)!.plan).toEqual({ value: "8", note: plan.message })
+    s.actions.decideGyoshu([{ key: a!.key, value: "8" }, { key: b!.key, value: "9" }], "pick")
+    const { edits, gyoshuPlans } = s.store.getState().work
+    expect(edits.get(editKey(a!.key, "gyoshu"))).toEqual({ value: "8", by: "chat", message: plan.message })
+    expect(edits.get(editKey(b!.key, "gyoshu"))).toMatchObject({ value: "9", by: "staff" })
+    expect(gyoshuPlans.size).toBe(0)
+    s.actions.undoWithNotice(s.store.getState().work.undo.at(-1)!.proposalId)
+    expect(s.store.getState().work.edits.get(editKey(a!.key, "gyoshu"))).toEqual({ value: "", by: "staff" })
+    expect(s.store.getState().work.gyoshuPlans.size).toBe(0)
   })
 
   test("並べ方は同じ状態なら同じもの（selector が描画ごとに新しいものを返さない）", async () => {

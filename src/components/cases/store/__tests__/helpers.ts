@@ -31,7 +31,6 @@ export function fakeDeps(over: Partial<CaseDeps> = {}): CaseDeps {
     saveState: async (req) => ({ ok: true, version: req.version + 1 }),
     planWithAi: async () => NO_AI,
     runAiBatch: async () => NO_AI,
-    recordProposal: async () => undefined,
     approveRule: async () => undefined,
     updateStatus: async () => undefined,
     uploadFile: async (kind, _f, name) => ({ ...file(crypto.randomUUID()), kind, name }),

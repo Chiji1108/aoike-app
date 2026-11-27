@@ -79,11 +79,12 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       rowFixes: ReturnType<typeof rowFixesOf>,
       proposals: CaseState["work"]["proposals"],
       contents: CaseState["contents"],
+      gyoshuPlans: CaseState["work"]["gyoshuPlans"],
       questions: ReturnType<typeof questionStatesOf>,
       inquiries: ReturnType<typeof inquiriesOf>,
       dismissed: CaseState["work"]["dismissed"],
       status: CaseStatus,
-    ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, questions, inquiries, dismissed, status }),
+    ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, gyoshuPlans, questions, inquiries, dismissed, status }),
   )
   /** 届いた表のファイル（ファイルの一覧が変わったときだけ作り直す） */
   const sheetFilesOf = memoLast((files: CaseState["runtime"]["files"]) => files.filter((f) => f.kind === "source" && isSheetFile(f.name)))
@@ -121,7 +122,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       askRows,
       questionStates,
       selectionAdvice: advice,
-      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, rt.status),
+      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, w.gyoshuPlans, questionStates, inquiries, w.dismissed, rt.status),
       noSheetSource,
       sourceChoices,
       // チャットに送れるか（変換した、または変換の元の表が無い）
