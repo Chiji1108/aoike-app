@@ -308,7 +308,7 @@ describe("載せる工事を誰が決めたか（selectionBy）", () => {
     s.actions.changeSelection("rule7")
     expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
     // 「答える」の載せる工事の行の「取り消す」は、この記録を指す
-    expect(lastSelectionUndo(s.store.getState().work.undo)).toMatch(/^selection:/)
+    expect(lastSelectionUndo(s.store.getState().work.undo)).toEqual({ kind: "undo", proposalId: expect.stringMatching(/^selection:/) })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
     const undo = s.store.getState().work.undo.length
     s.actions.changeSelection("rule7")
@@ -321,7 +321,8 @@ describe("載せる工事を誰が決めたか（selectionBy）", () => {
     receiveProposal(s.store, { proposal: newProposal("p-sel", { kind: "chat", messageId: "m" }, [change], null), changes: [change] }, "replace")
     await s.actions.decideProposal("p-sel", [0], "applied")
     expect(s.store.getState().work).toMatchObject({ selection: "all", selectionBy: "staff" })
-    expect(lastSelectionUndo(s.store.getState().work.undo)).toBe("p-sel")
+    // 変更案の承認は、ほかの変更も一緒に戻るので「答える」の行からは取り消さない（出どころだけ書く）
+    expect(lastSelectionUndo(s.store.getState().work.undo)).toEqual({ kind: "proposal" })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
     s.actions.undoWithNotice("p-sel")
     expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })

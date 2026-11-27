@@ -190,6 +190,10 @@ describe("チャットの道具（決まった入力で）", () => {
     const decided = newTurnState({ ...table, selection: "rule7", selectionBy: "staff" })
     expect(await call(chatTools(decided), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
     expect(decided.pending).toEqual([])
+    // 誰が決めたかの無い表（前の画面が送った表）は分からないので、今までどおり同じ値では変更案にしない
+    const unknown = newTurnState({ ...table, selection: "rule7" })
+    expect(await call(chatTools(unknown), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
+    expect(unknown.pending).toEqual([])
   })
 
   test(`道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで。超えたら動かさずに返す`, async () => {

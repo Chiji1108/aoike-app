@@ -19,7 +19,10 @@ export type CaseTable = {
   /** 7割の計算（基準額が税抜か税込か） */
   rule7Tax: Rule7Tax
   selection: SelectionMode
-  /** 載せる工事を誰が決めたか（cases/selection.ts。チャットの set_selection が、まだ誰も決めていなければ今と同じ値でも変更案にする） */
+  /**
+   * 載せる工事を誰が決めたか（cases/selection.ts。チャットの set_selection が、まだ誰も決めていなければ〔null〕今と同じ値でも変更案にする）。
+   * undefined は分からない（前の画面が送った表）で、今までどおり同じ値なら変更案にしない
+   */
   selectionBy?: SelectionBy | null
   /** 金額の千円未満の扱い。rows はこの扱いで変換した行（変えたら変換し直す） */
   rounding: Rounding

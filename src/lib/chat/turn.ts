@@ -3,7 +3,6 @@ import { isStepCount, streamText, tool, type LanguageModelUsage, type ModelMessa
 import { z } from "zod"
 import { MAX_ADDED_ROWS, newAddedKey } from "../cases/added"
 import { baseRows, deriveTable, type CaseTable, type TableView } from "../cases/view"
-import { selectionDecided } from "../cases/selection"
 import { MAX_ITEMS_PER_REQUEST, parseAiResponse, type AiBatchRequest } from "../convert/ai-tasks"
 import { editText, staffEdit, type CellEdit } from "../convert/convert"
 import { showPersons, withNames, type PersonLetters } from "../convert/persons"
@@ -580,7 +579,7 @@ export function chatTools(state: TurnState) {
         const change: Extract<ChatChange, { kind: "settings" }> = {
           kind: "settings",
           ...(input.tax && input.tax !== now.tax ? { tax: input.tax } : {}),
-          ...(input.selection && (input.selection !== now.selection || !selectionDecided(now)) ? { selection: input.selection } : {}),
+          ...(input.selection && (input.selection !== now.selection || now.selectionBy === null) ? { selection: input.selection } : {}),
           ...(basisChanged ? { basis: input.basis } : {}),
           ...(input.rounding && input.rounding !== now.rounding ? { rounding: input.rounding } : {}),
         }

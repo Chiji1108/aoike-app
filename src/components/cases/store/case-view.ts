@@ -98,10 +98,9 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
   )
   const askIdsOf = memoLast((askRows: ReturnType<typeof askRowsOf>) => askRows.map((r) => ({ id: r.id, key: r.key })))
   /** 載せる工事の既定の案（lib/cases/selection-advice.ts）。載せうる行は除外していない行 */
-  const selectionAdviceOf = memoLast((shown: TableDerived["shown"], inclusion: TableDerived["inclusion"], basis: CaseState["work"]["basis"]) => {
-    const rows = (shown ?? []).filter((r) => inclusion.get(r.key)?.reason !== "excluded")
-    const total = rows.reduce((s, r) => s + (/^\d+$/.test(r.cells.amount.value) ? Number(r.cells.amount.value) : 0), 0)
-    return selectionAdvice({ previous: config.previous ? { selection: config.previous.selection } : null, rows: rows.length, total, basis })
+  const selectionAdviceOf = memoLast((shown: TableDerived["shown"], inclusion: TableDerived["inclusion"], summary: ReturnType<typeof summaryOf>) => {
+    const rows = (shown ?? []).filter((r) => inclusion.get(r.key)?.reason !== "excluded").length
+    return selectionAdvice({ previous: config.previous ? { selection: config.previous.selection } : null, rows, summary })
   })
   /** 報告の聞き返しと答えたか（lib/cases/todo.ts。報告・ダウンロードの前の確認・「答える」で同じもの） */
   const questionStatesOf = memoLast(
@@ -162,7 +161,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     const planAsks = w.plan?.plan.asks ?? NO_ASKS
     const askRows = askRowsOf(t.sources, t.shown, planAsks, t.plan)
     // 載せる工事を聞くかは去年で決まっているかだけで決まる（行や額が変わっても、聞き返しが出たり消えたりしない。変わるのはすすめる側だけ）
-    const advice = selectionAdviceOf(t.shown, t.inclusion, w.basis)
+    const advice = selectionAdviceOf(t.shown, t.inclusion, summary)
     const questionStates = questionStatesOf(t.hasTable, w.selectionBy, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
     /** 問い合わせを送ったか（案件が問い合わせ中か、問い合わせの Excel・メールの下書き〔件名〕を出した） */
     const inquirySent = rt.status === "inquiring" || rt.files.some((f) => f.kind === "inquiry_sheet") || w.inquiryText.subject !== null

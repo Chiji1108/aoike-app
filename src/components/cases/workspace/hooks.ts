@@ -64,7 +64,7 @@ export function useReportQuestions(): ReportQuestion[] {
   )
   const tax = useCase((s) => s.work.tax)
   const selection = useCase((s) => s.work.selection)
-  const selectionUndo = useCase((s) => lastSelectionUndo(s.work.undo))
+  const selectionUndo = useCase(useShallow((s) => lastSelectionUndo(s.work.undo)))
   const reportAnswers = useCase((s) => s.work.reportAnswers)
   const undoStates = useCase((s) => derive(s).undoStates)
   return useMemo(() => {
@@ -81,8 +81,9 @@ export function useReportQuestions(): ReportQuestion[] {
           detail: [advice.reason, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でも変えられます"].filter(Boolean).join("。"),
           options: (["rule7", "all"] as const).map((v) => ({ value: v, label: `${SELECTION_LABELS[v]}${v === recommended ? "（おすすめ）" : ""}` })),
           answered: answered ? SELECTION_LABELS[selection] : null,
-          // どこで決めても（答える・表の見出し・7割と金額・変更案の承認）、選び方を変えた一番新しい記録を取り消す
-          undo: answered && selectionUndo && undoStates.get(selectionUndo)?.can ? () => actions.undoWithNotice(selectionUndo, "載せる工事") : null,
+          // 取り消せるのは選び方だけを変えた記録（答える・表の見出し・7割と金額）。変更案で決めたときは出どころだけ書く（lib/cases/undo.ts の lastSelectionUndo）
+          ...(answered && selectionUndo?.kind === "proposal" ? { detail: "チャットの変更案で決めました（取り消すときはチャットの変更案から）" } : {}),
+          undo: answered && selectionUndo?.kind === "undo" && undoStates.get(selectionUndo.proposalId)?.can ? () => actions.undoWithNotice(selectionUndo.proposalId, "載せる工事") : null,
         }
       }
       if (id === "tax") {

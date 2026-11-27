@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { fromSaved, newWork, savedWorkSchema, toSavedWork } from "../state"
 import { carrySelection, previousSelection, selectionQuestion, setSelection } from "../selection"
-import { undo, undoEntry } from "../undo"
+import { lastSelectionUndo, undo, undoEntry, type UndoEntry } from "../undo"
 import { selectionAdvice } from "../selection-advice"
 
 /** 保存した作業の JSON（今の形）。over で項目を差し替え・消す（undefined） */
@@ -94,7 +94,36 @@ describe("載せる工事を聞くか・答えたか・引き継ぐか（組み�
     expect(w).toMatchObject({ selection, selectionBy: by })
     expect(selectionQuestion(w.selectionBy)).toEqual(question)
     // おすすめは去年に決めた値（去年が無い・既定値のままなら行の数などで決める。ここは行が多いので7割ルール）
-    const advice = selectionAdvice({ previous: last ? { selection: previous } : null, rows: 40, total: 0, basis: {} })
+    const advice = selectionAdvice({ previous: last ? { selection: previous } : null, rows: 40, summary: [] })
     expect(advice.recommended).toBe(recommended ?? "rule7")
+  })
+})
+
+describe("「答える」の載せる工事の行の取り消し（lastSelectionUndo）", () => {
+  const entry = (proposalId: string, over: Partial<UndoEntry> = {}): UndoEntry => ({
+    id: proposalId,
+    proposalId,
+    label: "",
+    at: 0,
+    edits: [],
+    manual: [],
+    added: [],
+    external: [],
+    selection: [
+      { selection: "rule7", selectionBy: null },
+      { selection: "all", selectionBy: "staff" },
+    ],
+    ...over,
+  })
+  test("選び方だけを変えた記録（答える・切り替え）は取り消せ、変更案の承認は出どころだけ（行からは取り消さない）", () => {
+    expect(lastSelectionUndo([entry("report:selection")])).toEqual({ kind: "undo", proposalId: "report:selection" })
+    expect(lastSelectionUndo([entry("report:selection"), entry("selection:1")])).toEqual({ kind: "undo", proposalId: "selection:1" })
+    expect(lastSelectionUndo([entry("selection:1"), entry("p-chat")])).toEqual({ kind: "proposal" })
+  })
+  test("取り消した記録・中身を捨てた記録・選び方を変えていない記録は見ない", () => {
+    expect(lastSelectionUndo([entry("selection:1"), entry("selection:2", { undone: true })])).toEqual({ kind: "undo", proposalId: "selection:1" })
+    expect(lastSelectionUndo([entry("selection:1"), entry("selection:2", { tooLarge: true })])).toEqual({ kind: "undo", proposalId: "selection:1" })
+    expect(lastSelectionUndo([entry("selection:1"), entry("report:tax", { selection: undefined, tax: [{ tax: "unknown", taxBy: null }, { tax: "included", taxBy: "staff" }] })])).toEqual({ kind: "undo", proposalId: "selection:1" })
+    expect(lastSelectionUndo([])).toBeNull()
   })
 })

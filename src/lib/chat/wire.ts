@@ -51,8 +51,8 @@ export const caseTableWireSchema: z.ZodType<CaseTableWire> = z.object({
   /** 7割の計算。無い形（この項目より前の画面が送る表）は税抜（前はいつも税抜） */
   rule7Tax: rule7TaxSchema.default("excluded"),
   selection: selectionSchema,
-  /** 載せる工事を誰が決めたか。無い形（この項目より前の画面が送る表）はまだ誰も決めていない */
-  selectionBy: selectionBySchema.default(null),
+  /** 載せる工事を誰が決めたか。無い形（この項目より前の画面が送る表）は分からない（undefined。まだ誰も決めていないとは読まない） */
+  selectionBy: selectionBySchema.optional(),
   /** 金額の千円未満の扱い。無い形（この項目より前の画面が送る表）は切り捨て（新しい案件の初期値） */
   rounding: roundingSchema.default("floor"),
   /** 外した問い合わせと問い合わせのメールの件名・前置き。無い形（この項目より前の画面が送る表）は空 */

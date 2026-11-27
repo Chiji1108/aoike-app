@@ -5,7 +5,7 @@ import { needsConfirm } from "@/lib/cases/ask-impact"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
 import { pendingGyoshuItems } from "@/lib/cases/todo"
-import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, SELECTION_UNDO } from "@/lib/cases/undo"
+import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
 import { setSelection } from "@/lib/cases/selection"
@@ -23,10 +23,8 @@ import { supersedeConversion } from "./source"
 
 const SPEC = KOJI_KEIREKI
 
-/**
- * 報告の聞き返しの答えの取り消しの記録（cases/undo.ts）の単位。key は税なら tax、計画の聞き返しなら並び順に依らない鍵（lib/convert/plan.ts の askKey）
- */
-export const reportUndoId = (key: string) => `report:${key}`
+/** 報告の聞き返しの答えの取り消しの記録の単位（lib/cases/undo.ts の reportUndoId。画面の部品もここから読む） */
+export { reportUndoId }
 
 /** 作業の1つの項目を、その時点の値から変える */
 const update = <K extends keyof CaseWork>(env: CaseEnv, key: K, next: (prev: CaseWork[K]) => CaseWork[K]) => setWork(env.store, (w) => ({ ...w, [key]: next(w[key]) }))

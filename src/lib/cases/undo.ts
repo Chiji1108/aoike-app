@@ -156,15 +156,6 @@ const sizeOf = (e: UndoEntry) => new TextEncoder().encode(JSON.stringify(e)).byt
  * 記録を足す。足した記録の枠で、数と大きさの上限を超えたら、その枠の古いものから捨てる（ほかの枠の記録は捨てない）。
  * 1件だけで枠の大きさを超える記録は中身を捨て、取り消せない印だけを残す
  */
-/**
- * 載せる工事の選び方を変えた、一番新しい取り消しの記録の印（proposalId。取り消していないもの）。「答える」の載せる工事の行の「取り消す」に使う
- * （答える・表の見出し・7割と金額・変更案の承認のどれで決めても、同じ行から取り消せる）
- */
-export function lastSelectionUndo(list: readonly UndoEntry[]): string | null {
-  for (let i = list.length - 1; i >= 0; i--) if (list[i]!.selection && !list[i]!.undone) return list[i]!.proposalId
-  return null
-}
-
 export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntry[] {
   const kind = kindOf(entry)
   const limit = UNDO_LIMITS[kind]
@@ -185,6 +176,26 @@ export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntr
 /** 取り消せる記録か（取り消した・中身が無い・戻す値が無いものは取り消せない） */
 export const canUndo = (e: UndoEntry) =>
   !e.undone && !e.tooLarge && (e.edits.length > 0 || e.manual.length > 0 || e.added.length > 0 || !!e.tax || !!e.selection || !!e.basis || !!e.rounding || !!e.plan || !!e.inquiryText || !!e.reportAnswers?.length || !!e.exclusions?.length)
+
+/** 変換の報告の聞き返しの答えの記録の印（聞き返しの鍵ごと。税は tax、載せる工事は selection、計画の聞き返しは askKey） */
+export const reportUndoId = (key: string) => `report:${key}`
+
+/**
+ * 「答える」の載せる工事の行の取り消し（1か所で決める）。選び方を変えた、取り消せる一番新しい記録を見て:
+ * - 選び方だけを変えた記録（答えるの答え report:selection・表の見出しや7割と金額の切り替え selection:）なら、その記録を取り消せる（undo）
+ * - チャットの変更案の承認なら、ほかの変更も一緒に戻ってしまうので行からは取り消さない（proposal。取り消しはチャットの変更案の側から）
+ * - 無ければ null（中身を捨てた記録・取り消した記録は見ない）
+ */
+export type SelectionUndo = { kind: "undo"; proposalId: string } | { kind: "proposal" } | null
+
+export function lastSelectionUndo(list: readonly UndoEntry[]): SelectionUndo {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const e = list[i]!
+    if (!e.selection || !canUndo(e)) continue
+    return e.proposalId === reportUndoId("selection") || e.proposalId.startsWith(SELECTION_UNDO) ? { kind: "undo", proposalId: e.proposalId } : { kind: "proposal" }
+  }
+  return null
+}
 
 export type UndoResult<W> = { work: W; reverted: number; kept: number; planChanged: boolean }
 
