@@ -111,8 +111,8 @@ export function ChatPanel(props: ChatPanelProps) {
   const location = useLocationTool()
   const proposalBase = useProposalActions()
   /**
-   * 同じ顧客の前の年度の案件があれば「去年のやり方で直す」を出す。ready は去年との違いを文脈に入れられるようになったか
-   * （去年の Excel を読み終えた）、names は去年の Excel の配置技術者（去年のコードから個人名を消す）、headers は去年と今年の見出し（伏せない語）
+   * 同じ顧客の前の年度の案件があれば「去年のやり方で直す」を出す。ready は去年の Excel を読み終えたか、
+   * names は去年の Excel の配置技術者（去年のコードから個人名を消す）、headers は去年と今年の見出し（伏せない語）
    */
   const carryover = useCarryover()
   /**

@@ -132,19 +132,19 @@ describe("プロンプト", () => {
     expect(line("gyoshu")).not.toContain("元データに無ければ")
   })
 
-  test("去年の列の対応は去年の見出しの名前で書き、去年との違いと一緒に参考として計画の指示に添える", () => {
-    const text = previousPlanContext(KOJI_KEIREKI, { fiscalYear: 2025, grid: grid!, plan: fallback, diff: ["足された列: L列「担当部署」"] })
+  test("去年の列の対応は去年の見出しの名前で書き、参考として計画の指示に添える", () => {
+    const text = previousPlanContext(KOJI_KEIREKI, { fiscalYear: 2025, grid: grid!, plan: fallback })
     const header = grid!.rows[fallback.headerRow]!
     const client = fallback.fields.client
     expect(client.kind).toBe("column")
     if (client.kind === "column") expect(text).toContain(`- client: 「${header[client.column]}」 → ${client.transform}`)
     expect(text).toContain("去年（2025年度）の列の対応")
-    expect(text).toContain("- 足された列: L列「担当部署」")
     expect(text).toContain("今年の見出しと値で確かめて決める")
     expect(planUserMessage({ ...excerpt, previous: text })).toContain(text)
     expect(planUserMessage(excerpt)).not.toContain("去年")
-    // 長くても上限で切る
-    expect(previousPlanContext(KOJI_KEIREKI, { fiscalYear: 2025, grid: grid!, plan: fallback, diff: Array.from({ length: 2000 }, (_, i) => `違い${i}`) }).length).toBeLessThan(MAX_PREVIOUS_CONTEXT + 50)
+    // 見出しが長くても上限で切る
+    const long = { ...grid!, rows: grid!.rows.map((r, i) => (i === fallback.headerRow ? r.map((c) => c + "x".repeat(2000)) : r)) }
+    expect(previousPlanContext(KOJI_KEIREKI, { fiscalYear: 2025, grid: long, plan: fallback }).length).toBeLessThan(MAX_PREVIOUS_CONTEXT + 50)
   })
 
   test("計画用に送るのは先頭30行と末尾10行だけ", () => {

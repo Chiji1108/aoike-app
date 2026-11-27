@@ -87,7 +87,7 @@ export type CaseState = {
      * source は元のファイルを読む、case は元・計画（計画・回答の結果を捨てる）、conversion は変換、status は案件の状態の変更
      */
     gen: { source: number; case: number; conversion: number; status: number }
-    /** 去年の案件の元の Excel（形を比べる・列の計画の参考。読めなければ理由。読み終わるまで null） */
+    /** 去年の案件の元の Excel（列の計画の参考・「去年のやり方で直す」で個人名を伏せる。読めなければ理由。読み終わるまで null） */
     previous: SheetGrid[] | { error: string } | null
     /** 引いた住所（増えたら表を作り直す） */
     addressBook: AddressBook

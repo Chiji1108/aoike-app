@@ -9,7 +9,6 @@ import { INQUIRY_SUGGESTION, REVIEW_SUGGESTION } from "@/components/cases/store/
 import type { ProposalActions } from "@/components/chat/proposal-card"
 import type { Suggestion } from "@/components/chat/chat-panel"
 import { awaitsAnswer } from "@/lib/cases/todo"
-import { carryoverReady } from "@/lib/chat/carryover"
 import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
 import { REVIEW_PROMPT } from "@/lib/chat/review"
 import { SELECTION_LABELS, TAX_LABELS } from "@/lib/convert/koji-selection"
@@ -170,25 +169,13 @@ export function useChatSuggestions(): readonly Suggestion[] {
 }
 
 /**
- * 「去年のやり方で直す」（同じ顧客の前の年度の案件があるときだけ）。ready は去年との違いを文脈に入れられるようになったか（去年の Excel を読み終えた）、
- * names・headers は送るときにその時点の状態から作る
+ * 「去年のやり方で直す」（同じ顧客の前の年度の案件があるときだけ）。ready は去年の Excel を読み終えたか（読めなかった・去年の Excel が無いときは待たない。
+ * 読めた去年の Excel の配置技術者の名前と見出しを、去年のコードを伏せるのに使う）。names・headers は送るときにその時点の状態から作る
  */
 export function useCarryover() {
   const session = useCaseSession()
   const { previous } = session.config
-  const ready = useCase((s) => {
-    if (!previous) return false
-    const { previousSide, formatDiff } = session.view(s)
-    const { grid, plan } = session.table(s)
-    const sheets = s.runtime.previous
-    return carryoverReady({
-      previousSource: !!previous.source,
-      currentSource: !!s.work.sourceFileId,
-      previousSheets: sheets === null ? "loading" : "error" in sheets ? "error" : previousSide ? "loaded" : "noSheet",
-      // 今年の元と計画はあるのに比べるシートが無いときは、違いを作れないので待たない
-      formatDiff: formatDiff !== null ? true : s.runtime.source && plan && !grid ? "unavailable" : false,
-    })
-  })
+  const ready = useCase((s) => !!previous && (!previous.source || s.runtime.previous !== null))
   return useMemo(
     () => (previous ? { fiscalYear: previous.fiscalYear, ready, names: session.carryoverNames, headers: session.carryoverHeaders } : null),
     [previous, ready, session],

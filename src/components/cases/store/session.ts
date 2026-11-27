@@ -136,13 +136,12 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
   const chatRequest = () => {
     const s = store.getState()
     const { rows, grid, plan } = env.table(s)
-    const { chatReady, formatDiff } = env.view(s)
+    const { chatReady } = env.view(s)
     const { source } = s.runtime
-    const { previous } = config
     if (!rows || !chatReady) return null
     return {
       table: tableWire()!,
-      context: source && grid && plan ? caseContext(source.sheets, grid, plan, previous && formatDiff ? { fiscalYear: previous.fiscalYear, lines: formatDiff.lines } : undefined) : NO_SOURCE_CONTEXT,
+      context: source && grid && plan ? caseContext(source.sheets, grid, plan) : NO_SOURCE_CONTEXT,
       sourceFileId: s.work.sourceFileId,
       plan: grid && s.work.plan ? { plan: s.work.plan.plan, shape: sheetShapeOf(grid) } : null,
     }
@@ -188,7 +187,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
       const { work, runtime } = store.getState()
       const file = runtime.files.find((f) => f.id === work.sourceFileId)
       if (file && (!runtime.source || (!work.plan && env.config.chatEnabled))) void openSource(env, file, !work.plan)
-      // 去年の Excel は開いたときから読み始める（計画の AI に添えるのと、去年との違いに使う。1回だけ読む）
+      // 去年の Excel は開いたときから読み始める（計画の AI に去年の列の対応を添えるのと、「去年のやり方で直す」で個人名を伏せるのに使う。1回だけ読む）
       void loadPreviousSheets(env)
       return () => {
         unwatch()
