@@ -33,17 +33,16 @@ export function useProposalActions(): Omit<ProposalActions, "canSend"> {
   )
 }
 
-/** 業種の AI の案を頼めるか（AI が使える・頼んでいる最中でない・一覧の外の行に前の案の未決が無い）と、頼めない理由・頼む */
+/** 業種の AI の案を頼めるか（AI が使える・頼んでいる最中でない）と、頼めない理由・頼む */
 export function useGyoshuSuggest() {
   const { config } = useCaseSession()
   const gyoshu = useGyoshuTool()
   const shown = useTable((t) => t.shown)
-  // 一覧の行の未決は一覧の「案」に出ていて、頼むのは案の無い行だけなので重ならない
-  const outsidePending = useCaseView((v) => v.todo.answer.some((a) => a.kind === "proposal" && a.origin === "fix"))
-  const canSuggest = config.chatEnabled && gyoshu.running === null && !outsidePending
-  const blocked = canSuggest ? undefined : !config.chatEnabled ? "AI を使えません" : gyoshu.running !== null ? "AI が案を考えています" : "前の AI の案がチャットに残っています（承認か却下してください）"
+  const sourceFileId = useCase((s) => s.work.sourceFileId)
+  const canSuggest = config.chatEnabled && gyoshu.running === null
+  const blocked = canSuggest ? undefined : !config.chatEnabled ? "AI を使えません" : "AI が案を考えています"
   const run = (keys: readonly string[]) => {
-    if (shown && canSuggest) void gyoshu.run(shown, keys)
+    if (shown && canSuggest) void gyoshu.run(shown, keys, sourceFileId)
   }
   return { canSuggest, blocked, run, state: gyoshu }
 }
@@ -136,7 +135,7 @@ export function useInquirySuggestion(): Suggestion | null {
 }
 
 /** 変更案の出どころの名前（「答える」の段） */
-const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", location: "工事場所", fix: "業種の AI の案" }
+const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", location: "工事場所" }
 const ANSWER_LABELS = { yes: "はい", no: "いいえ" } as const
 /** 「答える」の段で答える変更案の印（報告の聞き返しの id と分ける） */
 export const PROPOSAL_QUESTION = "proposal:"
@@ -146,7 +145,7 @@ export type AnswerQuestion = { question: ReportQuestion; go: { label: string; di
 
 /**
  * 「答える」の段に出すもの: 報告の聞き返し（その場で答える。「AI に聞く」は決まった質問をチャットに送ってチャットへ移る）と、
- * チャットのもの（「答える」に数える承認待ちの変更案・AI の聞き返し・一覧の外の業種の AI の案と、答えて閉じたもの）。
+ * チャットのもの（「答える」に数える承認待ちの変更案・AI の聞き返しと、答えて閉じたもの）。
  * 変更案の付いた「はい・いいえ」の聞き返しだけその場で答え、ほかはチャットのその変更案へ移る
  */
 export function useAnswerQuestions(): { questions: AnswerQuestion[]; chatAsks: AnswerQuestion[] } {
@@ -181,9 +180,9 @@ export function useAnswerQuestions(): { questions: AnswerQuestion[]; chatAsks: A
     const one = (p: Proposal): AnswerQuestion[] => {
       const item = todo.answer.find((a) => a.kind === "proposal" && a.proposalId === p.id)
       if (item?.kind === "proposal" && p.state === "open") return [ask(p, item.waiting)]
-      return p.state === "closed" && p.origin.kind !== "fix" && p.origin.kind !== "location" && p.question?.answer ? [answered(p, p.question.text, p.question.answer)] : []
+      return p.state === "closed" && p.origin.kind === "chat" && p.question?.answer ? [answered(p, p.question.text, p.question.answer)] : []
     }
-    const chatAsks = [...proposals.filter((p) => p.origin.kind !== "fix").flatMap(one), ...proposals.filter((p) => p.origin.kind === "fix").flatMap(one)]
+    const chatAsks = proposals.flatMap(one)
     return { questions, chatAsks }
   }, [actions, config.chatEnabled, chatCanSend, todo, proposals, undoStates, report])
 }

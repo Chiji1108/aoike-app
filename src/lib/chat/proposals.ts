@@ -56,12 +56,9 @@ export type ChatChange =
 export type Decision = "pending" | "applied" | "rejected"
 
 /**
- * 出どころ。location は工事場所の一括調査、fix は表の「直す」から頼んだ AI の案（「AI で案を出す」。field はどの項目の案か）
+ * 出どころ。location は工事場所の一括調査
  */
-export type ProposalOrigin =
-  | { kind: "chat"; messageId: string }
-  | { kind: "location"; runId: string }
-  | { kind: "fix"; runId: string; field: "gyoshu" }
+export type ProposalOrigin = { kind: "chat"; messageId: string } | { kind: "location"; runId: string }
 
 /**
  * AI の聞き返し（「これでよいですか」）。答えるまで承認できない。no と答えたら全部を却下する
@@ -103,16 +100,6 @@ export function addedCountAfter(added: readonly AddedRow[], changes: readonly Ch
   const keys = new Set(added.map((a) => a.key))
   for (const c of changes) if (c.kind === "add") keys.add(c.rowKey)
   return keys.size
-}
-
-/**
- * 承認で入れる変更。「AI で案を出す」（出どころ fix）の推定の値は、職員の承認が確かめなので推定の印を外して入れる
- * （ほかの出どころの推定の印〔チャットの匿名化で迷った値など〕は承認しても残す）
- */
-export function approvedChange(p: Pick<Proposal, "origin">, c: ChatChange): ChatChange {
-  if (p.origin.kind !== "fix" || c.kind !== "cell" || !c.edit.guessed) return c
-  const { guessed: _, ...edit } = c.edit
-  return { ...c, edit }
 }
 
 /** 閉じた形に残す項目（id・出どころ・聞き返し） */
@@ -288,7 +275,6 @@ export const proposalSchema: z.ZodType<Proposal> = (() => {
     origin: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("chat"), messageId: z.string() }),
       z.object({ kind: z.literal("location"), runId: z.string() }),
-      z.object({ kind: z.literal("fix"), runId: z.string(), field: z.literal("gyoshu") }),
     ]),
     question: z.object({ text: z.string(), answer: z.enum(["yes", "no"]).nullable() }).nullable(),
   }

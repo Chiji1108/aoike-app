@@ -68,8 +68,6 @@ const TOOL_LABELS: Record<string, string> = {
 export type ChatPanelProps = {
   /** 会話の最初に出す変換の報告（案件の作業から作る。保存しない） */
   report: React.ReactNode
-  /** 会話の最後に出すもの（表の「直す」から頼んだ AI の案。案件の作業から作る） */
-  tail?: React.ReactNode
 }
 
 /** チャットの案内（押すと prompt を送る。会話に同じ指示があれば出さない） */
@@ -317,7 +315,6 @@ export function ChatPanel(props: ChatPanelProps) {
                   {error.message}
                 </div>
               )}
-              {props.tail}
               {history === "loaded" && suggestion && !sentTexts.has(suggestion.prompt) && (
                 <div className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-suggestion">
                   <span className="text-muted-foreground">{suggestion.text}</span>

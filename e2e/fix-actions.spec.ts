@@ -2,9 +2,9 @@ import { expect, test, type Page } from "@playwright/test"
 import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 /**
- * 「直す」の行から直し方を選ぶ: 業種が空の行の「業種を決める」→ 業種のタブで「AI で案を出す」→ チャットの流れにも変更案 → 承認で入り「直す」が減る。
+ * 「直す」の行から直し方を選ぶ: 業種が空の行の「業種を決める」→ 業種のタブで「AI で案を出す」→ 一覧の「案」→ 案のまま決めると入り「業種を決める」が減る。
  * 業種などの決まった値は選ぶ欄で選ぶ（キーボードでも。Escape は欄だけ閉じる）。主任技術者・監理技術者は1つの欄で2列を決める。
- * 「顧客に聞く」で問い合わせのタブへ。計画の聞き返しの答えには載せる件数の見込みが付き、大半を外す答えは押す前に確かめる。
+ * 「顧客に聞く」で問い合わせのタブへ。
  * 計画の AI と業種の AI の案の応答は決まったものにする（合成 fixture）
  */
 
@@ -94,7 +94,7 @@ const gyoshuCount = async (page: Page) => Number(/(\d+)/.exec((await page.getByT
 const noGyoshuRows = (page: Page) =>
   page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]').filter({ has: page.locator('td[data-field="gyoshu"] button:not(:has([data-code]))') })
 
-test("業種が空の行に業種のタブで AI の案を出し、承認すると業種を決める行が減る。決まった値は選ぶ欄で選ぶ（キーボードでも）。顧客に聞くは問い合わせへ", async ({ page }) => {
+test("業種が空の行に業種のタブで AI の案を出し、案のまま決めると業種を決める行が減る。決まった値は選ぶ欄で選ぶ（キーボードでも）。顧客に聞くは問い合わせへ", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   await fakePlan(page, [])
@@ -115,34 +115,30 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
   })
 
   const before = await gyoshuCount(page)
-  await test.step("業種のタブで頼むと、AI の案がチャットの流れに変更案として出る（結果はそのまま表に入らない）。推し量った案は根拠に推定と出る", async () => {
+  await test.step("業種のタブで頼むと、AI の案が業種の一覧の「案」に出る（表には入らず、チャットにも出ない）。推し量った案は根拠を添える", async () => {
     await page.locator('[data-testid="row-fix-action"][data-action="decideGyoshu"]').first().click()
     await expect(page.getByTestId("next-step-gyoshu")).toHaveAttribute("aria-selected", "true")
     await page.getByTestId("gyoshu-suggest").click()
-    const panel = page.getByTestId("fix-suggestion")
-    await expect(panel.getByTestId("fix-suggestion-summary")).toContainText("7 行のうち 5 行に案を出しました")
-    await expect(panel.getByTestId("fix-suggestion-summary")).toContainText("決められなかった 2 行")
+    const summary = page.getByTestId("gyoshu-suggest-summary")
+    await expect(summary).toContainText("7 行のうち 5 行に案を出しました")
+    await expect(summary).toContainText("決められなかった 2 行")
     expect(sent).toHaveLength(1)
     // 決まった処理で数えた傾向を添える（ここでは決まっている業種が無い）
     expect(sent[0]).toContain("決まっている工事がない")
     expect(await gyoshuCount(page)).toBe(before)
-    // 業種の AI の案は「答える」でなく「業種を決める」の段で決める
+    await expect(page.locator('[data-testid="gyoshu-row"][data-plan="2"]')).toHaveCount(5)
+    await expect(page.getByTestId("gyoshu-note").first()).toContainText("AI の案（工事名から）")
+    // 変更案にしないので「答える」・チャットには何も足さない
+    await expect(page.getByTestId("proposal")).toHaveCount(0)
     await expect(page.getByTestId("next-step-gyoshu")).toHaveAttribute("data-done", "0")
-    await panel.getByTestId("proposal-open").click()
-    const dialog = page.getByTestId("proposal-dialog")
-    await expect(dialog.getByTestId("diff-to").first()).toContainText("2 建築一式")
-    // 工事名から推し量った案も推定（黄色）で、根拠を添える
-    await expect(dialog.locator('[data-testid="diff-note"][data-guess="1"]')).toHaveCount(5)
-    await expect(dialog.locator('[data-testid="diff-note"][data-guess="1"]').first()).toContainText("AI の推定・AI の案（工事名から）")
-    await page.keyboard.press("Escape")
   })
 
-  await test.step("承認すると入り、業種を決める行が減る。表には名前で出る", async () => {
-    await page.getByTestId("fix-suggestion").getByTestId("proposal-apply-all").click()
+  await test.step("案のまま決めると入り、業種を決める行が減る。表には名前で出る", async () => {
+    await page.getByTestId("gyoshu-decide-all").click()
     await expect.poll(() => gyoshuCount(page)).toBe(2)
     await openTab(page, "table")
     await expect(noGyoshuRows(page)).toHaveCount(2)
-    // 承認した値は推定の印を外して入る（AI の推定として直すに残らない）
+    // 案のまま決めた値は推定の印を外して入る（AI の推定として直すに残らない）
     await openTab(page, "fix")
     await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key]').filter({ has: page.getByTestId("row-fix").filter({ hasText: "業種: AI の推定" }) })).toHaveCount(0)
     await openTab(page, "table")

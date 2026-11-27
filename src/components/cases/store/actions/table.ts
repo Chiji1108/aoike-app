@@ -3,9 +3,9 @@ import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { CONFIRM_LABEL, shortLabel } from "@/components/convert/status"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
-import { answeringCells, pendingGyoshuItems } from "@/lib/cases/todo"
+import { answeringCells, listedGyoshuPlans } from "@/lib/cases/todo"
 import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
-import { answer, approvedChange, decide } from "@/lib/chat/proposals"
+import { answer } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
 import { selectionSettled, setSelection } from "@/lib/cases/selection"
 import { SELECTION_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } from "@/lib/convert/koji-selection"
@@ -108,37 +108,43 @@ export function confirmCell(env: CaseEnv, rowKey: string, field: KojiFieldId) {
 
 /**
  * 業種の一覧で決める（1回の操作を1つの取り消しの記録に）。値は職員が決めた手直し（表で選んだのと同じ staffEdit）。
- * 案が AI の案の変更案の未決の項目なら、案のまま決めた行はその項目を承認（承認と同じ値・注意書き）、違う値を選んだ行はその項目を却下にする。
- * 取り消すと値を戻す（変更案の項目は決めたまま。チャットの承認の取り消しと同じ）。項目と個人名の記号はその時点の状態から引く
+ * 業種の AI の案のまま決めた行は、案の値と根拠を残して推定の印を外す（職員が確かめた値）。決めた行の案は外す
+ * （取り消すと値は戻り、案は無くなる。もう一度頼める）。個人名の記号はその時点の状態から引く
  */
 export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[], how: "plan" | "pick") {
   if (!decisions.length) return
   const id = `${GYOSHU_UNDO}${crypto.randomUUID()}`
   const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
-    const { work: w, contents } = s
+    const { work: w } = s
     const { letters } = env.table(s)
-    const pending = pendingGyoshuItems(w.proposals, contents)
+    const plans = listedGyoshuPlans(w, env.view(s).todo.gyoshu.rows).gyoshuPlans
     const edits = new Map(w.edits)
-    const decided = new Map<string, { applied: number[]; rejected: number[] }>()
+    const gyoshuPlans = new Map(plans)
     for (const d of decisions) {
-      const item = pending.get(d.key)
-      const same = item?.edit.value === d.value
-      if (item) {
-        const x = decided.get(item.proposalId) ?? { applied: [], rejected: [] }
-        ;(same ? x.applied : x.rejected).push(item.index)
-        decided.set(item.proposalId, x)
+      const plan = plans.get(d.key)
+      let edit = staffEdit(d.value, letters)
+      if (plan?.value === d.value) {
+        const { guessed: _, ...confirmed } = plan
+        edit = confirmed
       }
-      // 案のまま決めた AI の案は、承認したときと同じ値（推定の印を外し、根拠を注意書きに残す）
-      const approved = item && same ? approvedChange(w.proposals.find((x) => x.id === item.proposalId)!, { kind: "cell", rowKey: d.key, field: "gyoshu", edit: item.edit }) : null
-      edits.set(editKey(d.key, "gyoshu"), approved?.kind === "cell" ? approved.edit : staffEdit(d.value, letters))
+      edits.set(editKey(d.key, "gyoshu"), edit)
+      gyoshuPlans.delete(d.key)
     }
-    const proposals = w.proposals.map((p) => {
-      const x = decided.get(p.id)
-      return x ? decide(decide(p, x.applied, "applied"), x.rejected, "rejected") : p
-    })
-    return { ...w, edits, proposals }
+    return { ...w, edits, gyoshuPlans }
   })
   notifyCommitted(env, how === "plan" ? `${decisions.length} 行の業種を案のまま決めました` : "業種を決めました", committed, id, "業種の決定")
+}
+
+/**
+ * 業種の AI の案を一覧に足す（表の値は変えない。同じ行の前の案は置き換える）。案は業種の一覧に今いる行にだけ意味があるので、
+ * 頼んでいる間に決めた行（一覧にもういない）の案と、頼み始めたあとに変換の元が変わったときの案は捨てる
+ */
+export function addGyoshuPlans(env: CaseEnv, sourceFileId: string | null, plans: readonly { rowKey: string; edit: CellEdit }[]) {
+  const s = env.store.getState()
+  if (s.work.sourceFileId !== sourceFileId) return
+  const listed = new Set(env.view(s).todo.gyoshu.rows.map((r) => r.key))
+  const fresh = plans.filter((p) => listed.has(p.rowKey))
+  if (fresh.length) update(env, "gyoshuPlans", (prev) => new Map([...prev, ...fresh.map((p): [string, CellEdit] => [p.rowKey, p.edit])]))
 }
 
 /**

@@ -113,7 +113,7 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
     await expect.poll(() => count(page)).toBe(6)
     await page.getByTestId("gyoshu-undo").click()
     await expect.poll(() => count(page)).toBe(7)
-    // AI の案の項目は決めたまま（チャットの承認の取り消しと同じ）なので、戻った行は案なし。選択も残らない
+    // 決めた行の案は外したので、取り消して戻った行は案なし（もう一度頼める）。選択も残らない
     await expect(page.locator('[data-testid="gyoshu-row"][data-plan=""]')).toHaveCount(2)
     await expect(page.getByTestId("gyoshu-decide-all")).toBeVisible()
   })
@@ -138,8 +138,6 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
     await page.keyboard.press("Enter")
     await expect(page.getByTestId("gyoshu-done")).toBeVisible()
     await expect(page.getByTestId("next-step-gyoshu")).toHaveAttribute("data-done", "1")
-    // チャットの AI の案の変更案は、一覧で決めたので閉じる
-    await expect(page.getByTestId("fix-suggestion").getByTestId("proposal-apply-all")).toHaveCount(0)
     await openTab(page, "fix")
     await expect(gyoshuFixes(page)).toHaveCount(0)
     await openTab(page, "table")

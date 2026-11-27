@@ -10,6 +10,8 @@ export type SyncOptions = {
   version: number
   /** 読んだときの作業（まだ保存が無ければ null） */
   saved: CaseWork | null
+  /** 保存する前に作業を保存の形にそろえる（ストアの作業は変えない） */
+  prepare: (work: CaseWork) => CaseWork
 }
 
 /**
@@ -47,7 +49,7 @@ export function createCaseSync(store: CaseStore, options: SyncOptions) {
       autosave.reopen()
       const forward = (work: CaseWork) => {
         forwarded = work
-        autosave.change(work)
+        autosave.change(options.prepare(work))
       }
       // 作業が変わったときだけ送る（保存の状態・runtime の変化では送らない）。外していた間の変更も送る
       const unsubscribe = store.subscribe((s) => {

@@ -2,7 +2,7 @@ import { toast } from "sonner"
 import { MAX_ADDED_ROWS } from "@/lib/cases/added"
 import type { CaseWork } from "@/lib/cases/state"
 import { canUndo, pushUndo, undo, undoEntry, type UndoEntry, type UndoKind } from "@/lib/cases/undo"
-import { addedCountAfter, applyChanges, approvedChange, decide, decisionOf, isAnswered, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
+import { addedCountAfter, applyChanges, decide, decisionOf, isAnswered, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
 import type { MappingPlan, ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
 import { errorMessage } from "@/lib/errors"
@@ -151,7 +151,7 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
     commit(store, { group: id, kind: "approval" }, (s) => {
       const w = s.work
       const edited = env.table(s).view?.edited ?? []
-      const overlaid = applyChanges(w, edited, items.map((i) => approvedChange(p, changes[i]!)))
+      const overlaid = applyChanges(w, edited, items.map((i) => changes[i]!))
       const replanned = nextPlan && items.some((i) => changes[i]!.kind === "plan") && w.plan ? { ...overlaid, plan: { ...w.plan, plan: nextPlan }, converted: false } : overlaid
       return { ...replanned, proposals: w.proposals.map((x) => (x.id === id ? decide(x, items, "applied") : x)) }
     })

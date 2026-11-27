@@ -1,13 +1,13 @@
 import { createContext, useContext } from "react"
 import { useUsdJpy } from "@/components/cost"
 import { useLocationSearch, type LocationSearch } from "@/components/convert/location-panel"
-import { useGyoshuSuggestion, type GyoshuSuggestionState } from "@/components/convert/fix-suggestion"
+import { useGyoshuSuggestion, type GyoshuSuggestionState } from "@/components/convert/gyoshu-suggestion"
 import { useCase, useCaseSession, useTable } from "@/components/cases/store/context"
 import { derive } from "@/components/cases/store/derive"
 import type { UsdJpy } from "@/lib/fx"
 
 /**
- * 案件の画面の道具のうち、自分で状態を持つもの（工事場所の一括調査・業種の AI の案・ドル円）。結果の変更案はストアの action（receiveRecorded）で足す。
+ * 案件の画面の道具のうち、自分で状態を持つもの（工事場所の一括調査・業種の AI の案・ドル円）。結果はストアの action（工事場所の変更案は receiveRecorded、業種の案は addGyoshuPlans）で足す。
  * 状態は画面のいくつかの部品が同じものを読むので、ここで1つずつ持って渡す。道具ごとに context を分け、各 hook は同じ状態なら同じものを返すので、
  * 読む部品はその道具の状態が変わったときだけ描き直る（children は各 Provider が描き直しても作り直さない）
  */
@@ -48,15 +48,8 @@ function FxProvider({ children }: { children: React.ReactNode }) {
 
 function GyoshuProvider({ children }: { children: React.ReactNode }) {
   const { actions, config } = useCaseSession()
-  // 業種の AI の案はチャットの流れの最後に出る（たたんだ窓には未読の印）
-  const gyoshu = useGyoshuSuggestion({
-    caseId: config.caseId,
-    onRecord: (r) => {
-      actions.receiveRecorded(r)
-      actions.chatArrived("new")
-    },
-    onCaseCost: actions.addCost,
-  })
+  // 業種の AI の案は業種の一覧の「案」に出す（表の値は変えない）
+  const gyoshu = useGyoshuSuggestion({ caseId: config.caseId, onPlans: actions.addGyoshuPlans, onCaseCost: actions.addCost })
   return <GyoshuContext.Provider value={gyoshu}>{children}</GyoshuContext.Provider>
 }
 

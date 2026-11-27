@@ -10,7 +10,7 @@ import type { CaseState } from "./create-case-store"
  */
 export type Derived = {
   /** 欄に出す変更案（出どころごと）: 開いているものと、承認を取り消せるもの（決め終わっても、取り消すまで欄に残す） */
-  panels: { location: Proposal[]; fix: Proposal[] }
+  panels: { location: Proposal[] }
   /** まだ決めていない問い合わせのメールの下書きの案がある（決めるまで「AI でメールの下書きを作る」を出さない） */
   pendingInquiryText: boolean
   /** 未決の工事場所の項目がある変更案がある（決めるまで次の一括調査を始めさせない） */
@@ -59,7 +59,7 @@ function deriveFrom(proposals: readonly Proposal[], undo: CaseState["work"]["und
   return {
     undoStates,
     lastOp: { gyoshu: last(GYOSHU_UNDO), confirm: last(CONFIRM_UNDO) },
-    panels: { location: panel("location"), fix: panel("fix") },
+    panels: { location: panel("location") },
     pendingInquiryText: pendingWhere((c) => c.kind === "inquiryMail"),
     undecidedLocation: pendingWhere((c) => c.kind === "location"),
   }

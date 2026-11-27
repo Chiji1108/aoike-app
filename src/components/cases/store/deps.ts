@@ -1,11 +1,10 @@
 import type { SaveRequest, SaveResponse } from "@/lib/cases/autosave"
 import { fetchCaseFile, uploadCaseFile } from "@/lib/cases/files-client"
 import type { CaseFile, CaseStatus, FileKind } from "@/lib/cases/types"
-import type { ProposalRecord } from "@/lib/chat/proposals"
 import { ADDRESS_API_PATH, lookupAddresses, type AddressLookup } from "@/lib/convert/address"
 import { planWithAi, runAiBatch } from "@/server/ai"
 import { saveCaseStateFn, updateCaseStatusFn } from "@/server/cases"
-import { approveRuleFn, recordProposalFn } from "@/server/chat-fns"
+import { approveRuleFn } from "@/server/chat-fns"
 import type { ChatPrefs } from "./create-case-store"
 
 type DataOf<F extends (opts: { data: never }) => unknown> = Omit<Parameters<F>[0]["data"], "caseId">
@@ -19,7 +18,6 @@ export type CaseDeps = {
   saveState: (req: SaveRequest, signal: AbortSignal) => Promise<SaveResponse>
   planWithAi: (req: DataOf<typeof planWithAi>) => ReturnType<typeof planWithAi>
   runAiBatch: (req: DataOf<typeof runAiBatch>) => ReturnType<typeof runAiBatch>
-  recordProposal: (record: ProposalRecord) => Promise<unknown>
   approveRule: (proposalId: string, item: number) => Promise<unknown>
   updateStatus: (status: CaseStatus) => Promise<unknown>
   uploadFile: (kind: FileKind, file: Blob, name: string) => Promise<CaseFile>
@@ -35,7 +33,6 @@ export function serverDeps(caseId: string): CaseDeps {
     saveState: (req, signal) => saveCaseStateFn({ data: { caseId, ...req }, signal }),
     planWithAi: (req) => planWithAi({ data: { caseId, ...req } }),
     runAiBatch: (req) => runAiBatch({ data: { caseId, ...req } }),
-    recordProposal: (record) => recordProposalFn({ data: { caseId, record } }),
     approveRule: (proposalId, item) => approveRuleFn({ data: { caseId, proposalId, item } }),
     updateStatus: (status) => updateCaseStatusFn({ data: { id: caseId, status } }),
     uploadFile: (kind, file, name) => uploadCaseFile(caseId, kind, file, name),

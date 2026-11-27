@@ -2,9 +2,8 @@ import { createServerFn } from "@tanstack/react-start"
 import { z } from "zod"
 import { getCsvDb } from "@/db"
 import * as store from "./case-store"
-import { chatChangeSchema, proposalSchema } from "@/lib/chat/proposals"
 import { ruleTextSchema } from "@/lib/chat/rules"
-import { endChat, readProposal, recordProposal, stopChat } from "./chat"
+import { endChat, readProposal, stopChat } from "./chat"
 import { authMiddleware } from "./middleware"
 
 /** 会話を終える（AI に渡したファイルを消す）。画面に足す「終えた」印を返す。会話が無ければ null */
@@ -36,12 +35,3 @@ export const approveRuleFn = createServerFn({ method: "POST" })
     if (!text.success) throw new Error(text.error.issues[0]?.message ?? "ルールの追記の形が正しくありません")
     return store.appendRuleOnce(db, target, { caseId: kase.id, proposalId: data.proposalId, item: data.item, text: text.data })
   })
-
-/** 画面が置く変更案の項目の数の上限（R2 の記録と画面の一覧が重くなりすぎないように） */
-const MAX_RECORDED_CHANGES = 20_000
-
-/** 画面が作った変更案（「AI で案を出す」の案）を置く。形はここと recordProposal で確かめる */
-export const recordProposalFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
-  .validator(z.object({ caseId: z.string().min(1).max(64), record: z.object({ proposal: proposalSchema, changes: z.array(chatChangeSchema).max(MAX_RECORDED_CHANGES) }) }))
-  .handler(({ data }) => recordProposal(data.caseId, data.record))

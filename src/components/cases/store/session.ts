@@ -1,6 +1,7 @@
 import type { UploadNote } from "@/components/cases/case-report"
 import type { WorkTab } from "@/components/cases/work-tabs"
 import type { StepId } from "@/lib/cases/steps"
+import { listedGyoshuPlans } from "@/lib/cases/todo"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
@@ -48,7 +49,14 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps) {
     addresses,
     previousLoad: { current: null },
   }
-  const sync = createCaseSync(store, { caseId: page.kase.id, save: deps.saveState, version: page.state?.version ?? 0, saved: page.state ? store.getState().work : null })
+  const sync = createCaseSync(store, {
+    caseId: page.kase.id,
+    save: deps.saveState,
+    version: page.state?.version ?? 0,
+    saved: page.state ? store.getState().work : null,
+    // 業種の AI の案は、業種の一覧に今いる行の分だけを保存する（lib/cases/todo.ts の listedGyoshuPlans）
+    prepare: (w) => listedGyoshuPlans(w, env.view(store.getState()).todo.gyoshu.rows),
+  })
 
   const actions = {
     openSource: (file: CaseFile, replan: boolean) => openSource(env, file, replan),
@@ -82,6 +90,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps) {
     toggleRange: (keys: readonly string[], included: boolean, skipped: number) => table.toggleRange(env, keys, included, skipped),
     confirmCell: (rowKey: string, field: KojiFieldId) => table.confirmCell(env, rowKey, field),
     decideGyoshu: (decisions: readonly GyoshuDecision[], how: "plan" | "pick") => table.decideGyoshu(env, decisions, how),
+    addGyoshuPlans: (sourceFileId: string | null, plans: readonly { rowKey: string; edit: CellEdit }[]) => table.addGyoshuPlans(env, sourceFileId, plans),
     changeSelection: (mode: SelectionMode) => table.changeSelection(env, mode),
     toggleInquiry: (key: string, ask: boolean) => table.toggleInquiry(env, key, ask),
     dismissRemaining: () => table.dismissRemaining(env),
