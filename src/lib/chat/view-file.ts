@@ -10,14 +10,10 @@ import { viewKindOf } from "./view-kind"
  * 見せるのは AI が view_file を呼んだときだけ（呼ぶと会話の履歴に入り、以後の往復はプロンプトキャッシュで読む）
  */
 
-/** 1回の view_file で見せられる PDF のページ数（1ページはおよそ 1,500〜3,000 トークン） */
-export const MAX_VIEW_PAGES = 20
-/** 1つの会話で見せられる PDF のページ数の合計（見たページは履歴に残り、以後の往復で毎回読むので費用と文脈を抑える。会話を終えるとまた見られる） */
+/** 1つの会話で見せられる PDF のページ数の合計（Claude API の1回のリクエストの上限。見たページは履歴に残り、以後の往復で毎回送る。会話を終えるとまた見られる） */
 export const MAX_VIEW_PAGES_PER_CHAT = 100
 /** 1つの会話で見せられる画像の数（1回の呼び出しで 20 枚を超えると、Claude は1枚の縦横の上限を厳しくする） */
 export const MAX_VIEW_IMAGES_PER_CHAT = 20
-/** 1回の指示で view_file を呼べる回数（ほかの道具の回数〔MAX_TOOL_CALLS〕とは別に数える。ページの多い PDF を分けて見ても、表を直す道具まで届く） */
-export const MAX_VIEW_CALLS = 10
 /**
  * 見せられる画像の大きさ。Claude API の1枚の上限は base64 で 10MB（vision の docs の Request limits）で、元の大きさで 7.5MB。
  * Files API の file_id で渡すときの1枚の上限は docs に別に書かれていない（Files API の上限は1ファイル 500MB）ので、同じ上限にする
@@ -208,8 +204,6 @@ async function viewNow(state: ViewState, input: ViewFileInput): Promise<ViewResu
   const pages = { ...range, total }
   if (state.shown.has(shownKey(f.name, range))) return { ok: true, repeated: true, file: f.name, pages, note: REPEATED_NOTE }
   const count = range.to - range.from + 1
-  if (count > MAX_VIEW_PAGES)
-    return { ok: false, file: f.name, totalPages: total, error: `1回に見られるのは ${MAX_VIEW_PAGES} ページまでです（この PDF は ${total} ページ）。pages で分けて見てください（例「1-${MAX_VIEW_PAGES}」）` }
   const left = MAX_VIEW_PAGES_PER_CHAT - state.pages
   if (count > left)
     return {

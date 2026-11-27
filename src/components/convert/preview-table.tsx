@@ -146,7 +146,6 @@ export function PreviewTable({
   onToggleRange,
   selection,
   onSelection,
-  allHint,
   filter,
   onFilterChange,
   fixes,
@@ -173,7 +172,6 @@ export function PreviewTable({
   selection: SelectionMode
   onSelection: (m: SelectionMode) => void
   /** 7割ルールのまま手で載せた行が多いときの「全件にしますか？」（出さないときは null） */
-  allHint: { count: number; onAll: () => void; onClose: () => void } | null
   /** 絞り込み（案件の画面が持つ。直すの段は直す行・表はすべての行。聞き返しの「表で見る」を押しても変わる） */
   filter: TableFilter
   onFilterChange: (f: TableFilter) => void
@@ -533,23 +531,6 @@ export function PreviewTable({
               <Undo2 />「{CONFIRM_LABEL}」を取り消す
             </Button>
           )}
-        </div>
-      )}
-
-      {allHint && (
-        // 幅は中身だけ（右端まで広げると、ボタンが右下のチャットの窓の下に入る）
-        <div className="flex w-fit max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs text-sky-950" role="status" data-testid="all-hint">
-          <span className="min-w-0">
-            手で載せた行が <span className="num">{allHint.count}</span> 行あります。全件にしますか？（7割の判定はそのまま確かめられます）
-          </span>
-          <span className="flex items-center gap-1">
-            <Button size="xs" variant="outline" className="bg-background" onClick={allHint.onAll} data-testid="all-hint-apply">
-              全件にする
-            </Button>
-            <Button size="icon-xs" variant="ghost" aria-label="この案内を閉じる" title="この案件では出しません" onClick={allHint.onClose} data-testid="all-hint-close">
-              <X />
-            </Button>
-          </span>
         </div>
       )}
 

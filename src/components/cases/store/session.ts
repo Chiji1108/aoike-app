@@ -27,14 +27,14 @@ import { createCaseView } from "./case-view"
 import { createCaseStore, initialCaseState, setRuntime, setUi, type CaseState, type ChatSize, type ChatTarget, type Source } from "./create-case-store"
 import type { CaseDeps } from "./deps"
 import type { CaseEnv, SessionPage } from "./env"
-import { createCaseSync, type PeerChannel } from "./sync"
+import { createCaseSync } from "./sync"
 import { createTableDerive } from "./table"
 
 /**
  * 案件の画面の1回分（案件ごとに1つ。CaseWorkspace が作る）: ストア・表の派生・待つ処理（action）・保存と同期をまとめる。
  * 自動の処理（住所の値が変わったら引く・計画が決まって変換していなければ変換する）は、画面の effect ではなくストアの変化を見て始める
  */
-export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: () => PeerChannel | null) {
+export function createCaseSession(page: SessionPage, deps: CaseDeps) {
   const store = createCaseStore(initialCaseState(page, deps.chatPrefs.load()))
   const addresses = addressCache(deps.lookupAddresses)
   const config = { chatEnabled: page.chatEnabled, caseId: page.kase.id, customerName: page.customer.name, previous: page.previous }
@@ -48,7 +48,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     addresses,
     previousLoad: { current: null },
   }
-  const sync = createCaseSync(store, { caseId: page.kase.id, save: deps.saveState, version: page.state?.version ?? 0, saved: page.state ? store.getState().work : null, channel })
+  const sync = createCaseSync(store, { caseId: page.kase.id, save: deps.saveState, version: page.state?.version ?? 0, saved: page.state ? store.getState().work : null })
 
   const actions = {
     openSource: (file: CaseFile, replan: boolean) => openSource(env, file, replan),
@@ -91,7 +91,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     setRounding: (r: Rounding) => table.setRounding(env, r),
     setBasis: (code: string, side: "total" | "motouke", v: number | undefined) => table.setBasis(env, code, side, v),
     clearManual: () => table.clearManual(env),
-    closeAllHint: () => table.closeAllHint(env),
     answerReport: (id: string, value: string) => table.answerReport(env, id, value),
     // 画面（actions/ui.ts）
     setWide: (wide: boolean) => ui.setWide(env, wide),
@@ -154,7 +153,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     chatRequest,
     settle: sync.settle,
     /**
-     * 画面につなぐ（保存の層・別のタブとの道・自動で始める処理）。変換の元をまだ読んでいなければ読み、計画が無ければ立てる。去年の Excel も読み始める。
+     * 画面につなぐ（保存の層・自動で始める処理）。変換の元をまだ読んでいなければ読み、計画が無ければ立てる。去年の Excel も読み始める。
      * 返す関数で外す: 自動保存は待っている変更を送ってそのあとは受けず、自動で始める処理をやめ、世代を上げて待っている元・計画・変換の結果を捨てる
      * （画面を離れたあとに AI の結果を入れて保存しない。開き直した画面が読み直す）
      */

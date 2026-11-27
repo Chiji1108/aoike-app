@@ -3,7 +3,7 @@ import { editKey, type CellEdit, type CellEdits, type RowResult } from "../conve
 import { addedRowSchema, type AddedRow } from "../cases/added"
 import type { Basis, SelectionMode, TaxMode } from "../convert/koji-selection"
 import type { Rounding } from "../convert/transforms"
-import { basisSchema, cellEditSchema, fieldIdSchema, legacySelection, roundingSchema, selectionSchema, taxSchema } from "../schemas"
+import { basisSchema, cellEditSchema, fieldIdSchema, roundingSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 import { foundSchema, siteRefSchema, SOURCE_LABELS, type Found } from "../location/sites"
 import { planPatchSchema, type PlanPatch } from "../convert/plan-patch"
@@ -50,8 +50,6 @@ export type ChatChange =
    * （site は外に送ってよい値だけ）
    */
   | ({ kind: "location"; site: { key: string; workName: string; client: string }; rowKeys: string[] } & Found)
-  /** 前の形の、顧客への問い合わせの質問の文（今は質問の文を使わないので、承認しても何もしない。保存した変更案を読めるように残す） */
-  | { kind: "inquiry"; id: string; text: string }
   /** 問い合わせのメールの件名と前置き（承認すると案件の作業のメールの下書きにする） */
   | { kind: "inquiryMail"; subject: string; intro: string }
 
@@ -243,7 +241,6 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
       case "inquiryMail":
         inquiryText = applyInquiryChange(inquiryText, c)
         break
-      case "inquiry":
       case "rule":
       case "plan":
         break
@@ -268,20 +265,13 @@ export const chatChangeSchema: z.ZodType<ChatChange> = z.discriminatedUnion("kin
   z.object({ kind: z.literal("ask"), rowKey: z.string(), field: fieldIdSchema, reason: z.string() }),
   z.object({ kind: z.literal("include"), rowKey: z.string(), include: z.boolean() }),
   z.object({ kind: z.literal("add"), rowKey: addedRowSchema.shape.key, cells: z.partialRecord(fieldIdSchema, cellEditSchema) }),
-  // 前の形の変更案（alreadyApplied）も読む
-  z
-    .object({
-      kind: z.literal("settings"),
-      tax: taxSchema.optional(),
-      selection: selectionSchema.optional(),
-      alreadyApplied: z.boolean().optional(),
-      basis: basisSchema.optional(),
-      rounding: roundingSchema.optional(),
-    })
-    .transform(({ alreadyApplied, selection, ...c }) => {
-      const s = legacySelection(selection, alreadyApplied)
-      return { ...c, ...(s ? { selection: s } : {}) }
-    }),
+  z.object({
+    kind: z.literal("settings"),
+    tax: taxSchema.optional(),
+    selection: selectionSchema.optional(),
+    basis: basisSchema.optional(),
+    rounding: roundingSchema.optional(),
+  }),
   z.object({ kind: z.literal("rule"), scope: ruleScopeSchema, text: z.string() }),
   z.object({ kind: z.literal("plan"), patch: planPatchSchema, before: planPatchSchema.optional() }),
   foundSchema.extend({
@@ -289,8 +279,6 @@ export const chatChangeSchema: z.ZodType<ChatChange> = z.discriminatedUnion("kin
     site: siteRefSchema,
     rowKeys: z.array(z.string()).min(1).max(20_000),
   }),
-  // 前の形の質問の文（対象は読まない）
-  z.object({ kind: z.literal("inquiry"), id: z.string().max(64), text: z.string() }),
   z.object({ kind: z.literal("inquiryMail"), subject: subjectSchema, intro: introSchema }),
 ])
 

@@ -35,14 +35,17 @@ export function WorkPanel() {
   return (
     <section className="flex h-full min-h-0 flex-col bg-background" aria-label="作業の画面" data-testid="work-panel" data-view={view}>
       <Toolbar />
-      {/* 段の並びは段か表のどれかを選んだまま。道具を開いている間は段・表の中身を隠し、道具は Tabs の外に出す */}
+      {/*
+       * Tabs の値は見えているもの（道具を開いている間は道具。段・表のタブはどれも選ばれていない）。段・表を押すと値が変わるので、
+       * onValueChange で道具を閉じてその段・表に移る。道具の中身は Tabs の外に出す（段の並びで選んでいる段・表は ui.tab に残る）
+       */}
       <Tabs
-        value={view}
+        value={tool ?? view}
         onValueChange={(v: StepView) => (isStep(v) ? actions.goStep(v) : actions.setTab(v))}
         className={cn("min-h-0 gap-0", tool ? "flex-none" : "flex-1")}
       >
         <StepBar />
-        <div hidden={tool !== null} className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
         <TabsContent value="answer" keepMounted className={pad} data-testid="answer-section" data-step-panel="answer">
           <AnswerTab />
         </TabsContent>

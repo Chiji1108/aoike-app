@@ -3,6 +3,7 @@ import { Copy, Send } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import type { CaseStatus } from "@/lib/cases/types"
 import type { RowResult } from "@/lib/convert/convert"
 import { fieldLabel } from "@/lib/spec/koji-keireki"
 import { errorMessage } from "@/lib/errors"
@@ -28,7 +29,7 @@ export function InquiryPanel({
   text,
   onText,
   onToggle,
-  inquiring,
+  status,
   onSent,
   busy,
   numbers,
@@ -40,8 +41,8 @@ export function InquiryPanel({
   text: InquiryText
   onText: (next: (prev: InquiryText) => InquiryText) => void
   onToggle: (key: string, ask: boolean) => void
-  /** 案件が問い合わせ中（送った・返事待ち） */
-  inquiring: boolean
+  /** 案件の状態（問い合わせ中＝送った・返事待ち。完了なら「送った」は出さない） */
+  status: CaseStatus
   /** 「送った」: 案件の状態を問い合わせ中にする（コピーでは送った扱いにしない。戻すときは案件の状態を切り替える） */
   onSent: () => void
   /** 変換し直している間（表は前の行なので、本文のコピーと「送った」を押せない） */
@@ -139,12 +140,14 @@ export function InquiryPanel({
           </div>
           <Textarea readOnly className="h-64 font-mono text-xs" value={email.body} data-testid="inquiry-email" />
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={onSent} disabled={busy || inquiring} title={busy ? BUSY_TITLE : undefined} data-testid="inquiry-sent">
-              <Send />
-              送った
-            </Button>
+            {status !== "done" && (
+              <Button variant="outline" onClick={onSent} disabled={busy || status === "inquiring"} title={busy ? BUSY_TITLE : undefined} data-testid="inquiry-sent">
+                <Send />
+                送った
+              </Button>
+            )}
             <span className="text-xs text-muted-foreground" data-testid="inquiry-sent-state">
-              {inquiring ? "問い合わせ中（返事待ち）" : "メールを送ったら押します（案件を問い合わせ中にします）"}
+              {status === "done" ? "案件は完了しています" : status === "inquiring" ? "問い合わせ中（返事待ち）" : "メールを送ったら押します（案件を問い合わせ中にします）"}
             </span>
           </div>
           <p className="text-xs text-muted-foreground" data-testid="answer-note">

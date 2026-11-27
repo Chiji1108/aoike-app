@@ -13,24 +13,26 @@ import { Cost, useUsdJpy } from "@/components/cost"
 import { formatUsd } from "@/lib/cost"
 import { errorMessage } from "@/lib/errors"
 import { groupBy } from "@/lib/group-by"
+import { todayIso } from "@/lib/period"
 import { createCaseFn, getCustomerPageFn } from "@/server/cases"
 
 export const Route = createFileRoute("/_authed/csv/customers/$customerId")({
   loader: async ({ params }) => {
     const page = await getCustomerPageFn({ data: { id: params.customerId } })
     if (!page) throw notFound()
-    return page
+    // 新しい案件の年度の初期値は日本時間の今年。読み込みで1回だけ決める（サーバーの描画と画面で同じ値にする。サーバーの時計は UTC）
+    return { ...page, thisYear: Number(todayIso().slice(0, 4)) }
   },
   component: CustomerPage,
 })
 
 function CustomerPage() {
-  const { customer, cases, rules } = Route.useLoaderData()
+  const { customer, cases, rules, thisYear } = Route.useLoaderData()
   const fx = useUsdJpy()
   /** 年度ごとの AI の費用（その年度の案件の合計） */
   const costByYear = [...groupBy(cases, (c) => c.fiscalYear)].map(([fiscalYear, cs]) => ({ fiscalYear, usd: cs.reduce((n, c) => n + c.costUsd, 0) }))
   const router = useRouter()
-  const [year, setYear] = useState(String(new Date().getFullYear()))
+  const [year, setYear] = useState(String(thisYear))
 
   async function createCase(e: React.FormEvent) {
     e.preventDefault()

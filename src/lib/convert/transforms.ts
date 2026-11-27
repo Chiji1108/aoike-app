@@ -6,7 +6,7 @@ import { addressKey, type AddressBook } from "./address"
 import type { AiItemResult, AiTaskId } from "./ai-tasks"
 import { formatYearMonth, parsePeriod, parseYearMonth } from "./dates"
 import { placePersons } from "./persons"
-import { collapseSpaces, matchKey, nfkc, removeSpaces, toFullWidth } from "./text"
+import { collapseSpaces, matchKey, nfkc, removeSpaces } from "./text"
 
 /** 金額の千円未満の扱い（切り捨て・四捨五入）。並びは作業の画面の選ぶ欄の順 */
 export const ROUNDINGS = ["floor", "round"] as const
@@ -115,11 +115,6 @@ function prefectureOf(raw: string) {
 /** 「○」「✓」「1」など、有りを表す記号か */
 export function isFlagOn(raw: string) {
   return FLAG_ON_RE.test(nfkc(raw))
-}
-
-/** 全角にそろえる（前の版の保存済みの計画の rule.fullWidthText だけが使う） */
-function fullWidthText(raw: string) {
-  return toFullWidth(collapseSpaces(raw))
 }
 
 /** 空白で区切られた氏名を「姓　名」に（区切りが無ければそのまま） */
@@ -234,18 +229,6 @@ export const TRANSFORMS = {
     multiColumn: true,
     run: (inputs) => value(collapseSpaces(join(inputs))),
     cleanAnswer: collapseSpaces,
-  },
-  "rule.fullWidthText": {
-    id: "rule.fullWidthText",
-    label: "全角にする（使わない）",
-    kind: "rule",
-    accepts: ["text"],
-    // どの項目にも使わない（元データの表記〔半角カナ・半角スペース・㈱など〕は変えない）。前の版で保存した計画を読めるようにだけ残す。
-    // 保存済みの計画に残っていれば reviewPlanTransforms がその項目の決まった変換に替える
-    fits: () => false,
-    multiColumn: true,
-    run: (inputs) => value(fullWidthText(join(inputs))),
-    cleanAnswer: fullWidthText,
   },
   "rule.gyoshu": {
     id: "rule.gyoshu",
@@ -555,16 +538,6 @@ export function getTransform(id: TransformId): Transform {
 export function transformFits(t: Transform, vt: ValueType) {
   if (!t.accepts.includes(valueTypeKey(vt)) || !(t.fits?.(vt) ?? true)) return false
   return vt.type !== "text" || !vt.person || t.anonymizes === vt.person
-}
-
-/**
- * 項目に使える変換のうち、最初に選ぶもの（計画の表で取り込み元を変えたとき・保存済みの計画の使えない変換を替えるとき）。
- * 個人名を含みうる項目は匿名化する変換（登録表の順）、ほかはルールの変換を先に。multi なら複数の列を受け取れるものだけ
- */
-export function preferredTransform(vt: ValueType, multi: boolean): TransformId {
-  const usable = transformsFor(vt).filter((t) => !multi || t.multiColumn)
-  const pick = vt.type === "text" && vt.person ? usable[0] : (usable.find((t) => t.kind === "rule") ?? usable[0])
-  return (pick?.id ?? "ai.freeform") as TransformId
 }
 
 export function transformsFor(vt: ValueType): Transform[] {

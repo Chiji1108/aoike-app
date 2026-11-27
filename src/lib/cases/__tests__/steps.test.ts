@@ -43,7 +43,7 @@ test("載せる工事のおすすめ: 少ない行・決算書の額より小さ
 test("載せる工事のおすすめの理由は去年に合わせる: 去年に表を出していれば去年の値、去年があって出していなければ「初めての顧客」と言わない", () => {
   expect(selectionAdvice({ previous: { selection: "all" }, rows: 40, summary: [] })).toEqual({ recommended: "all", reason: "去年は全件でした" })
   expect(selectionAdvice({ previous: { selection: "rule7" }, rows: 3, summary: [] })).toEqual({ recommended: "rule7", reason: "去年は7割ルールでした" })
-  expect(selectionAdvice({ previous: { selection: null }, rows: 40, summary: [] }).reason).toBe("去年は表を出していなかったので、7割ルールから始めます")
+  expect(selectionAdvice({ previous: { selection: null }, rows: 40, summary: [] }).reason).toBe("去年は載せる工事を決めていなかったので、7割ルールから始めます")
   expect(selectionAdvice({ previous: null, rows: 40, summary: [] }).reason).toBe("初めての顧客は7割ルールから始めます")
 })
 

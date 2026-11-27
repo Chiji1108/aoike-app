@@ -7,7 +7,7 @@ import { SELECTION_LABELS, type GyoshuSummary, type SelectionMode } from "@/lib/
  * - データがすでに顧客の側で絞られていそうなら全件: 載せうる行が少ない（1行以上 FEW_ROWS 行以下。0 行は数で決めない）、
  *   または決算書の額を入れた業種で、表の合計がその決算書の額の FILTERED_RATIO 以下（7割で選んだあとの一覧が届いたように見える）。
  *   比べるのは決算書の額を入れた業種の行だけで、金額は7割の計算の税（rule7Tax）にそろえた業種ごとの集計（summarizeKoji。7割の表と同じ数）
- * - ほかは7割ルール（理由は、去年の案件が無ければ初めての顧客、あれば去年は表を出していなかった）
+ * - ほかは7割ルール（理由は、去年の案件が無ければ初めての顧客、あれば去年は載せる工事を決めていなかった〔変換していない・答えていない〕）
  * 顧客ルール（文章のルール）からは引かない（決まった形の項目が無い）
  */
 
@@ -34,5 +34,5 @@ export function selectionAdvice(input: {
   const table = entered.reduce((s, g) => s + g.total, 0)
   if (book > 0 && table <= book * FILTERED_RATIO)
     return { recommended: "all", reason: `表の合計が決算書の額の ${Math.round((table / book) * 100)}% で、顧客の側で選んだ一覧に見えます` }
-  return { recommended: "rule7", reason: input.previous ? "去年は表を出していなかったので、7割ルールから始めます" : "初めての顧客は7割ルールから始めます" }
+  return { recommended: "rule7", reason: input.previous ? "去年は載せる工事を決めていなかったので、7割ルールから始めます" : "初めての顧客は7割ルールから始めます" }
 }

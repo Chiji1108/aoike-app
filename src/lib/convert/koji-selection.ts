@@ -259,15 +259,3 @@ export function rangeToggle(
   return { keys, skippedExcluded }
 }
 
-/**
- * 7割ルールのまま手で載せた行がこの数以上になったら、表の上で「全件にしますか？」と1行で案内する。
- * 7割の選び直しに漏れた数行を足すのはよくあるが、10行は1業種の7割の行より多いことが多く、全件のつもりで1行ずつ付けている見込みが高い
- */
-export const ALL_HINT_MANUAL = 10
-
-/** 手で載せた行の数（7割・全件で載らないのに職員がチェックで載せた行） */
-export const manualIncludedCount = (inclusion: ReadonlyMap<string, Inclusion>) => {
-  let n = 0
-  for (const inc of inclusion.values()) if (inc.included && inc.reason === "manual") n++
-  return n
-}

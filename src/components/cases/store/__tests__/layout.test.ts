@@ -4,15 +4,15 @@ import type { ChatPrefs } from "../create-case-store"
 import type { CaseDeps } from "../deps"
 import { createCaseSession } from "../session"
 import { currentStep, nextStep, stepDone } from "@/lib/cases/steps"
-import { newProposal } from "@/lib/chat/proposals"
+import { newProposal, type ChatChange } from "@/lib/chat/proposals"
+import { inquiryKey } from "@/lib/inquiry/inquiry"
 import { receiveProposal } from "../actions/proposals"
 import { fakeDeps, FILES, page } from "./helpers"
 
-const noChannel = () => null
 /** 待っている処理（microtask・タイマー）を進める */
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
-// 画面につなぐ（connect）と window の beforeunload・pagehide を見る
+// 画面につなぐ（connect）と window の beforeunload を見る
 beforeEach(() => {
   vi.stubGlobal("window", new EventTarget())
 })
@@ -22,7 +22,7 @@ afterEach(() => {
 
 /** 合成のサンプルを変換し終えた画面の1回分（wide は画面の幅） */
 async function converted(wide: boolean) {
-  const s = createCaseSession(page(), fakeDeps(), noChannel)
+  const s = createCaseSession(page(), fakeDeps())
   s.connect()
   s.actions.setWide(wide)
   await s.actions.openSource(FILES[0]!, true)
@@ -144,6 +144,21 @@ describe("並べ方と画面の action（ui）", () => {
     expect(todo()).toMatchObject({ left: before.left, active: before.active })
   })
 
+  test("「残りは聞かない」は、顧客の回答の変更案で承認を待つセルを外さない（帯の件数にも数えない）", async () => {
+    const s = await converted(true)
+    const view = () => s.view(s.store.getState())
+    const cells = view().inquiries.flatMap((q) => (q.kind === "cell" ? [q] : []))
+    expect(cells.length).toBeGreaterThan(1)
+    const target = cells[0]!
+    const changes: ChatChange[] = [{ kind: "cell", rowKey: target.rowKey, field: target.field, edit: { value: "合成の答え", by: "customer" } }]
+    receiveProposal(s.store, { proposal: newProposal("a", { kind: "chat", messageId: "m" }, changes, null), changes }, "replace")
+    expect(view().todo.inquiry.left).toBe(cells.length - 1)
+    s.actions.dismissRemaining()
+    const dismissed = s.store.getState().work.dismissed
+    expect(dismissed.has(inquiryKey(target))).toBe(false)
+    expect(cells.slice(1).every((q) => dismissed.has(inquiryKey(q)))).toBe(true)
+  })
+
   test("並べ方は同じ状態なら同じもの（selector が描画ごとに新しいものを返さない）", async () => {
     const s = await converted(true)
     const a = layout(s)
@@ -153,7 +168,7 @@ describe("並べ方と画面の action（ui）", () => {
 
   test("PDF だけの案件（AI が足した行あり）に Excel を付けて元にしないと答えても、チャットは使える（変換の元は作業の sourceFileId だけで決める）", async () => {
     const pdf = { ...FILES[0]!, id: "p1", name: "合成.pdf" }
-    const s = createCaseSession({ ...page(), files: [pdf] }, fakeDeps(), noChannel)
+    const s = createCaseSession({ ...page(), files: [pdf] }, fakeDeps())
     s.connect()
     const view = () => s.view(s.store.getState())
     expect(view()).toMatchObject({ noSheetSource: true, chatReady: true })
@@ -167,17 +182,17 @@ describe("並べ方と画面の action（ui）", () => {
 
   test("元を選んでいない案件: 表のファイルが無ければ表を一から作るチャット、読める表のファイルがあれば元を選んでもらう", async () => {
     const pdf = { ...FILES[0]!, id: "p1", name: "合成.pdf" }
-    const pdfOnly = createCaseSession({ ...page(), files: [pdf] }, fakeDeps(), noChannel)
+    const pdfOnly = createCaseSession({ ...page(), files: [pdf] }, fakeDeps())
     pdfOnly.connect()
     expect(pdfOnly.view(pdfOnly.store.getState())).toMatchObject({ noSheetSource: true, sourceChoices: [], chatReady: true })
-    const withSheet = createCaseSession({ ...page(), files: [pdf, FILES[0]!] }, fakeDeps(), noChannel)
+    const withSheet = createCaseSession({ ...page(), files: [pdf, FILES[0]!] }, fakeDeps())
     withSheet.connect()
     expect(withSheet.view(withSheet.store.getState())).toMatchObject({ noSheetSource: false, sourceChoices: [FILES[0]], chatReady: false })
   })
 
   test("AI が足した行のある案件で、元を開くのに失敗してもチャットは使えるまま", async () => {
     const pdf = { ...FILES[0]!, id: "p1", name: "合成.pdf" }
-    const s = createCaseSession({ ...page(), files: [pdf, FILES[0]!] }, fakeDeps({ fetchFile: async () => new Uint8Array(0) }), noChannel)
+    const s = createCaseSession({ ...page(), files: [pdf, FILES[0]!] }, fakeDeps({ fetchFile: async () => new Uint8Array(0) }))
     s.connect()
     s.store.setState((st) => ({ work: { ...st.work, added: [{ key: "add-1" }] } }))
     await s.actions.openSource(FILES[0]!, true)
@@ -185,30 +200,28 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.view(s.store.getState())).toMatchObject({ noSheetSource: true, chatReady: true })
   })
 
-  test("読めない表のファイル（壊れた zip）は保存せずに知らせる", async () => {
+  test("読めない表のファイル（壊れた zip）・中身のあるシートが無いブックは保存せずに知らせる", async () => {
     const uploadFile = vi.fn(fakeDeps().uploadFile)
-    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ uploadFile }), noChannel)
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ uploadFile }))
     s.connect()
     await s.actions.attach([new File([new Uint8Array([0x50, 0x4b, 3, 4, 1, 2, 3])], "壊れた.xlsx")])
     expect(uploadFile).not.toHaveBeenCalled()
     expect(s.store.getState().runtime.notes.at(-1)).toMatchObject({ name: "壊れた.xlsx", tone: "error", text: expect.stringContaining("読めないファイルです") })
-  })
-
-  test("元にできない表（シートが空）だけでは、表を一から作るチャットにならない", async () => {
-    const s = createCaseSession({ ...page(), files: [] }, fakeDeps(), noChannel)
-    s.connect()
     await s.actions.attach([new File([new Uint8Array(0)], "空の表.xlsx")])
-    expect(s.store.getState().runtime.sourceError).not.toBeNull()
-    expect(s.view(s.store.getState())).toMatchObject({ noSheetSource: false, chatReady: false })
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(s.store.getState().runtime.notes.at(-1)).toMatchObject({ name: "空の表.xlsx", tone: "error", text: expect.stringContaining("シートが空です") })
+    expect(s.store.getState().runtime.files).toEqual([])
+    expect(s.store.getState().runtime.sourceError).toBeNull()
   })
 
-  test("元にできない表を付けたら元にせず、同じ回の次の表を元に試す（付けたときに読んだシートを使い、取り直さない）", async () => {
+  test("中身のあるシートが無いブックは保存せず、同じ回の次の表を元にする（付けたときに読んだシートを使い、取り直さない）", async () => {
     const fetchFile = vi.fn(fakeDeps().fetchFile)
-    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile }), noChannel)
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile }))
     s.connect()
     const bytes = fixture("sample-messy.xlsx")
     await s.actions.attach([new File([new Uint8Array(0)], "空の表.xlsx"), new File([bytes as BlobPart], "合成.xlsx")])
     const files = s.store.getState().runtime.files
+    expect(files.map((f) => f.name)).toEqual(["合成.xlsx"])
     await vi.waitFor(() => expect(s.store.getState().work.sourceFileId).toBe(files.find((f) => f.name === "合成.xlsx")!.id))
     expect(s.store.getState().ui.dialogs.pendingSources).toEqual([])
     expect(fetchFile).not.toHaveBeenCalled()
@@ -248,7 +261,7 @@ describe("チャットの窓（広い画面で表があるとき）", () => {
     return { saved, prefs }
   }
   async function convertedWith(prefs: CaseDeps["chatPrefs"]) {
-    const s = createCaseSession(page(), fakeDeps({ chatPrefs: prefs }), noChannel)
+    const s = createCaseSession(page(), fakeDeps({ chatPrefs: prefs }))
     s.connect()
     s.actions.setWide(true)
     await s.actions.openSource(FILES[0]!, true)

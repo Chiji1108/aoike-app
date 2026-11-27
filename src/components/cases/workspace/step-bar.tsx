@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils"
  */
 export function StepBar() {
   const { todo, view, tool } = useCaseView(useShallow((v) => ({ todo: v.todo, view: v.view, tool: v.tool })))
-  const actions = useCaseActions()
   const current = currentStep(todo)
   const list = useRef<HTMLDivElement>(null)
   // 開いている段が横に隠れていれば見えるところまで送る（狭い画面。「次は ◯◯ →」・残りの段・チャットから開いたときも）
@@ -48,12 +47,11 @@ export function StepBar() {
           {STEPS.map((id, i) => (
             <span key={id} className="flex shrink-0 items-center">
               {i > 0 && <ChevronRight className="mx-0.5 size-3 shrink-0 text-muted-foreground/50" aria-hidden />}
-              {/* 道具を開いている間に、選んでいる段・表を押しても道具を閉じて戻る（値が変わらないと Tabs は知らせないので押したときに閉じる） */}
-              <StepTab id={id} todo={todo} current={id === current} onPress={actions.closeTool} />
+              <StepTab id={id} todo={todo} current={id === current} />
             </span>
           ))}
           <span className="mx-2 h-5 w-px shrink-0 bg-border" aria-hidden />
-          <TabsTrigger value="table" onClick={actions.closeTool} className="flex-none px-2" title="すべての行（表計算ソフトのように全体を見る）" data-testid="tab-table">
+          <TabsTrigger value="table" className="flex-none px-2" title="すべての行（表計算ソフトのように全体を見る）" data-testid="tab-table">
             <Table2 className="size-3.5" />
             {VIEW_LABELS.table}
             <span className="num text-xs text-muted-foreground">{todo.fix.all}</span>
@@ -69,14 +67,13 @@ export function StepBar() {
 /** 段の数の単位（業種を決める・直すは行、問い合わせ・ダウンロードは件。答えるは数だけ） */
 const STEP_UNITS: Record<StepId, string> = { answer: "", gyoshu: "行", fix: "行", inquiry: "件", export: "件" }
 
-function StepTab({ id, todo, current, onPress }: { id: StepId; todo: CaseTodo; current: boolean; onPress: () => void }) {
+function StepTab({ id, todo, current }: { id: StepId; todo: CaseTodo; current: boolean }) {
   const done = stepDone(todo, id)
   const count = stepCount(todo, id)
   const waiting = id === "inquiry" && todo.inquiry.state === "waiting"
   const left = id === "export" && remainingSteps(todo).length > 0
   return (
     <TabsTrigger
-      onClick={onPress}
       value={id}
       className={cn("flex-none gap-1 px-2 text-xs sm:text-sm", current && !done && "text-amber-900 data-active:text-amber-950 dark:text-amber-200")}
       title={stepTitle(id, todo)}

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS } from "../../spec/koji-keireki"
 import { heuristicPlan } from "../heuristic-plan"
-import { acceptAiPlan, reviewPlanTransforms, type SheetGrid } from "../plan"
+import { acceptAiPlan, type SheetGrid } from "../plan"
 import { MAX_PREVIOUS_CONTEXT, planExcerpt, planUserMessage, previousPlanContext, systemPrompt } from "../prompt"
 import { readWorkbook } from "../workbook"
 import { savedPlanSchema } from "../plan-schema"
@@ -154,20 +154,12 @@ describe("プロンプト", () => {
   })
 })
 
-describe("全角にする変換はどの項目にも使わない（元データの表記を残す）", () => {
-  test("計画の指示に全角にする変換を出さない。注文者・工事名は表記（半角カナなど）をそのまま残すと伝える", () => {
+describe("元データの表記を残す", () => {
+  test("注文者・工事名は表記（半角カナなど）をそのまま残すと伝える", () => {
     const prompt = systemPrompt(KOJI_KEIREKI)
-    expect(prompt).not.toContain("rule.fullWidthText")
     const line = (id: string) => prompt.split("\n").find((l) => l.startsWith(`- ${id}（`))!
     expect(line("workName")).toContain("表記（半角カナ・全角・㈱などの記号）はそのまま残す")
     expect(line("client")).toContain("表記（半角カナ・半角スペース・㈱などの記号）はそのまま残す")
-  })
-
-  test("AI が全角にする変換を選んだら、ルールの推定に戻す", () => {
-    const r = acceptAiPlan(KOJI_KEIREKI, book, excerpt, aiPlan({ workName: col(2, "rule.fullWidthText") }), fallbackFor)
-    if (!r.ok) throw new Error(r.message)
-    expect(r.plan.fields.workName).toEqual(fallback.fields.workName)
-    expect(r.plan.notes.some((n) => n.startsWith("工事名: 変換「全角にする（使わない）」はこの項目に使えない"))).toBe(true)
   })
 })
 
@@ -177,7 +169,7 @@ describe("個人名を含みうる項目（注文者・工事名）には匿名�
     expect(line("workName")).toContain("使える変換: ai.anonymizeWorkName, rule.joinWorkName")
     expect(line("workName")).not.toContain("rule.text")
     expect(line("client")).toContain("使える変換: ai.anonymizeClient")
-    expect(line("client")).not.toMatch(/rule\.text|rule\.fullWidthText|ai\.freeform|ai\.anonymizeWorkName/)
+    expect(line("client")).not.toMatch(/rule\.text|ai\.freeform|ai\.anonymizeWorkName/)
   })
 
   test("AI が匿名化しない変換を選んだら、ルールの推定に戻す", () => {
@@ -186,28 +178,10 @@ describe("個人名を含みうる項目（注文者・工事名）には匿名�
     expect(r.plan.fields.workName).toEqual(fallback.fields.workName)
     expect(r.plan.fields.client).toEqual(fallback.fields.client)
   })
-
-  test("保存済みの計画を読むときも同じ決まりで確かめ、使えない変換を匿名化する変換に替える（ほかの項目はそのまま）", () => {
-    const saved = { ...fallback, fields: { ...fallback.fields, workName: { kind: "column" as const, column: 2, transform: "rule.fullWidthText" as const }, client: { kind: "column" as const, column: 3, transform: "rule.text" as const } } }
-    const r = reviewPlanTransforms(KOJI_KEIREKI, saved)
-    expect(r.plan.fields.workName).toEqual({ kind: "column", column: 2, transform: "ai.anonymizeWorkName" })
-    expect(r.plan.fields.client).toEqual({ kind: "column", column: 3, transform: "ai.anonymizeClient" })
-    expect(r.plan.fields.amount).toBe(saved.fields.amount)
-    expect(r.changed).toEqual(["注文者", "工事名"])
-    expect(reviewPlanTransforms(KOJI_KEIREKI, fallback).changed).toEqual([])
-  })
-
-  test("保存した計画の注文者・工事名の定数（匿名化を通らない）は、新しい計画と同じ決まりで外す。ほかの項目の定数は残す", () => {
-    const saved = { ...fallback, fields: { ...fallback.fields, client: { kind: "constant" as const, value: "山田太郎", reason: "全部同じ" }, jv: { kind: "constant" as const, value: "0", reason: "JV なし" } } }
-    const r = reviewPlanTransforms(KOJI_KEIREKI, saved)
-    expect(r.plan.fields.client).toEqual({ kind: "missing" })
-    expect(r.plan.fields.jv).toEqual(saved.fields.jv)
-    expect(r.changed).toEqual(["注文者"])
-  })
 })
 
 describe("計画の税込・税抜", () => {
-  test("見出しから分かれば計画に入れ、分からなければ入れない。前の版の保存した計画（無い）も読める", () => {
+  test("見出しから分かれば計画に入れ、分からなければ入れない（保存した計画にも無い）", () => {
     const yes = acceptAiPlan(KOJI_KEIREKI, book, excerpt, { ...aiPlan(), amountTax: "excluded" }, fallbackFor)
     expect(yes.ok && yes.plan.amountTax).toBe("excluded")
     const no = acceptAiPlan(KOJI_KEIREKI, book, excerpt, aiPlan(), fallbackFor)
@@ -236,13 +210,6 @@ describe("計画の聞き返し（asks）", () => {
     expect(p.asks).toEqual([])
     expect(p.notes).toContain("範囲外")
     expect(p.notes).toContain("該当なし")
-  })
-  test("前の版の保存した計画（聞き返し・値の除外が無い・文の notes だけ）も読める", () => {
-    const old = { ...fallback, notes: ["未成の工事を載せるか確認してください"] }
-    const read = savedPlanSchema.parse({ plan: old, source: "ai" }).plan
-    expect(read.asks).toBeUndefined()
-    expect(read.rowFilter.excludeValues).toBeUndefined()
-    expect(read.notes).toEqual(["未成の工事を載せるか確認してください"])
   })
   test("聞き返しは決まった種類だけをスキーマで返させ、プロンプトに答えの選び方を書く", () => {
     const prompt = systemPrompt(KOJI_KEIREKI)

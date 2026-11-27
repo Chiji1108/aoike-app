@@ -228,12 +228,13 @@ export function heuristicPlan<F extends string>(spec: CsvSpec<F>, hints: PlanHin
     headerRow,
     dataRows: { start, end },
     skipRows,
-    rowFilter: { excludeHidden: false, excludeColumns },
+    rowFilter: { excludeHidden: false, excludeColumns, excludeValues: [] },
     amountUnit: amountIsThousand ? "thousandYen" : "yen",
     fields,
     unusedColumns: headers.flatMap((header, column) =>
       header.trim() && !used.includes(column) && !excludeColumns.includes(column) ? [{ column, header, reason: "対応する項目がありません" }] : [],
     ),
     notes: [],
+    asks: [],
   }
 }

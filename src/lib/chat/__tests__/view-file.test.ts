@@ -7,7 +7,7 @@ import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
 import type { ChatChange } from "../proposals"
 import { chatTools, IMAGE_READ_NOTE, MAX_TOOL_CALLS, newTurnState, withCacheBreakpoint } from "../turn"
 import { APICallError } from "ai"
-import { imageInfo, unviewableAfter, viewIdle, viewStepFinished, MAX_VIEW_CALLS, MAX_VIEW_IMAGE_BYTES, MAX_VIEW_IMAGE_PX, MAX_VIEW_IMAGES_PER_CHAT, MAX_VIEW_PAGES, MAX_VIEW_PAGES_PER_CHAT, newViewState, parsePages, viewedInHistory, viewFile, viewResultOutput, type FileViewer, type ViewResult } from "../view-file"
+import { imageInfo, unviewableAfter, viewIdle, viewStepFinished, MAX_VIEW_IMAGE_BYTES, MAX_VIEW_IMAGE_PX, MAX_VIEW_IMAGES_PER_CHAT, MAX_VIEW_PAGES_PER_CHAT, newViewState, parsePages, viewedInHistory, viewFile, viewResultOutput, type FileViewer, type ViewResult } from "../view-file"
 import { deriveTable } from "../../cases/view"
 import { cellFix } from "../../../components/convert/status"
 import { viewKindOf } from "../view-kind"
@@ -236,13 +236,6 @@ describe("ページの上限", () => {
     expect(parsePages("2-5", 4)).toContain("4 ページです")
   })
 
-  test(`1回に見られるのは ${MAX_VIEW_PAGES} ページまで。ページの多い PDF を pages なしで見ようとすると、総ページ数と分け方を返す`, async () => {
-    const { uploads, state } = viewerOf({ "file-1.pdf": await pdfOf(MAX_VIEW_PAGES + 5) })
-    const r = await viewFile(state, { file: "file-1.pdf" })
-    expect(r).toMatchObject({ ok: false, totalPages: MAX_VIEW_PAGES + 5, error: expect.stringContaining(`1-${MAX_VIEW_PAGES}`) })
-    expect(uploads).toEqual([])
-  })
-
   test(`1つの会話で見られるのは ${MAX_VIEW_PAGES_PER_CHAT} ページ・画像 ${MAX_VIEW_IMAGES_PER_CHAT} 枚まで（履歴で見た分と合わせる）。超えたら職員に伝えるよう返す`, async () => {
     const { state } = viewerOf({ "file-1.pdf": await pdfOf(10), "file-2.jpg": jpg })
     state.pages = MAX_VIEW_PAGES_PER_CHAT - 12
@@ -275,16 +268,15 @@ describe("view_file の道具と手書きの印", () => {
     return typeof out === "string" ? JSON.parse(out) : out
   }
 
-  test(`view_file は直接呼ぶ道具で、ほかの道具とは別に1回の指示で ${MAX_VIEW_CALLS} 回まで。viewer が無ければ使えない`, async () => {
+  test(`view_file は直接呼ぶ道具で、ほかの道具と同じく1回の指示で ${MAX_TOOL_CALLS} 回まで数える。viewer が無ければ使えない`, async () => {
     const tools = chatTools(newTurnState(table))
     expect((tools.view_file as { providerOptions?: unknown }).providerOptions).toBeUndefined()
     expect((await call(newTurnState(table), "view_file", { file: "file-1.pdf" })).error).toContain("使えません")
     const state = newTurnState(table, undefined, undefined, null, null, null, null, viewerOf({ "file-1.jpg": jpg }).viewer)
-    state.toolCalls = MAX_TOOL_CALLS
+    state.toolCalls = MAX_TOOL_CALLS - 1
     expect(await call(state, "view_file", { file: "file-1.jpg" })).toMatchObject({ ok: true })
     expect(state.toolCalls).toBe(MAX_TOOL_CALLS)
-    state.viewCalls = MAX_VIEW_CALLS
-    expect((await call(state, "view_file", { file: "file-1.jpg" })).error).toContain("ファイルを見られる回数")
+    expect((await call(state, "view_file", { file: "file-1.jpg" })).error).toContain("道具を呼べる回数")
   })
 
   test('read_from:"image" で足した行・直したセル・顧客の回答のメモに、手書き・画像から読んだ印を付けて要確認にする（問い合わせには回さない。確認 confirm と省いたときは付けない）', async () => {

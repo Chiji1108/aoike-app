@@ -1,4 +1,3 @@
-import { withAskKeys } from "./asks"
 import { z } from "zod"
 import { AI_TASKS, type AiItemResult } from "../convert/ai-tasks"
 import type { CellEdits, Replacements } from "../convert/convert"
@@ -50,12 +49,10 @@ export type CaseWork = {
   added: AddedRow[]
   /** 承認の取り消しの記録（cases/undo.ts）。この項目より前に保存した作業には無いので、読むときは空 */
   undo: UndoEntry[]
-  /** 変換の報告の聞き返しへの答え（聞き返しの id → 答え。例: 金額の税込・税抜を「顧客に聞く」）。前の作業には無いので、読むときは空 */
+  /** 変換の報告の聞き返しへの答え（聞き返しの id → 答え。例: 金額の税込・税抜を「顧客に聞く」） */
   reportAnswers: Record<string, string>
-  /** 問い合わせのメールの件名・前置き（承認した AI の文・職員が直した文。lib/inquiry/text.ts）。前の作業には無いので、読むときは空。前の作業の質問の文は読み捨てる */
+  /** 問い合わせのメールの件名・前置き（承認した AI の文・職員が直した文。lib/inquiry/text.ts） */
   inquiryText: InquiryText
-  /** 表の上の「全件にしますか？」（7割ルールのまま手で載せた行が多いとき）を閉じた。前の作業には無いので、読むときは false */
-  allHintClosed: boolean
 }
 
 export type SavedPlan = { plan: MappingPlan<KojiFieldId>; source: "ai" | "rule"; notice?: string }
@@ -82,7 +79,6 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   undo: [],
   reportAnswers: {},
   inquiryText: EMPTY_INQUIRY_TEXT,
-  allHintClosed: false,
 })
 
 // ---- 保存する形（D1 の csv_case_states.json）。Map・Set は組の配列にする ----
@@ -105,19 +101,18 @@ export const savedWorkSchema = z
   manual: z.array(z.tuple([z.string(), z.boolean()])),
   dismissed: z.array(z.string()),
   tax: taxSchema,
-  taxBy: taxBySchema.default(null),
+  taxBy: taxBySchema,
   basis: basisSchema,
-  rule7Tax: rule7TaxSchema.default("excluded"),
-  /** 載せる工事の選び方と、答えたか（lib/cases/selection.ts）。どちらも必ず持つ（無い前の形は読めない。移行 drizzle/csv/0011 でそろえた） */
+  rule7Tax: rule7TaxSchema,
+  /** 載せる工事の選び方と、答えたか（lib/cases/selection.ts）。どちらも必ず持つ */
   selection: selectionSchema,
   selectionAnswered: z.boolean(),
   rounding: roundingSchema,
-  proposals: z.array(proposalSchema).default([]),
-  added: z.array(addedRowSchema).max(MAX_ADDED_ROWS).default([]),
-  undo: z.array(undoEntrySchema).default([]),
-  reportAnswers: z.record(z.string(), z.string().max(100)).default({}),
-  inquiryText: inquiryTextSchema.default(EMPTY_INQUIRY_TEXT),
-  allHintClosed: z.boolean().default(false),
+  proposals: z.array(proposalSchema),
+  added: z.array(addedRowSchema).max(MAX_ADDED_ROWS),
+  undo: z.array(undoEntrySchema),
+  reportAnswers: z.record(z.string(), z.string().max(100)),
+  inquiryText: inquiryTextSchema,
 })
 export type SavedWork = z.infer<typeof savedWorkSchema>
 
@@ -131,9 +126,9 @@ export function toSavedWork({ aiCache: _, ...w }: CaseWork): SavedWork {
 
 export const toSavedAiCache = (cache: AiCache): SavedAiCache => [...cache]
 
-/** 保存した作業を読む（前の形の聞き返しの答えの id は鍵に読み替える。lib/cases/asks.ts） */
+/** 保存した作業を読む */
 export function fromSaved(w: SavedWork, aiCache: SavedAiCache): CaseWork {
-  return withAskKeys({ ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
+  return { ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) }
 }
 
 /** D1 の1行に入る大きさ（D1 の上限は 2,000,000 バイト。少し余裕を持たせる）。作業と AI の結果はそれぞれ別の行 */

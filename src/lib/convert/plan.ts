@@ -4,7 +4,7 @@ import type { CsvSpec } from "../spec/types"
 import type { ValueType } from "../spec/types"
 import type { PlanExcerpt } from "./prompt"
 import { askTargets, collectSourceRows, copiedFrom, rowIsBlank, sameHeader } from "./sources"
-import { TRANSFORM_IDS, getTransform, preferredTransform, transformFits, type TransformId } from "./transforms"
+import { TRANSFORM_IDS, getTransform, transformFits, type TransformId } from "./transforms"
 
 /**
  * ブラウザで読んだシート。セルは表示値（日付は YYYY-MM-DD）、結合セルは左上の値で埋めてある。
@@ -31,9 +31,9 @@ export type FieldPlan =
 
 /**
  * 出力しない行。excludeColumns の列に値がある行を除く（例:「工事実績から除外」列）。excludeValues は列の値がそのどれかの行を除く
- * （例: 区分の列が「未成」。計画の聞き返しへの職員の答え）。excludeValues は前の版の保存済みの計画には無い
+ * （例: 区分の列が「未成」。計画の聞き返しへの職員の答え）
  */
-export type RowFilter = { excludeHidden: boolean; excludeColumns: number[]; excludeValues?: ValueFilter[] }
+export type RowFilter = { excludeHidden: boolean; excludeColumns: number[]; excludeValues: ValueFilter[] }
 
 /** 列の値が values のどれかか（前後の空白と全角・半角の違いは見ない） */
 export type ValueFilter = { column: number; values: string[] }
@@ -73,21 +73,20 @@ const sameValues = (a: readonly string[], b: readonly string[]) => {
 /** 行の除外（values が空なら「値があれば出さない列」、あれば「この値なら出さない列」）がもう計画にあるか */
 export function hasExclusion(rf: RowFilter, x: ValueFilter) {
   if (!x.values.length) return rf.excludeColumns.includes(x.column)
-  return (rf.excludeValues ?? []).some((f) => f.column === x.column && sameValues(f.values, x.values))
+  return rf.excludeValues.some((f) => f.column === x.column && sameValues(f.values, x.values))
 }
 
 /** 行の除外を足す・外す（もうあるものは足さず、無いものは外さない）。計画の聞き返しの答えとチャットの set_plan で同じ */
 export function withExclusions(rf: RowFilter, add: readonly ValueFilter[], remove: readonly ValueFilter[]): RowFilter {
   let excludeColumns = rf.excludeColumns.filter((c) => !remove.some((x) => !x.values.length && x.column === c))
-  let excludeValues = (rf.excludeValues ?? []).filter((f) => !remove.some((x) => x.values.length && x.column === f.column && sameValues(x.values, f.values)))
+  let excludeValues = rf.excludeValues.filter((f) => !remove.some((x) => x.values.length && x.column === f.column && sameValues(x.values, f.values)))
   for (const x of add) {
     const now = { ...rf, excludeColumns, excludeValues }
     if (hasExclusion(now, x)) continue
     if (x.values.length) excludeValues = [...excludeValues, { column: x.column, values: [...x.values] }]
     else excludeColumns = [...excludeColumns, x.column].sort((a, b) => a - b)
   }
-  const { excludeValues: _, ...rest } = rf
-  return { ...rest, excludeColumns, ...(excludeValues.length ? { excludeValues } : {}) }
+  return { ...rf, excludeColumns, excludeValues }
 }
 
 /** 行（元の Excel のセル）が聞き返し・値の除外の対象か */
@@ -108,15 +107,15 @@ export type MappingPlan<F extends string> = {
   amountUnit: "yen" | "thousandYen"
   /**
    * 請負代金の列の金額が税込か税抜か（見出し・注記に書いてあって計画の AI が分かったときだけ。分からなければ無い）。
-   * 案件の税の設定が未設定なら、これを入れる。前の版の保存済みの計画には無い
+   * 案件の税の設定が未設定なら、これを入れる
    */
   amountTax?: "included" | "excluded"
   fields: Record<F, FieldPlan>
   unusedColumns: { column: number; header: string; reason: string }[]
   /** 知らせ（職員が読むだけで、答えは要らない） */
   notes: string[]
-  /** 聞き返し（職員が答えを選ぶ）。前の版の保存済みの計画には無い（文の notes だけ） */
-  asks?: PlanAsk[]
+  /** 聞き返し（職員が答えを選ぶ） */
+  asks: PlanAsk[]
 }
 
 export function columnCount(grid: SheetGrid) {
@@ -317,27 +316,3 @@ export function fieldPlanProblem(
   return undefined
 }
 
-/**
- * 保存済みの計画を、今の変換の決まり（transformFits）で確かめる。使えなくなった変換（工事名の全角にする・注文者の匿名化しない変換など）は
- * その項目で最初に選ぶ変換（preferredTransform）に替え、使えない定数（注文者・工事名の定数）は外して、直した項目の名前を changed に返す。AI の計画の取り込み（acceptAiPlan）と同じ決まり
- */
-export function reviewPlanTransforms<F extends string>(spec: CsvSpec<F>, plan: MappingPlan<F>): { plan: MappingPlan<F>; changed: string[] } {
-  const changed: string[] = []
-  const fields = { ...plan.fields }
-  for (const f of spec.fields) {
-    const p: FieldPlan = fields[f.id]
-    // 定数は新しい計画と同じ決まり（fieldPlanProblem）で確かめ、使えなければ外す（元データに無い扱いにして、顧客に聞く）
-    if (p.kind === "constant") {
-      if (fieldPlanProblem(p, f.valueType, Number.MAX_SAFE_INTEGER)) {
-        fields[f.id] = { kind: "missing" }
-        changed.push(f.label)
-      }
-      continue
-    }
-    if ((p.kind !== "column" && p.kind !== "columns") || transformFits(getTransform(p.transform), f.valueType)) continue
-    const transform = preferredTransform(f.valueType, p.kind === "columns")
-    fields[f.id] = p.kind === "column" ? { kind: "column", column: p.column, transform } : { kind: "columns", columns: p.columns, transform }
-    changed.push(f.label)
-  }
-  return { plan: changed.length ? { ...plan, fields } : plan, changed }
-}

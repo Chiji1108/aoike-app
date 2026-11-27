@@ -16,14 +16,6 @@ export function matchKey(s: string) {
   return nfkc(s).replace(/[\s・･()（）［］\[\]「」【】/／:：_\-－]/g, "")
 }
 
-/** ASCII と半角カナを全角に。スペースは全角スペースに */
-export function toFullWidth(s: string) {
-  return s
-    .replace(/[｡-ﾟ]+/g, (m) => m.normalize("NFKC"))
-    .replace(/[!-~]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0))
-    .replace(/ /g, "　")
-}
-
 /** 連続する空白（半角・全角・タブ）を1つの半角スペースに */
 export function collapseSpaces(s: string) {
   return s.replace(/[\s　]+/g, " ").trim()

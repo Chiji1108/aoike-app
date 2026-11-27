@@ -307,11 +307,12 @@ describe("列の対応を直す（set_plan）・ボタン（offer_action）", ()
     headerRow: 2,
     dataRows: { start: 3, end: 20 },
     skipRows: [],
-    rowFilter: { excludeHidden: true, excludeColumns: [] },
+    rowFilter: { excludeHidden: true, excludeColumns: [], excludeValues: [] },
     amountUnit: "yen" as const,
     fields: Object.fromEntries(rows[0] ? Object.keys(rows[0].cells).map((f) => [f, { kind: "missing" as const }]) : []) as never,
     unusedColumns: [],
     notes: [],
+    asks: [],
   }
   const shape = { rows: 21, columns: 8 }
 

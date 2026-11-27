@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { applyChanges } from "../../chat/proposals"
-import { newWork, savedWorkSchema, toSavedWork, type CaseWork } from "../state"
+import { newWork, type CaseWork } from "../state"
 import { setTax, withPlanTax } from "../tax"
 import { pushUndo, undo, undoEntry } from "../undo"
 
@@ -49,9 +49,4 @@ describe("税の設定と出どころ", () => {
     const r = undo(changed, "u1")!
     expect(r.work).toMatchObject({ tax: "unknown", taxBy: "staff" })
     expect(r.kept).toBe(1)
-  })
-  test("前の版の保存した作業（出どころが無い）も読める", () => {
-    const { taxBy: _, ...old } = toSavedWork(newWork("f"))
-    expect(savedWorkSchema.parse(old).taxBy).toBeNull()
-  })
-})
+  })})

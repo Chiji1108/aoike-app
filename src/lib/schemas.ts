@@ -20,14 +20,6 @@ export const selectionSchema: z.ZodType<SelectionMode> = z.enum(SELECTION_MODES)
 /** 金額の千円未満の扱い（切り捨て・四捨五入） */
 export const roundingSchema: z.ZodType<Rounding> = z.enum(ROUNDINGS)
 
-/**
- * 載せる工事の選び方の、前の保存の形（alreadyApplied: 7割適用済み＝全行を載せる）を今の形（selection）にそろえる。
- * 前の形の作業・変更案を読むときだけ使う（P4 で「全件を載せる」の切り替えに一つにした）
- */
-export function legacySelection(selection: SelectionMode | undefined, alreadyApplied: boolean | undefined): SelectionMode | undefined {
-  return selection ?? (alreadyApplied === undefined ? undefined : alreadyApplied ? "all" : "rule7")
-}
-
 export const basisSchema: z.ZodType<Basis> = z.record(z.string(), z.object({ total: z.number().optional(), motouke: z.number().optional() }))
 
 export const cellEditSchema: z.ZodType<CellEdit> = z.object({

@@ -7,19 +7,11 @@ import type { CaseFile, CaseStatus } from "@/lib/cases/types"
 import type { StepId, StepView, ToolId } from "@/lib/cases/steps"
 import { NO_ADDRESSES, type AddressBook } from "@/lib/convert/address"
 import type { Rule7Tax } from "@/lib/convert/koji-selection"
-import { reviewPlanTransforms, type SheetGrid } from "@/lib/convert/plan"
+import type { SheetGrid } from "@/lib/convert/plan"
 import { withRecorded, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
-import { KOJI_KEIREKI } from "@/lib/spec/koji-keireki"
 
 /** 変換の元（読んだファイルのシート） */
 export type Source = { fileId: string; name: string; sheets: SheetGrid[] }
-
-/**
- * 同じブラウザの別のタブ（BroadcastChannel で知らせ合う。sync.ts）: none はほかに無い、open は別のタブでも開いている、
- * saved は別のタブがこの案件を保存した（この画面の作業は古い。変えても保存はぶつかる）
- */
-export type PeerState = "none" | "open" | "saved"
-
 
 /** チャットの欄の中の移り先（target の要素、無ければ最初の答えを待つもの）と、その中でフォーカスを合わせるボタン */
 export type ChatTarget = { target: string; button?: string }
@@ -134,8 +126,8 @@ export type CaseState = {
      */
     chat: { collapsed: boolean; unread: "new" | "error" | null; size: ChatSize | null; hint: boolean }
   }
-  /** 保存の状態と、同じブラウザの別のタブ */
-  sync: { status: SaveStatus; peer: PeerState }
+  /** 保存の状態 */
+  sync: { status: SaveStatus }
 }
 
 export type CaseStore = ReturnType<typeof createCaseStore>
@@ -160,18 +152,6 @@ export function setRuntime(store: CaseStore, next: (r: CaseState["runtime"]) => 
 }
 
 /**
- * 保存済みの計画を今の変換の決まりで確かめる（AI の計画の取り込みと同じ）。使えなくなった変換（個人名を匿名化しない変換など）は替え、
- * 変換し直す（替えた変換の AI の結果はまだ無い。開くと自動で変換する）
- */
-function reviewSavedPlan(w: CaseWork): CaseWork {
-  if (!w.plan) return w
-  const { plan, changed } = reviewPlanTransforms(KOJI_KEIREKI, w.plan.plan)
-  if (!changed.length) return w
-  const notice = `保存した計画の ${changed.join("・")} を今の決まり（個人名の項目は匿名化する変換だけ）に合わせて直し、変換し直しました。`
-  return { ...w, plan: { ...w.plan, plan, notice: [w.plan.notice, notice].filter(Boolean).join(" ") }, converted: false }
-}
-
-/**
  * 読み込んだ案件からストアの最初の状態を作る。保存した作業が無ければ新しい作業（7割の計算は事務所の設定）。
  * サーバーが記録した変更案のうち、作業にまだ無いもの（返事を受け取り損ねたもの）も作業に入れる。
  * チャットの窓は端末に覚えた設定（chatPrefs）から始める（窓を置く前から覚えた値なので、置いたあとに開き直さない）。
@@ -190,7 +170,7 @@ export function initialCaseState(page: {
   // 載せる工事は去年から引き継がない（どの案件でも「答える」で1回聞く。去年の選び方はおすすめに出すだけ）
   const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
   return {
-    work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
+    work: { ...w, proposals: withRecorded(w.proposals, page.proposals) },
     contents: new Map(page.proposals.map((r) => [r.proposal.id, r.changes])),
     runtime: {
       closedMissing: page.closedMissing,
@@ -225,6 +205,6 @@ export function initialCaseState(page: {
       chatSend: null,
       chat: { collapsed: chatPrefs?.collapsed ?? false, unread: null, size: chatPrefs?.size ?? null, hint: !chatPrefs?.hintShown },
     },
-    sync: { status: { kind: "saved" }, peer: "none" },
+    sync: { status: { kind: "saved" } },
   }
 }

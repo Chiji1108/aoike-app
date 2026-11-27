@@ -9,7 +9,6 @@ import { fileAddressLookup } from "../../convert/address-file"
 import { collectSourceRows } from "../../convert/sources"
 import { readWorkbook } from "../../convert/workbook"
 import { fixture } from "../../convert/__tests__/helpers"
-import { chatChangeSchema } from "../../chat/proposals"
 import { fromSaved, newWork, savedAiCacheSchema, savedWorkSchema, toSavedAiCache, toSavedWork, type CaseWork } from "../state"
 
 const [grid] = readWorkbook("sample-messy.xlsx", fixture("sample-messy.xlsx"))
@@ -75,21 +74,6 @@ describe("案件の状態の保存と読み出し", () => {
     ])
     const work = { ...newWork(), aiCache }
     expect([...roundTrip(work).aiCache]).toEqual([["a", anonymized], ["b", address]])
-  })
-
-  test("作業の前の形（alreadyApplied・選び方の無い形）は読めない（移行 drizzle/csv/0011 でそろえる）。変更案の記録（R2）の前の形は選び方にして読む", () => {
-    const { selection: _, ...saved } = toSavedWork(newWork())
-    expect(savedWorkSchema.safeParse({ ...saved, alreadyApplied: true }).success).toBe(false)
-    expect(savedWorkSchema.safeParse(saved).success).toBe(false)
-    expect(chatChangeSchema.parse({ kind: "settings", alreadyApplied: true })).toEqual({ kind: "settings", selection: "all" })
-    expect(chatChangeSchema.parse({ kind: "settings", tax: "included" })).toEqual({ kind: "settings", tax: "included" })
-  })
-
-  test("7割の計算は新しい作業なら渡した初期値。この項目より前の保存は税抜（前はいつも税抜で計算していた）", () => {
-    expect(newWork(null, "included").rule7Tax).toBe("included")
-    const { rule7Tax: _, ...old } = toSavedWork(newWork(null, "included"))
-    expect(savedWorkSchema.parse(old).rule7Tax).toBe("excluded")
-    expect(savedWorkSchema.parse(toSavedWork(newWork(null, "included"))).rule7Tax).toBe("included")
   })
 
   test("形の違う保存は読まない", () => {

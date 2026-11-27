@@ -98,8 +98,6 @@ export function describeChange(c: ChatChange, view: TableView, byKey: ReadonlyMa
       return { where: c.scope === "global" ? "全体ルール" : "顧客ルール", what: "項目を足す", from: "", to: c.text }
     case "plan":
       return { where: "列の対応", what: "変換し直す", from: "", to: [...describePlanPatch(c.patch, c.before ?? (plan ? beforeOf(plan, c.patch) : undefined)), `理由: ${c.patch.reason}`].join(" / ") }
-    case "inquiry":
-      return { where: "問い合わせ", what: "質問の文（今は使いません）", from: "", to: c.text }
     case "inquiryMail":
       return { where: "問い合わせ", what: "メールの件名・前置き", from: "", to: `件名: ${c.subject} / ${c.intro}` }
     case "location": {
