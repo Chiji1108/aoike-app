@@ -183,6 +183,15 @@ describe("チャットの道具（決まった入力で）", () => {
     ])
   })
 
+  test("set_selection の載せる工事は、まだ誰も決めていなければ今と同じ値でも変更案にし（承認すると答えたことになる）、決めたあとは今と同じなら変更案にしない", async () => {
+    const undecided = newTurnState({ ...table, selection: "rule7", selectionBy: null })
+    await call(chatTools(undecided), "set_selection", { selection: "rule7" })
+    expect(undecided.pending).toEqual([{ kind: "settings", selection: "rule7" }])
+    const decided = newTurnState({ ...table, selection: "rule7", selectionBy: "staff" })
+    expect(await call(chatTools(decided), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
+    expect(decided.pending).toEqual([])
+  })
+
   test(`道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで。超えたら動かさずに返す`, async () => {
     const state = newTurnState(table)
     const tools = chatTools(state)

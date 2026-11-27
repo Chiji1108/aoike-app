@@ -3,6 +3,7 @@ import { isStepCount, streamText, tool, type LanguageModelUsage, type ModelMessa
 import { z } from "zod"
 import { MAX_ADDED_ROWS, newAddedKey } from "../cases/added"
 import { baseRows, deriveTable, type CaseTable, type TableView } from "../cases/view"
+import { selectionDecided } from "../cases/selection"
 import { MAX_ITEMS_PER_REQUEST, parseAiResponse, type AiBatchRequest } from "../convert/ai-tasks"
 import { editText, staffEdit, type CellEdit } from "../convert/convert"
 import { showPersons, withNames, type PersonLetters } from "../convert/persons"
@@ -573,12 +574,13 @@ export function chatTools(state: TurnState) {
       }),
       execute: counted<{ tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }>((input) => {
         const now = state.current
-        // 今と同じ値は変更案にしない（基準額は重ねたあとが今と同じなら）
+        // 今と同じ値は変更案にしない（基準額は重ねたあとが今と同じなら）。載せる工事は、まだ誰も決めていなければ今と同じ値でも変更案にする
+        // （承認すると職員が決めた値になり、「答える」の載せる工事に答えたことになる）
         const basisChanged = !!input.basis && JSON.stringify(applyChanges(now, [], [{ kind: "settings", basis: input.basis }]).basis) !== JSON.stringify(now.basis)
         const change: Extract<ChatChange, { kind: "settings" }> = {
           kind: "settings",
           ...(input.tax && input.tax !== now.tax ? { tax: input.tax } : {}),
-          ...(input.selection && input.selection !== now.selection ? { selection: input.selection } : {}),
+          ...(input.selection && (input.selection !== now.selection || !selectionDecided(now)) ? { selection: input.selection } : {}),
           ...(basisChanged ? { basis: input.basis } : {}),
           ...(input.rounding && input.rounding !== now.rounding ? { rounding: input.rounding } : {}),
         }

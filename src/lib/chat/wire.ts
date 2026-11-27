@@ -3,6 +3,7 @@ import type { CellResult, RowResult } from "../convert/convert"
 import { basisSchema, cellEditSchema, fieldIdSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { CaseTable } from "../cases/view"
 import { addedRowSchema, MAX_ADDED_ROWS } from "../cases/added"
+import { selectionBySchema } from "../cases/selection"
 import { EMPTY_INQUIRY_TEXT, inquiryTextSchema } from "../inquiry/text"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
@@ -50,6 +51,8 @@ export const caseTableWireSchema: z.ZodType<CaseTableWire> = z.object({
   /** 7割の計算。無い形（この項目より前の画面が送る表）は税抜（前はいつも税抜） */
   rule7Tax: rule7TaxSchema.default("excluded"),
   selection: selectionSchema,
+  /** 載せる工事を誰が決めたか。無い形（この項目より前の画面が送る表）はまだ誰も決めていない */
+  selectionBy: selectionBySchema.default(null),
   /** 金額の千円未満の扱い。無い形（この項目より前の画面が送る表）は切り捨て（新しい案件の初期値） */
   rounding: roundingSchema.default("floor"),
   /** 外した問い合わせと問い合わせのメールの件名・前置き。無い形（この項目より前の画面が送る表）は空 */

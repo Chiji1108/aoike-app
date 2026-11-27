@@ -15,10 +15,17 @@ describe("載せる工事を誰が決めたか（保存の読み方）", () => {
     expect(savedWorkSchema.parse(toSavedWork(setSelection({ ...newWork("f"), converted: true }, "all", "staff"))).selectionBy).toBe("staff")
   })
 
-  test("この項目より前の保存: 選び方を明示して保存していれば決めた値、前の形（alreadyApplied）も同じ。どちらも無ければ決めていない", () => {
-    expect(savedWorkSchema.parse(savedJson({ selectionBy: undefined, selection: "all" }))).toMatchObject({ selection: "all", selectionBy: "staff" })
-    expect(savedWorkSchema.parse(savedJson({ selectionBy: undefined, selection: undefined, alreadyApplied: true }))).toMatchObject({ selection: "all", selectionBy: "staff" })
-    expect(savedWorkSchema.parse(savedJson({ selectionBy: undefined, selection: undefined }))).toMatchObject({ selection: "rule7", selectionBy: null })
+  test("この項目より前の保存（selectionBy が無く、選び方はいつも書いてある）: 全件か前の形の alreadyApplied は職員が決めた値、7割ルールだけなら既定値のまま（聞く）", () => {
+    // 本当の前の保存の形: selection はいつも書いてあり、selectionBy は無い
+    const old = (over: Record<string, unknown>) => savedJson({ selectionBy: undefined, ...over })
+    expect(old({ selection: "rule7" })).toMatchObject({ selection: "rule7" })
+    expect(savedWorkSchema.parse(old({ selection: "rule7" }))).toMatchObject({ selection: "rule7", selectionBy: null })
+    expect(savedWorkSchema.parse(old({ selection: "all" }))).toMatchObject({ selection: "all", selectionBy: "staff" })
+    expect(savedWorkSchema.parse(old({ selection: undefined, alreadyApplied: true }))).toMatchObject({ selection: "all", selectionBy: "staff" })
+    expect(savedWorkSchema.parse(old({ selection: undefined, alreadyApplied: false }))).toMatchObject({ selection: "rule7", selectionBy: "staff" })
+    // 既定の7割ルールのまま保存した去年は引き継がない（今年は聞く）
+    expect(previousSelection(savedWorkSchema.parse(old({ selection: "rule7" })))).toBeNull()
+    expect(previousSelection(savedWorkSchema.parse(old({ selection: "all" })))).toBe("all")
   })
 
   test("翌年に引き継ぐのは、去年に変換して選び方を決めていたときだけ（既定値のままなら今年は聞く）", () => {

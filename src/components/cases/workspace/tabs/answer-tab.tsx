@@ -1,7 +1,7 @@
 import { Info } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { QuestionItem } from "@/components/cases/question-item"
-import { useCaseActions, useCaseView } from "@/components/cases/store/context"
+import { useCase, useCaseActions, useCaseView } from "@/components/cases/store/context"
 import { PROPOSAL_QUESTION, useAnswerQuestions, type AnswerQuestion } from "../hooks"
 import { StepDone } from "../step-done"
 
@@ -12,6 +12,8 @@ import { StepDone } from "../step-done"
 export function AnswerTab() {
   const actions = useCaseActions()
   const { todo, advice } = useCaseView(useShallow((v) => ({ todo: v.todo, advice: v.selectionAdvice })))
+  // 去年から引き継いだ選び方のままの間だけ知らせる（表の見出し・7割と金額などで職員が変えたら出さない）
+  const carried = useCase((s) => s.work.selectionBy === "previous")
   const { questions, chatAsks } = useAnswerQuestions()
   const all = [...questions, ...chatAsks]
   const open = all.filter((q) => q.question.answered === null)
@@ -22,7 +24,7 @@ export function AnswerTab() {
   }
   return (
     <div className="grid max-w-3xl gap-4 text-sm" data-testid="answer-step" data-left={todo.answer.length}>
-      {!advice.ask && (
+      {!advice.ask && carried && (
         <p className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-muted-foreground" data-testid="selection-carried">
           <Info className="size-4 shrink-0" />
           載せる工事は{advice.note}。表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でいつでも変えられます

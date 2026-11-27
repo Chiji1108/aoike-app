@@ -31,7 +31,6 @@ type Plan = MappingPlan<KojiFieldId>
 export function WorkPanel() {
   const actions = useCaseActions()
   const view = useCaseView((v) => v.view)
-  const tableShown = view === "table" || view === "fix"
   const pad = "min-h-0 overflow-auto p-4 pb-[calc(1rem+var(--chat-cover-b,0px))]"
   return (
     <section className="flex h-full min-h-0 flex-col bg-background" aria-label="作業の画面" data-testid="work-panel" data-view={view}>
@@ -47,18 +46,21 @@ export function WorkPanel() {
             <StepDone step="gyoshu" />
           </div>
         </TabsContent>
-        {/* 直すの段と表は同じ表（並べ替え・検索・列の表示を2つに分けない）。済んだ直すの段は表が空なので、済みの行を上に出す */}
-        <div
-          hidden={!tableShown}
-          className="relative flex min-h-0 flex-1 flex-col gap-3 p-4 outline-none"
+        {/*
+         * 直すの段と表は同じ表（並べ替え・検索・列の表示を2つに分けない）。tabpanel を1つにし、値を開いているほう（直すか表）に合わせる
+         * （開いているタブの aria-controls がいつもこの panel を指す。同じ要素のままなので表の状態は消えない）。済んだ直すの段は表が空なので、済みの行を上に出す
+         */}
+        <TabsContent
+          value={view === "fix" ? "fix" : "table"}
+          keepMounted
+          className="relative flex min-h-0 flex-1 flex-col gap-3 p-4"
           data-testid="table-section"
           data-kind={view === "fix" ? "fix" : "all"}
           data-step-panel={view === "fix" ? "fix" : undefined}
-          tabIndex={-1}
         >
           {view === "fix" && <StepDone step="fix" />}
           <TableTab />
-        </div>
+        </TabsContent>
         <TabsContent value="inquiry" keepMounted className="min-h-0 overflow-auto px-4 pt-2 pb-[calc(1rem+var(--chat-cover-b,0px))]" data-step-panel="inquiry">
           <InquiryTab />
           <StepDone step="inquiry" className="mt-4" />

@@ -21,20 +21,22 @@ export function setSelection<T extends { selection: SelectionMode; selectionBy?:
 export const selectionDecided = (s: { selectionBy?: SelectionBy | null }) => (s.selectionBy ?? null) !== null
 
 /**
- * 保存した作業の出どころを読む。この項目より前の保存は、選び方を明示して保存していれば（selection か前の形の alreadyApplied がある）決めた値と見なし、
- * どちらも無ければ（既定値だけ）まだ誰も決めていない
+ * 保存した作業の出どころを読む。この項目より前の保存は選び方をいつも書いていた（既定の7割ルールも）ので、値で分ける:
+ * 全件（既定値ではない）か前の形の alreadyApplied（職員が切り替えた）があれば職員が決めた値、7割ルールだけなら既定値のままと見なして聞く
+ * （はっきり7割を選んでいた案件も一度聞くことになるが、聞き漏らすよりよい）
  */
-export function savedSelectionBy(selectionBy: SelectionBy | null | undefined, explicit: boolean): SelectionBy | null {
-  return selectionBy !== undefined ? selectionBy : explicit ? "staff" : null
+export function savedSelectionBy(saved: { selectionBy?: SelectionBy | null; selection?: SelectionMode; alreadyApplied?: boolean }): SelectionBy | null {
+  if (saved.selectionBy !== undefined) return saved.selectionBy
+  return saved.selection === "all" || saved.alreadyApplied !== undefined ? "staff" : null
 }
 
 /**
- * 取り消しの記録に残す選び方。前の版の記録は値だけで、選び方を変えるのは職員の操作か承認だけだったので、職員が決めた値として読む
- * （前の保存の選び方も savedSelectionBy で職員が決めた値になるので、取り消すときに今の値と合う）
+ * 取り消しの記録に残す選び方。前の版の記録は値だけなので、前の保存と同じ決まり（savedSelectionBy）で出どころを読む
+ * （取り消すときに、前の保存から読んだ今の値と合う）
  */
 export const selectionSettingSchema = z.union([
   z.object({ selection: selectionSchema, selectionBy: selectionBySchema }),
-  selectionSchema.transform((selection): SelectionSource => ({ selection, selectionBy: "staff" })),
+  selectionSchema.transform((selection): SelectionSource => ({ selection, selectionBy: savedSelectionBy({ selection }) })),
 ])
 
 /**

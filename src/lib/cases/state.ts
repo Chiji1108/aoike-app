@@ -168,10 +168,11 @@ export const savedWorkSchema = z
   markFailure: z.object({ fileId: z.string().max(64), key: z.string().max(64), reason: z.string().max(200) }).nullable().default(null),
   allHintClosed: z.boolean().default(false),
   })
-  .transform(({ alreadyApplied, selection, selectionBy, ...w }) => {
-    const explicit = legacySelection(selection, alreadyApplied)
-    return { ...w, selection: explicit ?? "rule7", selectionBy: savedSelectionBy(selectionBy, explicit !== undefined) }
-  })
+  .transform(({ alreadyApplied, selection, selectionBy, ...w }) => ({
+    ...w,
+    selection: legacySelection(selection, alreadyApplied) ?? "rule7",
+    selectionBy: savedSelectionBy({ selectionBy, selection, alreadyApplied }),
+  }))
 export type SavedWork = z.infer<typeof savedWorkSchema>
 
 /** AI の結果（大きい。変換したときだけ変わるので、変わったときだけ保存する） */

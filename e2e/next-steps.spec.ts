@@ -165,8 +165,13 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
     if ((await fix.getAttribute("data-done")) === "0") {
       await fix.click()
       await expect(page.getByTestId("table-section")).toHaveAttribute("data-kind", "fix")
+      // 直すと表は同じ tabpanel（開いているタブの aria-controls がそれを指す）
+      const panelId = await page.getByTestId("table-section").getAttribute("id")
+      await expect(fix).toHaveAttribute("aria-controls", panelId!)
+      await expect(page.getByTestId("table-section")).toHaveAttribute("role", "tabpanel")
       await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key]').first().getByTestId("reasons-cell").getByTestId("row-fix").first()).toBeVisible()
       await openTab(page, "table")
+      await expect(page.getByTestId("tab-table")).toHaveAttribute("aria-controls", panelId!)
       await expect(page.getByTestId("reasons-cell")).toHaveCount(0)
       await page.getByTestId("table-go-fix").click()
       await expect(view(page)).toHaveAttribute("data-view", "fix")

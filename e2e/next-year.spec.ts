@@ -75,6 +75,12 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await openTab(page, "answer")
     await expect(page.getByTestId("selection-carried")).toContainText("去年と同じ: 7割ルール")
     await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveCount(0)
+    // 表の見出しで選び方を変えると、引き継いだ知らせは出さない（取り消すと戻る）
+    await openTab(page, "table")
+    await page.getByTestId("include-all").click()
+    await expect(page.getByTestId("selection-carried")).toHaveCount(0)
+    await page.locator("[data-sonner-toast]").filter({ hasText: "全件にしました" }).last().getByRole("button", { name: "取り消す" }).click()
+    await expect(page.getByTestId("selection-carried")).toHaveCount(1)
   })
 
   await test.step("全件を載せる切り替えで、載る件数が変わり、戻すと元の件数", async () => {
