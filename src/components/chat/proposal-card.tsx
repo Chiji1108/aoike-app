@@ -13,7 +13,7 @@ import { beforeOf, describePlanPatch } from "@/lib/convert/plan-patch"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 
 /** 変更案の承認を取り消せるか（cases/undo.ts の記録から）。can は戻せる記録がある、undone は取り消した、external は戻さない外への書き込み */
-export type UndoState = { can: boolean; undone: boolean; tooLarge: boolean; external: ("rule" | "location")[] }
+export type UndoState = { can: boolean; undone: boolean; tooLarge: boolean; external: "rule"[] }
 
 export type ProposalActions = {
   decide: (id: string, indices: number[], decision: "applied" | "rejected") => void
@@ -128,7 +128,7 @@ function rowsByKey(view: TableView): RowsByKey {
   return m
 }
 
-const EXTERNAL_LABELS = { rule: "ルールの項目", location: "顧客の覚えた工事場所" } as const
+const EXTERNAL_LABELS = { rule: "ルールの項目" } as const
 
 /** 承認を取り消すボタンと、取り消しても戻らないもの */
 function UndoLine({ id, actions, busy }: { id: string; actions: ProposalActions; busy: boolean }) {

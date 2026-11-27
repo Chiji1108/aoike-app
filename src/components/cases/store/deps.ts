@@ -6,7 +6,6 @@ import { ADDRESS_API_PATH, lookupAddresses, type AddressLookup } from "@/lib/con
 import { planWithAi, runAiBatch } from "@/server/ai"
 import { saveCaseStateFn, updateCaseStatusFn } from "@/server/cases"
 import { approveRuleFn, recordProposalFn } from "@/server/chat-fns"
-import { approveLocationsFn } from "@/server/location-fns"
 import type { ChatPrefs } from "./create-case-store"
 
 type DataOf<F extends (opts: { data: never }) => unknown> = Omit<Parameters<F>[0]["data"], "caseId">
@@ -22,7 +21,6 @@ export type CaseDeps = {
   runAiBatch: (req: DataOf<typeof runAiBatch>) => ReturnType<typeof runAiBatch>
   recordProposal: (record: ProposalRecord) => Promise<unknown>
   approveRule: (proposalId: string, item: number) => Promise<unknown>
-  approveLocations: (proposalId: string, items: number[]) => Promise<unknown>
   updateStatus: (status: CaseStatus) => Promise<unknown>
   uploadFile: (kind: FileKind, file: Blob, name: string) => Promise<CaseFile>
   fetchFile: (fileId: string) => Promise<Uint8Array>
@@ -39,7 +37,6 @@ export function serverDeps(caseId: string): CaseDeps {
     runAiBatch: (req) => runAiBatch({ data: { caseId, ...req } }),
     recordProposal: (record) => recordProposalFn({ data: { caseId, record } }),
     approveRule: (proposalId, item) => approveRuleFn({ data: { caseId, proposalId, item } }),
-    approveLocations: (proposalId, items) => approveLocationsFn({ data: { caseId, proposalId, items } }),
     updateStatus: (status) => updateCaseStatusFn({ data: { id: caseId, status } }),
     uploadFile: (kind, file, name) => uploadCaseFile(caseId, kind, file, name),
     fetchFile: fetchCaseFile,

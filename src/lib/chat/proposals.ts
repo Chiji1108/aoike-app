@@ -46,8 +46,8 @@ export type ChatChange =
    */
   | { kind: "plan"; patch: PlanPatch; before?: PlanPatch }
   /**
-   * 調べた工事場所（lib/location）。同じ現場（工事名・注文者）の行の都道府県・場所名をまとめて変える。承認すると要確認の値として入り、
-   * 顧客の覚えた結果に足す（server/location.ts の rememberLocations。site は外に送ってよい値だけ）
+   * 調べた工事場所（lib/location）。同じ現場（工事名・注文者）の行の都道府県・場所名をまとめて変える。承認すると要確認の値として入る
+   * （site は外に送ってよい値だけ）
    */
   | ({ kind: "location"; site: { key: string; workName: string; client: string }; rowKeys: string[] } & Found)
   /** 前の形の、顧客への問い合わせの質問の文（今は質問の文を使わないので、承認しても何もしない。保存した変更案を読めるように残す） */

@@ -8,11 +8,10 @@ import type { Db } from "../case-store"
 type Query = { all: () => unknown; run: () => unknown; toSQL: () => { sql: string } }
 
 /**
- * 本番と同じマイグレーションを当てた sqlite（better-sqlite3。D1 と同じく外部キーを効かせる）。file を渡すとそのファイルに置く（照合スクリプトが覚えた結果を回をまたいで持つ）。
- * 当てたマイグレーションは drizzle の記録の表に残し、まだ当てていないものだけを当てる（あとから足したマイグレーションも当たる）
+ * 本番と同じマイグレーションを当てた sqlite（better-sqlite3。D1 と同じく外部キーを効かせる）。メモリに置く
  */
-export function migratedSqlite<S extends Record<string, unknown>>(schema: S, migrations: string, file = ":memory:") {
-  const sqlite = new Database(file)
+export function migratedSqlite<S extends Record<string, unknown>>(schema: S, migrations: string) {
+  const sqlite = new Database(":memory:")
   sqlite.pragma("foreign_keys = ON")
   const base = drizzle(sqlite, { schema })
   migrate(base, { migrationsFolder: migrations })
@@ -25,7 +24,7 @@ export function migratedSqlite<S extends Record<string, unknown>>(schema: S, mig
 const CSV_MIGRATIONS = new URL("../../../drizzle/csv/", import.meta.url).pathname
 
 /** 工事経歴書 CSV の D1 と同じ sqlite */
-export function migratedDb(file = ":memory:"): { db: Db; sqlite: Database.Database } {
-  const { db, sqlite } = migratedSqlite(casesSchema, CSV_MIGRATIONS, file)
+export function migratedDb(): { db: Db; sqlite: Database.Database } {
+  const { db, sqlite } = migratedSqlite(casesSchema, CSV_MIGRATIONS)
   return { db: db as unknown as Db, sqlite }
 }

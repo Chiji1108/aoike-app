@@ -6,7 +6,6 @@ import { deriveTable } from "@/lib/cases/view"
 import { fromWire, caseTableWireSchema } from "@/lib/chat/wire"
 import { guardPersonal, runSitesOf } from "@/lib/location/sites"
 import { personalChecker } from "./location-guard"
-import { locationItems } from "@/lib/location/changes"
 import { errorMessage } from "@/lib/errors"
 import * as store from "./case-store"
 import { readProposal } from "./chat"
@@ -14,17 +13,6 @@ import * as loc from "./location-store"
 import { authMiddleware } from "./middleware"
 
 const caseId = z.string().min(1).max(64)
-
-/** 顧客の覚えた結果がある現場（始める前の件数と費用の目安に使う） */
-export const memorizedSitesFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
-  .validator(z.object({ caseId, keys: z.array(z.string().min(1).max(1100)).max(5_000) }))
-  .handler(async ({ data }) => {
-    const db = getCsvDb()
-    const kase = await store.getCase(db, data.caseId)
-    if (!kase || kase.deleting) throw new Error("案件が見つかりません")
-    return { keys: [...(await loc.memorized(db, kase.customerId, data.keys)).keys()] }
-  })
 
 /**
  * 一括調査を始める（職員が件数と費用の目安を見て押す）。調べる現場は、画面が送った今の表からサーバーが作り直す
@@ -94,21 +82,3 @@ export const stopLocationSearchFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator(z.object({ caseId, runId: z.string().min(1).max(64) }))
   .handler(async ({ data }) => ({ stopped: await loc.requestStop(getCsvDb(), data.caseId, data.runId) }))
-
-/**
- * 工事場所の項目を承認する（ルールの追記の approveRuleFn と同じく、承認の処理そのもの）。中身はサーバーの変更案の記録（R2）から読み、
- * 工事場所の項目だけを顧客の覚えた結果に書く（画面の値は使わない）。書けたら画面がその項目を承認済みにして表に重ねる。
- * 書けなければ承認しない（承認したのに覚えていない、を作らない）。同じ項目を二度承認しても上書きするだけ
- */
-export const approveLocationsFn = createServerFn({ method: "POST" })
-  .middleware([authMiddleware])
-  .validator(z.object({ caseId, proposalId: z.string().min(1).max(64), items: z.array(z.number().int().min(0)).min(1).max(20_000) }))
-  .handler(async ({ data }) => {
-    const db = getCsvDb()
-    const kase = await store.getCase(db, data.caseId)
-    const record = await readProposal(data.caseId, data.proposalId)
-    if (!kase || kase.deleting || !record || record.proposal.state !== "open") throw new Error("変更案が見つかりません")
-    const items = locationItems(record, data.items)
-    if (!items) throw new Error("変更案の工事場所の項目が見つかりません")
-    return { remembered: await loc.remember(db, data.caseId, items) }
-  })

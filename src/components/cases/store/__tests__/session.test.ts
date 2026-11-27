@@ -292,11 +292,10 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     expect(s.store.getState().runtime.status).toBe("converting")
   })
 
-  test("工事場所・ルールを外に書いている間に変更案が閉じたら、表に重ねず承認の印も付けない", async () => {
-    const writing = deferred<unknown>()
-    const approveLocations = vi.fn<CaseDeps["approveLocations"]>().mockReturnValueOnce(writing.promise)
-    const approveRule = vi.fn<CaseDeps["approveRule"]>(async () => undefined)
-    const s = createCaseSession(page(), fakeDeps({ approveLocations, approveRule }), noChannel)
+  test("ルールを外に書いている間に変更案が閉じたら、表に重ねず承認の印も付けない", async () => {
+    const writing = deferred<undefined>()
+    const approveRule = vi.fn<CaseDeps["approveRule"]>().mockReturnValueOnce(writing.promise)
+    const s = createCaseSession(page(), fakeDeps({ approveRule }), noChannel)
     const location = {
       kind: "location",
       prefecture: "東京都",
@@ -311,7 +310,7 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     const changes: ChatChange[] = [location, { kind: "rule", scope: "customer", text: "一" }]
     receiveProposal(s.store, { proposal: newProposal("p", { kind: "chat", messageId: "m" }, changes, null), changes }, "replace")
     const deciding = s.actions.decideProposal("p", [0, 1], "applied")
-    await vi.waitFor(() => expect(approveLocations).toHaveBeenCalled())
+    await vi.waitFor(() => expect(approveRule).toHaveBeenCalled())
     // 待っている間に元を変える（変更案は閉じる）
     await s.actions.openSource(FILES[0]!, true)
     writing.resolve(undefined)
@@ -319,7 +318,6 @@ describe("画面を離れる・待っている間に変わる（PR #24 の指摘
     const { work } = s.store.getState()
     expect(work.undo).toEqual([])
     expect(work.proposals[0]!.state).toBe("closed")
-    expect(approveRule).not.toHaveBeenCalled()
     expect(s.store.getState().runtime.busy.rule).toBe(false)
   })
 

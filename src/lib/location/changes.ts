@@ -1,4 +1,4 @@
-import type { ChatChange, ProposalRecord } from "../chat/proposals"
+import type { ChatChange } from "../chat/proposals"
 import { askReason, type Outcome, type Site } from "./sites"
 
 /**
@@ -16,17 +16,4 @@ export function outcomeChanges(sites: readonly Site[], outcomes: ReadonlyMap<str
     const reason = askReason(o)
     return s.rowKeys.map((rowKey) => ({ kind: "ask", rowKey, field: "prefecture", reason }))
   })
-}
-
-/**
- * 承認する工事場所の項目（変更案の記録の番号から）。どれかが工事場所の項目でなければ undefined（承認の要求が記録と食い違う）
- */
-export function locationItems(record: ProposalRecord, items: readonly number[]) {
-  const out: { site: { workName: string; client: string }; found: Extract<ChatChange, { kind: "location" }> }[] = []
-  for (const i of new Set(items)) {
-    const c = record.changes[i]
-    if (c?.kind !== "location") return undefined
-    out.push({ site: c.site, found: c })
-  }
-  return out
 }

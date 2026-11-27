@@ -279,7 +279,7 @@ describe("view_file の道具と手書きの印", () => {
     const tools = chatTools(newTurnState(table))
     expect((tools.view_file as { providerOptions?: unknown }).providerOptions).toBeUndefined()
     expect((await call(newTurnState(table), "view_file", { file: "file-1.pdf" })).error).toContain("使えません")
-    const state = newTurnState(table, undefined, undefined, null, null, null, null, null, viewerOf({ "file-1.jpg": jpg }).viewer)
+    const state = newTurnState(table, undefined, undefined, null, null, null, null, viewerOf({ "file-1.jpg": jpg }).viewer)
     state.toolCalls = MAX_TOOL_CALLS
     expect(await call(state, "view_file", { file: "file-1.jpg" })).toMatchObject({ ok: true })
     expect(state.toolCalls).toBe(MAX_TOOL_CALLS)

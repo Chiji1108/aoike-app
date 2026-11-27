@@ -92,7 +92,7 @@ export function undoGroup(store: CaseStore, group: string): UndoSummary | null {
 const updateProposal = (store: CaseStore, id: string, next: (p: Proposal) => Proposal) =>
   setWork(store, (w) => ({ ...w, proposals: w.proposals.map((p) => (p.id === id ? next(p) : p)) }))
 
-/** 外に書いている間（ルールの追記・工事場所）の印。書き終えたら（失敗しても）外す */
+/** 外に書いている間（ルールの追記）の印。書き終えたら（失敗しても）外す */
 async function writingOutside<T>(env: CaseEnv, run: () => Promise<T>) {
   setRuntime(env.store, (r) => ({ busy: { ...r.busy, rule: true } }))
   try {
@@ -104,7 +104,7 @@ async function writingOutside<T>(env: CaseEnv, run: () => Promise<T>) {
 
 /**
  * 変更案を承認・却下する。承認した表の変更は手直し・入れ外し・設定に重ね、列の対応の変更は今の計画に重ねて変換し直す。
- * 承認するたびに取り消しの記録を残す。工事場所・ルールの追記は外（顧客の覚えた結果・ルール）に書けてから承認の印を付ける
+ * 承認するたびに取り消しの記録を残す。ルールの追記は外（ルール）に書けてから承認の印を付ける
  * （ルールは1件ずつ。途中で失敗しても、書けた追記は承認済みになり、もう一度承認しても二重に足さない）
  */
 export async function decideProposal(env: CaseEnv, id: string, indices: number[], decision: "applied" | "rejected") {
@@ -116,10 +116,8 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   const chosen = indices.filter((i) => decisionOf(p, i) === "pending")
   if (decision === "rejected") return updateProposal(store, id, (x) => decide(x, chosen, "rejected"))
   if (!isAnswered(p)) return
-  // 工事場所は、サーバーが顧客の覚えた結果に書けてから承認する（ルールの追記と同じく、承認と覚えることを食い違わせない）
-  const located = chosen.filter((i) => changes[i]!.kind === "location")
   const planned = chosen.filter((i) => changes[i]!.kind === "plan")
-  const table = chosen.filter((i) => changes[i]!.kind !== "rule" && changes[i]!.kind !== "location" && changes[i]!.kind !== "plan")
+  const table = chosen.filter((i) => changes[i]!.kind !== "rule" && changes[i]!.kind !== "plan")
   // 足した行の上限を超える承認はしない（超えるとチャットに表を送れなくなる）
   const after = addedCountAfter(work.added, table.map((i) => changes[i]!))
   if (after > MAX_ADDED_ROWS) {
@@ -148,9 +146,9 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
     }
     nextPlan = p0
   }
-  const apply = (items: number[], external: UndoEntry["external"] = []) => {
+  const apply = (items: number[]) => {
     if (!items.length) return
-    commit(store, { group: id, kind: "approval", external }, (s) => {
+    commit(store, { group: id, kind: "approval" }, (s) => {
       const w = s.work
       const edited = env.table(s).view?.edited ?? []
       const overlaid = applyChanges(w, edited, items.map((i) => approvedChange(p, changes[i]!)))
@@ -163,15 +161,6 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   // 外に書くのを待っている間に元が変わった（変更案が閉じた）・変更案を決め終えたら、表に重ねず承認の印も付けない
   const generation = store.getState().runtime.gen.case
   const stillOpen = () => store.getState().runtime.gen.case === generation && store.getState().work.proposals.find((x) => x.id === id)?.state === "open"
-  if (located.length) {
-    try {
-      await writingOutside(env, () => deps.approveLocations(id, located))
-      if (stillOpen()) apply(located, ["location"])
-      else toast.info("工事場所は顧客の覚えた結果に書きましたが、待っている間に変更案が閉じたので、表には入れていません")
-    } catch (e) {
-      toast.error(errorMessage(e, "工事場所を承認できませんでした（顧客の覚えた結果に書けませんでした）"))
-    }
-  }
   const rules = chosen.filter((i) => changes[i]!.kind === "rule")
   if (!rules.length) return
   try {

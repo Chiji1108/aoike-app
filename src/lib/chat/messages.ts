@@ -19,11 +19,9 @@ export type ChatDataParts = {
   proposal: { id: string }
   "proposal-content": { proposal: Proposal; changes: ChatChange[] }
   /** 工事場所の一括調査を始めるボタン（チャットの find_location。件数と費用の目安。始めるのは職員） */
-  "location-offer": { sites: number; memorized: number; usd: number }
+  "location-offer": { sites: number; usd: number }
   /** 画面の決まった処理を始めるボタン（チャットの offer_action） */
   action: { action: ChatAction }
-  /** チャットの AI が開発者への要望を残した印（record_feedback。残した数） */
-  feedback: { count: number }
 }
 
 export type ChatMessage = UIMessage<ChatMetadata, ChatDataParts>
@@ -44,9 +42,8 @@ export const chatMetadataSchema: z.ZodType<ChatMetadata> = z.object({
 export const chatDataSchemas = {
   proposal: z.object({ id: z.string() }),
   "proposal-content": z.object({ proposal: proposalSchema, changes: z.array(chatChangeSchema) }),
-  "location-offer": z.object({ sites: z.number().int().min(0), memorized: z.number().int().min(0), usd: z.number().min(0) }),
+  "location-offer": z.object({ sites: z.number().int().min(0), usd: z.number().min(0) }),
   action: z.object({ action: z.enum(CHAT_ACTIONS) }),
-  feedback: z.object({ count: z.number().int().min(1) }),
 }
 
 /** 会話を終えた印（画面にだけ出す。AI の履歴には入らない） */

@@ -6,7 +6,6 @@ import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from
 import { CASE_STATUSES, FILE_KINDS, FILE_STATUSES } from "@/lib/cases/types"
 import { RULE_SCOPES, RULE_SOURCES } from "@/lib/chat/rules"
 import { RULE7_TAXES } from "@/lib/convert/koji-selection"
-import { FEEDBACK_KINDS, FEEDBACK_SOURCES, FEEDBACK_STATUSES } from "@/lib/feedback/feedback"
 import { createdAt, updatedAt } from "./auth-schema"
 
 export const csvCustomers = sqliteTable("csv_customers", {
@@ -171,52 +170,4 @@ export const csvLocationSites = sqliteTable(
     outcome: text("outcome"),
   },
   (t) => [primaryKey({ columns: [t.runId, t.idx] })],
-)
-
-/**
- * 顧客ごとに覚えた工事場所（職員が承認した調査の結果）。site_key は工事名・注文者の空白を除いた値（lib/location/sites.ts の siteKeyOf）。
- * 個人名のある現場は調べないので、ここにも入らない。翌年はこれを先に使う（要確認のまま出し、自信なしの結果は自信なしのまま）。顧客を消すと消す（案件を消しても残す）
- */
-export const csvLocationMemory = sqliteTable(
-  "csv_location_memory",
-  {
-    customerId: text("customer_id").notNull(),
-    siteKey: text("site_key").notNull(),
-    workName: text("work_name").notNull(),
-    client: text("client").notNull(),
-    prefecture: text("prefecture").notNull(),
-    place: text("place").notNull(),
-    urls: text("urls").notNull(),
-    /** 覚えたもとの調べ方（knowledge・search） */
-    source: text("source").notNull(),
-    /** AI が自信ありと答えたか（自信なしのまま承認した結果は、翌年も顧客に確かめる印を付けて出す）と、AI の迷った点 */
-    confident: integer("confident", { mode: "boolean" }).notNull(),
-    note: text("note").notNull().default(""),
-    caseId: text("case_id").notNull(),
-    updatedAt: updatedAt(),
-  },
-  (t) => [primaryKey({ columns: [t.customerId, t.siteKey] })],
-)
-
-/**
- * 要望（lib/feedback/feedback.ts）。チャットの AI が「こういう機能があれば良かった」と残したものと、職員が要望の画面で書き足したもの。
- * 同じ要望はチャットの AI が既存の id を指して count を足す。case_id は由来の案件（職員が書いたものは null。案件を消すと null にする）。
- * 個人名・顧客名・工事名の固有名は入れない（残す前に道具が確かめる）
- */
-export const csvFeedback = sqliteTable(
-  "csv_feedback",
-  {
-    id: text("id").primaryKey(),
-    caseId: text("case_id"),
-    kind: text("kind", { enum: FEEDBACK_KINDS }).notNull(),
-    want: text("want").notNull(),
-    did: text("did").notNull(),
-    idea: text("idea").notNull(),
-    count: integer("count").notNull().default(1),
-    status: text("status", { enum: FEEDBACK_STATUSES }).notNull().default("open"),
-    source: text("source", { enum: FEEDBACK_SOURCES }).notNull(),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (t) => [index("csv_feedback_status_idx").on(t.status, t.count), index("csv_feedback_case_id_idx").on(t.caseId)],
 )

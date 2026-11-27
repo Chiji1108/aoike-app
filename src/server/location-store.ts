@@ -1,12 +1,12 @@
 import { and, count, desc, eq, exists, inArray, isNotNull, isNull, sql } from "drizzle-orm"
-import { csvCases, csvCustomers, csvLocationMemory, csvLocationRuns, csvLocationSites } from "@/db/cases-schema"
+import { csvCases, csvLocationRuns, csvLocationSites } from "@/db/cases-schema"
 import { tryParseJson } from "@/lib/json"
-import { MAX_SITES_PER_RUN, normalizeOutcome, outcomeSchema, siteKeyOf, siteRefSchema, type Found, type Outcome, type Site } from "@/lib/location/sites"
+import { MAX_SITES_PER_RUN, normalizeOutcome, outcomeSchema, siteRefSchema, type Outcome, type Site } from "@/lib/location/sites"
 import { z } from "zod"
 import type { Db } from "./case-store"
 
 /**
- * 工事場所の調査の読み書き（D1）。回（csv_location_runs）・現場（csv_location_sites）・顧客ごとに覚えた結果（csv_location_memory）。
+ * 工事場所の調査の読み書き（D1）。回（csv_location_runs）・現場（csv_location_sites）。
  * D1 でも better-sqlite3 でも動く（テストは better-sqlite3）
  */
 
@@ -17,89 +17,8 @@ export const siteSchema: z.ZodType<Site> = siteRefSchema.extend({
 })
 
 
-/** 外に送ってよい現場か（個人名の印が無く、工事名か注文者がある）。送る前と覚える前に、受け取った値でもう一度確かめる */
+/** 外に送ってよい現場か（個人名の印が無く、工事名か注文者がある）。送る前に、受け取った値でもう一度確かめる */
 export const searchable = (s: Pick<Site, "skip" | "workName" | "client">) => !s.skip && (s.workName !== "" || s.client !== "")
-
-// ---- 覚えた結果 ----
-
-/** 顧客の覚えた結果のうち keys の現場のもの */
-export async function memorized(db: Db, customerId: string, keys: readonly string[]): Promise<Map<string, Found>> {
-  const out = new Map<string, Found>()
-  const unique = [...new Set(keys)]
-  // D1 の1つの文に入れられる値の数（100）を超えないように分ける
-  for (let i = 0; i < unique.length; i += 90) {
-    const rows = await db
-      .select()
-      .from(csvLocationMemory)
-      .where(and(eq(csvLocationMemory.customerId, customerId), inArray(csvLocationMemory.siteKey, unique.slice(i, i + 90))))
-    for (const r of rows) {
-      const urls = z.array(z.string()).safeParse(tryParseJson(r.urls))
-      out.set(r.siteKey, { prefecture: r.prefecture, place: r.place, urls: urls.success ? urls.data : [], source: "memory", confident: r.confident, note: r.note })
-    }
-  }
-  return out
-}
-
-export type Remember = { site: { workName: string; client: string }; found: Found }
-
-/**
- * 承認した工事場所を顧客の覚えた結果に書く（同じ現場は上書き）。案件が削除中でなく、その顧客の案件のときだけ書く（削除のあとに行を残さない）。
- * 現場の key は受け取った工事名・注文者から作り直す。書けたら件数
- */
-export async function remember(db: Db, caseId: string, items: readonly Remember[]): Promise<number> {
-  const writes = items
-    .filter(({ site }) => searchable({ ...site }))
-    .map(({ site, found }) => {
-      const siteKey = siteKeyOf(site.workName, site.client)
-      const source = found.source === "memory" ? "search" : found.source
-      return db
-        .insert(csvLocationMemory)
-        .select(
-          db
-            .select({
-              customerId: csvCases.customerId,
-              siteKey: sql<string>`${siteKey}`.as("site_key"),
-              workName: sql<string>`${site.workName}`.as("work_name"),
-              client: sql<string>`${site.client}`.as("client"),
-              prefecture: sql<string>`${found.prefecture}`.as("prefecture"),
-              place: sql<string>`${found.place}`.as("place"),
-              urls: sql<string>`${JSON.stringify(found.urls)}`.as("urls"),
-              source: sql<string>`${source}`.as("source"),
-              confident: sql<boolean>`${found.confident ? 1 : 0}`.as("confident"),
-              note: sql<string>`${found.note}`.as("note"),
-              caseId: csvCases.id,
-              updatedAt: sql<Date>`${Date.now()}`.as("updated_at"),
-            })
-            .from(csvCases)
-            .innerJoin(csvCustomers, eq(csvCustomers.id, csvCases.customerId))
-            .where(and(eq(csvCases.id, caseId), eq(csvCases.deleting, false))),
-        )
-        .onConflictDoUpdate({
-          target: [csvLocationMemory.customerId, csvLocationMemory.siteKey],
-          // 前の年度の結果をそのまま承認したときは、もとの調べ方を残す
-          set: {
-            prefecture: sql`excluded.prefecture`,
-            place: sql`excluded.place`,
-            urls: sql`excluded.urls`,
-            source: found.source === "memory" ? sql`${csvLocationMemory.source}` : sql`excluded.source`,
-            confident: sql`excluded.confident`,
-            note: sql`excluded.note`,
-            caseId: sql`excluded.case_id`,
-            updatedAt: sql`excluded.updated_at`,
-          },
-        })
-        .returning({ key: csvLocationMemory.siteKey })
-    })
-  // 1つの処理（D1 の batch）で書く（途中で落ちて一部だけ覚えることが無いように）
-  const [first, ...rest] = writes
-  if (!first) return 0
-  const results = await db.batch([first, ...rest])
-  return results.reduce((n, rows) => n + rows.length, 0)
-}
-
-export async function deleteMemoryOfCustomer(db: Db, customerId: string) {
-  await db.delete(csvLocationMemory).where(eq(csvLocationMemory.customerId, customerId))
-}
 
 // ---- 一括調査の回 ----
 
@@ -213,7 +132,7 @@ export async function recordOutcome(db: Db, runId: string, idx: number, outcome:
   return (await outcomeUpdate(db, runId, idx, outcome)).length > 0
 }
 
-/** いくつもの現場の結果を1つの処理で書く（覚えた結果・知識の答え） */
+/** いくつもの現場の結果を1つの処理で書く（調べない現場・知識の答え） */
 export async function recordOutcomes(db: Db, runId: string, items: readonly { idx: number; outcome: Outcome }[]) {
   for (let i = 0; i < items.length; i += 50) {
     const chunk = items.slice(i, i + 50)
@@ -284,7 +203,7 @@ export async function runningRunIds(db: Db, caseIds: readonly string[]): Promise
   return rows.map((r) => r.id)
 }
 
-/** 案件の回と現場の行を消す（案件の削除。覚えた結果は顧客のものなので残す） */
+/** 案件の回と現場の行を消す（案件の削除） */
 export async function deleteRunsOfCase(db: Db, caseId: string) {
   const runs = db.select({ id: csvLocationRuns.id }).from(csvLocationRuns).where(eq(csvLocationRuns.caseId, caseId))
   await db.delete(csvLocationSites).where(inArray(csvLocationSites.runId, runs))

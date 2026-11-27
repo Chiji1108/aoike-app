@@ -23,7 +23,7 @@ function shownValue(stored: string, letters: PersonLetters) {
 /** note は値に添える根拠（AI の案）、guess は推定の値か（編集の guessed） */
 /**
  * parts は1項目で2つ以上のセルを変えるとき（工事場所の都道府県・場所名）のセルごとの「今 → 承認したあと」。from・to はそれをつないだ文。
- * source は値の出どころ（工事場所の調査の、前の年度に承認した結果・AI の知識・Web 検索）
+ * source は値の出どころ（工事場所の調査の、AI の知識・Web 検索）
  */
 export type ChangePart = { label: string; from: string; to: string }
 export type ChangeLine = {

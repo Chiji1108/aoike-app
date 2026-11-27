@@ -71,10 +71,10 @@ describe("照合の表", () => {
 
   test("案件は案件定義の順、variant は baseline → edit → rules → location の回の順", () => {
     const report = buildReport(
-      [run("run1", [summary("Z", "baseline", 1), summary("A", "location-2", 1), summary("A", "location-1", 1), summary("A", "baseline", 1), summary("B", "rules", 1), summary("B", "edit", 1)])],
+      [run("run1", [summary("Z", "baseline", 1), summary("A", "location", 1), summary("A", "baseline", 1), summary("B", "rules", 1), summary("B", "edit", 1)])],
       ["B", "A"],
     )
-    expect(report.rows.map((r) => `${r.case}:${r.variant}`)).toEqual(["B:edit", "B:rules", "A:baseline", "A:location-1", "A:location-2", "Z:baseline"])
+    expect(report.rows.map((r) => `${r.case}:${r.variant}`)).toEqual(["B:edit", "B:rules", "A:baseline", "A:location", "Z:baseline"])
   })
 
   test("Markdown は1回なら値だけ、2回以上で違えば 平均（最小〜最大）。除外した列は括弧", () => {

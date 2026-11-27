@@ -7,7 +7,7 @@ import { jaSchema, placeIndex } from "@/lib/location/check"
 import type { Outcome, Site } from "@/lib/location/sites"
 import { siteKeyOf } from "@/lib/location/sites"
 import type { AnonymizeCaller } from "@/lib/chat/turn"
-import { createCase, createCustomer, deleteCase, deleteCustomer, getCase, saveCaseState, type Bucket, type Db } from "../case-store"
+import { createCase, createCustomer, deleteCase, getCase, saveCaseState, type Bucket, type Db } from "../case-store"
 import { personalChecker } from "../location-guard"
 import { newWork, toSavedWork } from "@/lib/cases/state"
 import { aiKey } from "@/lib/convert/convert"
@@ -111,9 +111,8 @@ describe("一括調査の回", () => {
     expect(await loc.createRun(db, other.id, sites())).toEqual({ ok: false, reason: "gone" })
   })
 
-  test("覚えた結果 → 知識（変換で推定していない現場だけ）→ Web 検索の順に調べ、失敗した検索はやり直す。結果は変更案になり、費用は回と案件に足す", async () => {
-    const { customer, kase } = await newCase()
-    await loc.remember(db, kase.id, [{ site: { workName: "横浜駅前広場工事", client: "横浜市" }, found: { prefecture: "神奈川県", place: "横浜市西区", urls: ["https://example.com/y"], source: "search", confident: true, note: "" } }])
+  test("知識（変換で推定していない現場だけ）→ Web 検索の順に調べ、失敗した検索はやり直す。結果は変更案になり、費用は回と案件に足す", async () => {
+    const { kase } = await newCase()
     const created = await loc.createRun(db, kase.id, sites())
     if (!created.ok) throw new Error("回を作れません")
     const asked: string[] = []
@@ -126,7 +125,10 @@ describe("一括調査の回", () => {
         index,
         knowledge: knowledge({}, asked),
         search: search(
-          { テストビル改修工事: { kind: "found", prefecture: "東京都", place: "港区", urls: ["https://example.com/t"], source: "search", confident: true, note: "" } },
+          {
+            横浜駅前広場工事: { kind: "found", prefecture: "神奈川県", place: "横浜市西区", urls: ["https://example.com/y"], source: "search", confident: true, note: "" },
+            テストビル改修工事: { kind: "found", prefecture: "東京都", place: "港区", urls: ["https://example.com/t"], source: "search", confident: true, note: "" },
+          },
           { fail: { テストビル改修工事: 1 }, asked: searched },
         ),
         ...deps,
@@ -134,21 +136,20 @@ describe("一括調査の回", () => {
       inlineStep(names),
       { runId: created.run.id, caseId: kase.id },
     )
-    // 覚えた現場は知識にも検索にも回さない。変換で推定した現場は知識に回さない。個人名の現場はどこにも送らない
-    expect(asked).toEqual(["テストビル改修工事 株式会社テスト"])
+    // 変換で推定した現場は知識に回さない。個人名の現場はどこにも送らない
+    expect(asked).toEqual(["横浜駅前広場工事 横浜市", "テストビル改修工事 株式会社テスト"])
     // 検索は同時に進むので順は決まらない
-    expect(searched.sort()).toEqual(["テストビル改修工事", "テストビル改修工事", "第二小学校体育館工事"].sort())
-    expect(names).toEqual(["memory", "knowledge-list", "knowledge-0", "pending", "search-1", "search-2", "finish"])
+    expect(searched.sort()).toEqual(["横浜駅前広場工事", "テストビル改修工事", "テストビル改修工事", "第二小学校体育館工事"].sort())
+    expect(names).toEqual(["skip", "knowledge-list", "knowledge-0", "pending", "search-0", "search-1", "search-2", "finish"])
     const run = await loc.latestRun(db, kase.id)
-    expect(run).toMatchObject({ status: "done", total: 4, done: 4, searches: 6, proposalId: created.run.id })
-    expect(run!.usd).toBeCloseTo(0.002 + 0.15)
-    expect((await getCase(db, kase.id))!.costUsd).toBeCloseTo(0.002 + 0.15)
+    expect(run).toMatchObject({ status: "done", total: 4, done: 4, searches: 8, proposalId: created.run.id })
+    expect(run!.usd).toBeCloseTo(0.002 + 0.2)
+    expect((await getCase(db, kase.id))!.costUsd).toBeCloseTo(0.002 + 0.2)
     const record = put.get(`${kase.id}/${created.run.id}`)!
     expect(record.proposal).toMatchObject({ origin: { kind: "location", runId: created.run.id }, state: "open", count: 4 })
     expect(record.changes.map((c) => c.kind)).toEqual(["location", "location", "ask", "ask"])
-    expect(record.changes[0]).toMatchObject({ source: "memory", rowKeys: ["s!1", "s!2"], place: "横浜市西区" })
+    expect(record.changes[0]).toMatchObject({ source: "search", rowKeys: ["s!1", "s!2"], place: "横浜市西区" })
     expect(record.changes[1]).toMatchObject({ source: "search", prefecture: "東京都", place: "港区" })
-    expect(customer.id).toBeTruthy()
   })
 
   test("やり直しても調べられない現場は「調べられなかった」として問い合わせに回し、ほかの現場は続ける", async () => {
@@ -259,45 +260,14 @@ describe("一括調査の回", () => {
   })
 })
 
-describe("覚えた結果", () => {
-  const found = { prefecture: "東京都", place: "港区", urls: ["https://example.com/t"], source: "search" as const, confident: true, note: "" }
-
-  test("承認した結果を顧客ごとに覚え、同じ現場（空白の違いも）は上書きする。個人名の現場は覚えない", async () => {
-    const { customer, kase } = await newCase()
-    expect(await loc.remember(db, kase.id, [{ site: { workName: "テストビル改修工事", client: "株式会社テスト" }, found }, { site: { workName: "", client: "" }, found }])).toBe(1)
-    await loc.remember(db, kase.id, [{ site: { workName: "テストビル 改修工事", client: "株式会社テスト" }, found: { ...found, place: "港区赤坂" } }])
-    const m = await loc.memorized(db, customer.id, [siteKeyOf("テストビル改修工事", "株式会社テスト")])
-    expect([...m.values()]).toEqual([{ ...found, place: "港区赤坂", source: "memory" }])
-    // ほかの顧客には出ない
-    const other = await createCustomer(db, "別の建設")
-    expect((await loc.memorized(db, other.id, [siteKeyOf("テストビル改修工事", "株式会社テスト")])).size).toBe(0)
-  })
-
-  test("案件を消しても覚えた結果は残り、顧客を消すと消える。削除中の案件からは覚えない", async () => {
-    const { customer, kase } = await newCase()
-    await loc.remember(db, kase.id, [{ site: { workName: "テストビル改修工事", client: "株式会社テスト" }, found }])
-    const bucket = { put: async () => null, delete: async () => {}, list: async () => ({ objects: [], truncated: false as const }) } satisfies Bucket
-    const next = await createCase(db, customer.id, 2027)
-    await deleteCase(db, bucket, kase.id)
-    expect((await loc.memorized(db, customer.id, [siteKeyOf("テストビル改修工事", "株式会社テスト")])).size).toBe(1)
-    await db.update((await import("@/db/cases-schema")).csvCases).set({ deleting: true })
-    expect(await loc.remember(db, next.id, [{ site: { workName: "別の工事", client: "株式会社テスト" }, found }])).toBe(0)
-    await deleteCustomer(db, bucket, customer.id)
-    expect((sqlite.prepare("select count(*) as n from csv_location_memory").get() as { n: number }).n).toBe(0)
-  })
-
-  test("1件だけ調べる: 覚えた結果があれば AI を呼ばず、無ければ知識 → 検索", async () => {
-    const { customer, kase } = await newCase()
-    await loc.remember(db, kase.id, [{ site: { workName: "テストビル改修工事", client: "株式会社テスト" }, found }])
-    const searched: string[] = []
-    const deps = { index, knowledge: knowledge({}), search: search({}, { asked: searched }), memorized: (keys: string[]) => loc.memorized(db, customer.id, keys) }
-    const spent = { usd: 0, searches: 0 }
-    expect(await locateOne(deps, site("テストビル改修工事", "株式会社テスト", ["s!1"]), spent)).toMatchObject({ kind: "found", source: "memory" })
-    expect(spent.usd).toBe(0)
-    expect(await locateOne(deps, site("謎の工事", "株式会社X", ["s!2"]), spent)).toEqual({ kind: "notFound", note: "" })
-    expect(searched).toEqual(["謎の工事"])
-    expect(await locateOne(deps, site("", "", ["s!3"], { skip: "personal" }), spent)).toEqual({ kind: "skipped", skip: "personal" })
-  })
+test("1件だけ調べる: 知識 → 検索。個人名の現場は送らない", async () => {
+  const searched: string[] = []
+  const deps = { index, knowledge: knowledge({}), search: search({}, { asked: searched }) }
+  const spent = { usd: 0, searches: 0 }
+  expect(await locateOne(deps, site("謎の工事", "株式会社X", ["s!2"]), spent)).toEqual({ kind: "notFound", note: "" })
+  expect(searched).toEqual(["謎の工事"])
+  expect(await locateOne(deps, site("", "", ["s!3"], { skip: "personal" }), spent)).toEqual({ kind: "skipped", skip: "personal" })
+  expect(searched).toEqual(["謎の工事"])
 })
 
 describe("レビューで見つかった穴（D1 の結果）", () => {
@@ -332,13 +302,6 @@ describe("レビューで見つかった穴（D1 の結果）", () => {
       { kind: "location", place: "静岡市葵区" },
     ])
     expect((await loc.latestRun(db, kase.id))!.status).toBe("done")
-  })
-
-  test("自信なしのまま承認した結果は、覚えた結果でも自信なしと迷った点を残す", async () => {
-    const { customer, kase } = await newCase()
-    await loc.remember(db, kase.id, [{ site: { workName: "テストビル改修工事", client: "株式会社テスト" }, found: { ...found, confident: false, note: "似たビルが2つ" } }])
-    const m = await loc.memorized(db, customer.id, [siteKeyOf("テストビル改修工事", "株式会社テスト")])
-    expect([...m.values()][0]).toMatchObject({ confident: false, note: "似たビルが2つ", source: "memory" })
   })
 })
 
@@ -380,14 +343,4 @@ test("知識の段がやり直しても失敗したら、その段を飛ばし�
   expect(searched).toEqual(["テストビル改修工事"])
   expect((await loc.latestRun(db, kase.id))!.status).toBe("done")
   expect([...put.values()][0]!.changes[0]).toMatchObject({ kind: "location", place: "港区" })
-})
-
-test("承認した工事場所は1つの処理（batch）で覚える", async () => {
-  const { customer, kase } = await newCase()
-  let batches = 0
-  const counted = Object.assign(Object.create(db), { batch: (q: Parameters<Db["batch"]>[0]) => (batches++, db.batch(q)) }) as Db
-  const f = { prefecture: "東京都", place: "港区", urls: [], source: "search" as const, confident: true, note: "" }
-  expect(await loc.remember(counted, kase.id, [1, 2, 3].map((i) => ({ site: { workName: `工事${i}`, client: "株式会社テスト" }, found: f })))).toBe(3)
-  expect(batches).toBe(1)
-  expect((await loc.memorized(db, customer.id, [1, 2, 3].map((i) => siteKeyOf(`工事${i}`, "株式会社テスト")))).size).toBe(3)
 })

@@ -243,7 +243,6 @@ describe("工事場所を調べる道具", () => {
         spent.usd += 0.05
         return { kind: "found", prefecture: "東京都", place: "墨田区", urls: ["https://example.com/a"], source: "search", confident: true, note: "" }
       },
-      memorized: async (keys) => new Set(keys.slice(0, 1)),
       guard: async (sites) => guardPersonal(sites, (t) => t.includes("鈴木")),
     }
   }
@@ -252,8 +251,8 @@ describe("工事場所を調べる道具", () => {
     const asked: string[] = []
     const state = newTurnState(placeTable, undefined, caller(asked))
     const res = await call(chatTools(state), "find_location", {})
-    expect(res).toMatchObject({ ok: true, sites: 2, memorized: 1, skipped: 1 })
-    expect(state.locationOffer).toMatchObject({ sites: 2, memorized: 1 })
+    expect(res).toMatchObject({ ok: true, sites: 2, skipped: 1 })
+    expect(state.locationOffer).toEqual({ sites: 2, usd: expect.any(Number) })
     expect(asked).toEqual([])
     expect(state.pending).toEqual([])
   })
@@ -284,7 +283,7 @@ describe("工事場所を調べる道具", () => {
 
 test("find_location（key なし）の件数と目安は、一括調査の1回分（上限まで）で数える", async () => {
   const rows = Array.from({ length: MAX_SITES_PER_RUN + 3 }, (_, i) => kojiRow({ gyoshu: "8", motoukeShitauke: "1", amount: "1000", client: "株式会社テスト", workName: `工事${i}` }, i))
-  const state = newTurnState({ ...table, rows }, undefined, { locate: async () => ({ kind: "notFound", note: "" }), memorized: async () => new Set(), guard: async (s) => s })
+  const state = newTurnState({ ...table, rows }, undefined, { locate: async () => ({ kind: "notFound", note: "" }), guard: async (s) => s })
   const res = await call(chatTools(state), "find_location", {})
   expect(res).toMatchObject({ sites: MAX_SITES_PER_RUN, nextRuns: 3 })
   expect(state.locationOffer?.sites).toBe(MAX_SITES_PER_RUN)
@@ -295,7 +294,6 @@ test("find_location はサーバーの個人名の確かめで個人名ありと
   const rows = [kojiRow({ gyoshu: "8", motoukeShitauke: "1", amount: "1000", client: "株式会社テスト", workName: "鈴木様邸改修工事" }, 1)]
   const state = newTurnState({ ...table, rows }, undefined, {
     locate: async (s) => (asked.push(s.workName), { kind: "notFound", note: "" }),
-    memorized: async () => new Set(),
     guard: async (sites) => guardPersonal(sites, (t) => t.includes("鈴木")),
   })
   expect(await call(chatTools(state), "find_location", { key: "s!1" })).toMatchObject({ ok: true, found: false })

@@ -56,7 +56,7 @@ pnpm test                         # 単体テスト
 | --- | --- | --- | --- |
 | `AUTH_DB` | D1 `aoike-auth` | Better Auth のユーザー・セッション | `drizzle/auth/` |
 | `KINTAI_DB` | D1 `aoike-attendance` | 勤怠（従業員・勤怠） | `drizzle/kintai/` |
-| `CSV_DB` | D1 `aoike-kensetsu-csv` | 工事経歴書 CSV（顧客・案件・ルール・要望など） | `drizzle/csv/` |
+| `CSV_DB` | D1 `aoike-kensetsu-csv` | 工事経歴書 CSV（顧客・案件・ルールなど） | `drizzle/csv/` |
 | `CSV_FILES` | R2 `aoike-kensetsu-csv-files` | 工事経歴書 CSV の案件のファイル・会話（公開アクセスなし） | — |
 | `FIT_DB` | D1 `aoike-fit` | FIT 申請（案件・手続・不備・書類の記録・週次の案件表の記録・設定） | `drizzle/fit/` |
 | `FIT_FILES` | R2 `aoike-fit-files` | FIT 申請の手続の書類（公開アクセスなし） | — |

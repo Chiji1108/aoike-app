@@ -4,8 +4,7 @@ import { alias, type BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
 import { csvCaseAiCaches, csvCaseFiles, csvCases, csvCaseStates, csvCustomers, csvRuleAppends, csvRuleItems, csvSettings } from "@/db/cases-schema"
 import type * as schema from "@/db/cases-schema"
 import { charCount, MAX_RULE_ITEMS, MAX_RULES_TOTAL, ruleSourceSchema, rulesText, type Rule7Tax, type RuleItem, type RuleScope, type RuleSource, type RuleTarget } from "@/lib/chat/rules"
-import { deleteMemoryOfCustomer, deleteRunsOfCase } from "./location-store"
-import { unlinkFeedbackOfCase } from "./feedback-store"
+import { deleteRunsOfCase } from "./location-store"
 import { casePrefix, r2KeyOf, type Case, type CaseFile, type CaseStatus, type Customer, type CustomerSummary, type DeletionCounts, type FileKind } from "@/lib/cases/types"
 
 /**
@@ -539,9 +538,8 @@ export async function deleteCase(db: Db, bucket: Bucket, caseId: string) {
   await db.delete(csvCaseStates).where(eq(csvCaseStates.caseId, caseId))
   await db.delete(csvCaseAiCaches).where(eq(csvCaseAiCaches.caseId, caseId))
   await db.delete(csvRuleAppends).where(eq(csvRuleAppends.caseId, caseId))
-  // ルールの項目と要望は残す（由来の案件だけ外す）
+  // ルールの項目は残す（由来の案件だけ外す）
   await db.update(csvRuleItems).set({ caseId: null }).where(eq(csvRuleItems.caseId, caseId))
-  await unlinkFeedbackOfCase(db, caseId)
   await deleteRunsOfCase(db, caseId)
   await db.delete(csvCases).where(eq(csvCases.id, caseId))
 }
@@ -549,7 +547,6 @@ export async function deleteCase(db: Db, bucket: Bucket, caseId: string) {
 export async function deleteCustomer(db: Db, bucket: Bucket, customerId: string) {
   const cases = await db.select({ id: csvCases.id }).from(csvCases).where(eq(csvCases.customerId, customerId))
   for (const c of cases) await deleteCase(db, bucket, c.id)
-  await deleteMemoryOfCustomer(db, customerId)
   // 顧客ルールの項目と顧客の行を1つの処理で消す（消している間にチャットの承認で足した項目も残らない。足すのは顧客の行があるときだけ）
   await db.batch([
     db.delete(csvRuleItems).where(and(eq(csvRuleItems.scope, "customer"), eq(csvRuleItems.customerId, customerId))),

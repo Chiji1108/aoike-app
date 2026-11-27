@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { Link, useRouter } from "@tanstack/react-router"
-import { Archive, BookOpen, CalendarDays, FileUp, House, KeyRound, Lightbulb, List, LogOut, Menu, ReceiptText, ScrollText, Settings, Users, type LucideIcon } from "lucide-react"
+import { Archive, BookOpen, CalendarDays, FileUp, House, KeyRound, List, LogOut, Menu, ReceiptText, ScrollText, Settings, Users, type LucideIcon } from "lucide-react"
 import { BrandMark } from "@/components/brand"
 import { ChangePasswordDialog } from "@/components/change-password-dialog"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ import { authClient } from "@/lib/auth-client"
 import { OFFICE_NAME } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
-type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/csv/feedback" | "/fit" | "/fit/procedures" | "/fit/weekly" | "/fit/settings" | "/fit/retention" | "/fit/billing" | "/fit/book"
+type ToolPath = "/kintai" | "/kintai/employees" | "/csv" | "/csv/rules" | "/fit" | "/fit/procedures" | "/fit/weekly" | "/fit/settings" | "/fit/retention" | "/fit/billing" | "/fit/book"
 type NavItem = { to: ToolPath; label: string; icon: LucideIcon }
 /** 右上のメニューに足す項目（パスワード変更・ログアウトの上に出る） */
 type MenuItem = NavItem & { testId?: string }
@@ -35,7 +35,6 @@ export const CSV: Tool = {
     { to: "/csv", label: "顧客", icon: Users },
     { to: "/csv/rules", label: "全体ルール", icon: ScrollText },
   ],
-  menu: [{ to: "/csv/feedback", label: "要望", icon: Lightbulb, testId: "menu-feedback" }],
   wide: true,
 }
 
