@@ -17,7 +17,7 @@ import { basisSchema, fieldIdSchema, roundingSchema, selectionSchema, taxSchema 
 import { MODEL } from "../constants"
 import { fieldLabel, KOJI_ANONYMIZE, KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
 import { applyChanges, type ChatChange } from "./proposals"
-import { charCount, MAX_RULE_ITEM_LENGTH, RULE7_TAX_LABELS, ruleScopeSchema, type Rule7Tax, type RuleScope } from "./rules"
+import { charCount, MAX_RULE_LINE_LENGTH, RULE7_TAX_LABELS, ruleScopeSchema, type Rule7Tax, type RuleScope } from "./rules"
 import { nameGuard, type NameGuard } from "./names"
 import { CHAT_ACTIONS, type ChatAction } from "./messages"
 import { outcomeChanges } from "../location/changes"
@@ -50,7 +50,7 @@ const FIELD_IDS = fieldIdSchema.options
 /** コードからだけ呼ぶ道具 */
 const FROM_CODE = { anthropic: { allowedCallers: ["code_execution_20260120" as const] } }
 
-/** global・customer は箇条書きにしたルールの文章（lib/chat/rules.ts の rulesText）、rule7Tax は事務所の7割の計算（税抜・税込） */
+/** global・customer はルールの文章（lib/chat/rules.ts）、rule7Tax は事務所の7割の計算（税抜・税込） */
 export type ChatRules = { global: string; customerName: string; customer: string; rule7Tax: Rule7Tax }
 /** コンテナに置いたファイル（name はコンテナの中の名前） */
 export type ContainerFile = { name: string; original: string; isSource: boolean }
@@ -99,7 +99,7 @@ ${fileLines || "（なし）"}
   - 聞くこと（番号を振った工事ごとの項目・推定の値）・記入のしかた・宛名・挨拶・結びは画面がメールの本文に付ける。あなたが書くのは件名（subject）と本文の前置き（intro。1〜3文）だけ。
   - 何についての確認か（今年度の工事経歴書の作成のため、資料で分からない点がある、など）が顧客に伝わるように書く。事務所の中の言葉（項目の id・列記号・変換・AI・CSV）は使わない。
   - 個人名・表の記号（〔Ａ〕など）・ほかの顧客の名前は書かない（入っていれば受け取らない）。
-- 職員が「顧客ルールに追加して」「全体ルールに追加して」と言ったら propose_rule で足す項目の案を出す（1つの決まりを1項目に。今のルールと同じ項目は出さない。保存は職員の承認後）。
+- 職員が「顧客ルールに追加して」「全体ルールに追加して」と言ったら propose_rule で足す項目の案を出す（1つの決まりを1行に。今のルールにあることは出さない。保存は職員の承認後）。
 - 工事場所（都道府県・場所名）を調べるときは find_location を直接呼ぶ（コードからは呼ばない）。「この現場ってどこ？」のように1件なら key を渡す。「場所が空いている行を調べて」のようにまとめてなら key を省き、返った件数と費用の目安を職員に伝える（一括の検索は職員が画面のボタンで始める）。自分で Web の知識から場所を書き込まない。
 - CSV は書かない（CSV の形式・7割の計算・字数・個人名の検査は決まった処理がやる）。
 - 最後に、何を何件変えたか、残った問題、職員に確かめたいことを短い日本語で返す。コードや JSON は返事に貼らない。
@@ -394,7 +394,7 @@ export function chatTools(state: TurnState) {
   }
   /** 今の問い合わせ（職員が外したものは除く。画面の問い合わせの欄と同じ） */
   const inquiriesOf = (v: TableView) => collectInquiries(v.output, { tax: state.current.tax }).filter((q) => !state.current.dismissed.has(inquiryKey(q)))
-  const ruleItem = z.string().min(1).refine((s) => charCount(s) <= MAX_RULE_ITEM_LENGTH, `1項目は${MAX_RULE_ITEM_LENGTH}字まで`)
+  const ruleItem = z.string().min(1).refine((s) => charCount(s) <= MAX_RULE_LINE_LENGTH, `1行は${MAX_RULE_LINE_LENGTH}字まで`)
   const NAME_REFUSAL = "個人名か表の記号（〔Ａ〕〔個人名〕など）が入っている項目があります。何も出していません。名前を挙げずに決まりとして書き直してください。"
   /** shown はこの指示の表に重ねる変更（既定は changes。表に重ねない変更〔千円未満の扱い〕を除くときに渡す） */
   const push = (tool: string, changes: ChatChange[], summary: string, extra: object = {}, shown: ChatChange[] = changes) => {
@@ -739,7 +739,7 @@ export function chatTools(state: TurnState) {
       }),
     }),
     propose_rule: tool({
-      description: `全体ルール（global）か顧客ルール（customer）に足す項目の案を出す。ルールは箇条書きで、1つの決まりを1項目（1〜2文、${MAX_RULE_ITEM_LENGTH}字まで）にする。個人名・表の記号は書かない（入っていれば受け取らない）。職員が項目ごとに承認すると保存される。`,
+      description: `全体ルール（global）か顧客ルール（customer）の文章の最後に足す行の案を出す。1つの決まりを1行（1〜2文、${MAX_RULE_LINE_LENGTH}字まで。行の頭の「- 」は付けない）にする。個人名・表の記号は書かない（入っていれば受け取らない）。職員が行ごとに承認すると、文章の最後に「- 」の行として足す。`,
       inputSchema: z.strictObject({
         scope: ruleScopeSchema,
         items: z.array(ruleItem).min(1).max(MAX_RULE_PROPOSALS),
@@ -750,7 +750,7 @@ export function chatTools(state: TurnState) {
           if (named.length) return json({ ok: false, error: NAME_REFUSAL, items: named })
           for (const text of items) state.pending.push({ kind: "rule", scope, text })
           state.log.push({ tool: "propose_rule", summary: `${scope}: ${items.join(" / ")}` })
-          return `職員に${items.length}項目の案を見せました（承認待ち）。`
+          return `職員に${items.length}行の案を見せました（承認待ち）。`
         }),
       ),
     }),

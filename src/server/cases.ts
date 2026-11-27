@@ -39,7 +39,7 @@ export const getCustomerPageFn = createServerFn({ method: "GET" })
     const db = getCsvDb()
     const customer = await store.getCustomer(db, data.id)
     if (!customer) return null
-    const [cases, rules] = await Promise.all([store.listCases(db, customer.id), store.listRuleItems(db, { scope: "customer", customerId: customer.id })])
+    const [cases, rules] = await Promise.all([store.listCases(db, customer.id), store.getRules(db, { scope: "customer", customerId: customer.id })])
     return { customer, cases, rules }
   })
 

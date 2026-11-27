@@ -22,41 +22,29 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
-const items = (page: Page, list: string) => page.getByTestId(list).getByTestId("rule-item")
-const texts = async (page: Page, list: string) => (await items(page, list).getByTestId("rule-item-text").allTextContents()).map((t) => t.trim())
-const item = (page: Page, list: string, text: string) => items(page, list).filter({ has: page.getByTestId("rule-item-text").getByText(text, { exact: true }) })
+const input = (page: Page, list: string) => page.getByTestId(list).getByTestId("rules-input")
 
-async function addItem(page: Page, list: string, text: string) {
-  await page.getByTestId(list).getByTestId("rule-add-input").fill(text)
-  await page.getByTestId(list).getByTestId("rule-add").click()
-  await expect(item(page, list, text)).toHaveCount(1)
+async function saveRules(page: Page, list: string, text: string) {
+  await input(page, list).fill(text)
+  await page.getByTestId(list).getByTestId("rules-save").click()
+  await expect(page.getByTestId(list).getByTestId("rules-length")).not.toContainText("まだ保存していません")
 }
 
-async function editItem(page: Page, list: string, from: string, to: string) {
-  const row = item(page, list, from)
-  await row.getByTestId("rule-item-edit").click()
-  await page.getByTestId(list).getByTestId("rule-item-input").fill(to)
-  await page.getByTestId(list).getByTestId("rule-item-save").click()
-}
-
-test("全体ルール: 項目を足す・直す・並べ替える・消す。開き直しても残る。7割の計算は選んで保存する", async ({ page }) => {
+test("全体ルール: 文章を直して保存すると開き直しても残る。7割の計算は選んで保存する", async ({ page }) => {
   await open(page, "/csv/rules")
   const list = "global-rules"
-  await expect(items(page, list).first()).toBeVisible()
-  const before = await texts(page, list)
-  const a = `全体ルールE2E-A-${Date.now()}`
-  const b = `全体ルールE2E-B-${Date.now()}`
-  await addItem(page, list, a)
-  await addItem(page, list, b)
-  await editItem(page, list, a, `${a}（直した）`)
-  await expect(item(page, list, `${a}（直した）`)).toHaveCount(1)
-  await item(page, list, b).getByTestId("rule-item-up").click()
-  await expect.poll(() => texts(page, list)).toEqual([...before, b, `${a}（直した）`])
-  await expect(item(page, list, b).getByTestId("rule-item-origin")).toHaveText("職員")
+  const before = await input(page, list).inputValue()
+  expect(before).not.toBe("")
+  const added = `${before}\n- 全体ルールE2E-${Date.now()}`
+  await input(page, list).fill(added)
+  await expect(page.getByTestId(list).getByTestId("rules-length")).toContainText("まだ保存していません")
+  await page.getByTestId(list).getByTestId("rules-save").click()
+  await expect(page.getByTestId(list).getByTestId("rules-length")).not.toContainText("まだ保存していません")
   await reload(page)
-  await expect.poll(() => texts(page, list)).toEqual([...before, b, `${a}（直した）`])
-  for (const t of [b, `${a}（直した）`]) await item(page, list, t).getByTestId("rule-item-delete").click()
-  await expect.poll(() => texts(page, list)).toEqual(before)
+  await expect(input(page, list)).toHaveValue(added)
+  await saveRules(page, list, before)
+  await reload(page)
+  await expect(input(page, list)).toHaveValue(before)
 
   await page.getByTestId("rule7-tax-included").click()
   await reload(page)
@@ -66,85 +54,58 @@ test("全体ルール: 項目を足す・直す・並べ替える・消す。開
   await expect(page.getByTestId("rule7-tax-excluded")).toHaveAttribute("aria-pressed", "true")
 })
 
-test("足す欄: Enter を続けて押しても1つだけ足し、空なら何も送らない。日本語入力の確定の Enter（keyCode 229）では送らない", async ({ page }) => {
+test("顧客ルール: 2つの画面で直すと、後から保存した方は断って今の文章を見せる（入力は残し、保存し直すと置き換える）", async ({ page, context }) => {
+  const { customer } = await openNewCase(page)
+  created.push(customer)
+  await page.getByRole("link", { name: customer }).click()
+  const url = page.url()
+  const list = "customer-rules"
+  await expect(input(page, list)).toHaveValue("")
+  await saveRules(page, list, "- 備考に「除外」とある行は載せない")
+
+  const other = await context.newPage()
+  await open(other, url)
+  await expect(input(other, list)).toHaveValue("- 備考に「除外」とある行は載せない")
+  await saveRules(page, list, "- 備考に「除外」「対象外」とある行は載せない")
+  // もう1つの画面は古い文章のまま直す → 断って今の文章を見せる
+  await input(other, list).fill("- 完成年月は引渡日")
+  await other.getByTestId(list).getByTestId("rules-save").click()
+  await expect(other.getByTestId(list).getByTestId("rules-conflict")).toContainText("備考に「除外」「対象外」とある行は載せない")
+  await expect(input(other, list)).toHaveValue("- 完成年月は引渡日")
+  await reload(page)
+  await expect(input(page, list)).toHaveValue("- 備考に「除外」「対象外」とある行は載せない")
+  // 確かめて保存し直すと置き換わる
+  await other.getByTestId(list).getByTestId("rules-save").click()
+  await expect(other.getByTestId(list).getByTestId("rules-conflict")).toHaveCount(0)
+  await reload(page)
+  await expect(input(page, list)).toHaveValue("- 完成年月は引渡日")
+  await other.close()
+})
+
+test("保存を続けて押しても1回だけ送り、自分の保存を「ほかの画面で保存された」と出さない", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   await page.getByRole("link", { name: customer }).click()
   const list = "customer-rules"
-  const input = page.getByTestId(list).getByTestId("rule-add-input")
   let calls = 0
-  // 足す処理を遅らせ、返る前に Enter を続けて押す
+  // 保存を遅らせ、返る前に続けて押す
   await page.route(
-    (url) => callsServerFn(url.href, ["addRuleItemFn"]),
+    (url) => callsServerFn(url.href, ["saveRulesFn"]),
     async (route) => {
       calls++
       await new Promise((r) => setTimeout(r, 800))
       await route.fallback()
     },
   )
-  await input.fill("備考に「除外」とある行は載せない")
-  await input.press("Enter")
-  await input.press("Enter")
-  await input.press("Enter")
-  await expect(items(page, list)).toHaveCount(1)
-  expect(calls).toBe(1)
-
-  // 空の欄で Enter: 送らず、エラーも出さない
-  await input.fill("   ")
-  await input.press("Enter")
-  await page.waitForTimeout(300)
-  expect(calls).toBe(1)
-  await expect(page.locator("[data-sonner-toast]")).toHaveCount(0)
-
-  // 変換の確定の Enter（Safari は isComposing が false で keyCode 229）
-  await input.fill("かんせいねんげつ")
-  await input.evaluate((el) => el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true, cancelable: true })))
-  // compositionstart〜end の間の Enter
-  await input.evaluate((el) => {
-    el.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }))
-    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, bubbles: true, cancelable: true }))
+  await input(page, list).fill("- 完成年月は引渡日")
+  const save = page.getByTestId(list).getByTestId("rules-save")
+  await save.evaluate((el: HTMLButtonElement) => {
+    el.click()
+    el.click()
   })
-  await page.waitForTimeout(300)
+  await expect(page.getByTestId(list).getByTestId("rules-length")).not.toContainText("まだ保存していません")
   expect(calls).toBe(1)
-  await input.evaluate((el) => el.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true })))
-  await input.press("Enter")
-  await expect(items(page, list)).toHaveCount(2)
-  expect(calls).toBe(2)
-})
-
-test("顧客ルール: 2つの画面で別の項目を直しても両方残る。同じ項目を後から直すと食い違いを知らせ、黙って上書きしない", async ({ page, context }) => {
-  const { customer } = await openNewCase(page)
-  created.push(customer)
-  await page.getByRole("link", { name: customer }).click()
-  const url = page.url()
-  const list = "customer-rules"
-  await expect(page.getByTestId(list)).toContainText("まだ項目がありません")
-  await addItem(page, list, "備考に「除外」とある行は載せない")
-  await addItem(page, list, "完成年月は引渡日")
-
-  const other = await context.newPage()
-  await open(other, url)
-  await expect(items(other, list)).toHaveCount(2)
-  await editItem(page, list, "備考に「除外」とある行は載せない", "備考に「除外」「対象外」とある行は載せない")
-  await expect(item(page, list, "備考に「除外」「対象外」とある行は載せない")).toHaveCount(1)
-  // もう1つの画面は古い一覧のまま、別の項目を直す
-  await editItem(other, list, "完成年月は引渡日", "完成年月は引渡日（無ければ竣工日）")
-  await expect(item(other, list, "完成年月は引渡日（無ければ竣工日）")).toHaveCount(1)
-  await reload(page)
-  await expect.poll(() => texts(page, list)).toEqual(["備考に「除外」「対象外」とある行は載せない", "完成年月は引渡日（無ければ竣工日）"])
-
-  // 同じ項目: 古い一覧のまま直すと断り、今の文章を見せる（入力は残す）
-  const third = await context.newPage()
-  await open(third, url)
-  await editItem(page, list, "完成年月は引渡日（無ければ竣工日）", "完成年月は引渡日")
-  await expect(item(page, list, "完成年月は引渡日")).toHaveCount(1)
-  await editItem(third, list, "完成年月は引渡日（無ければ竣工日）", "完成年月は竣工日")
-  await expect(third.getByTestId("rule-item-conflict")).toContainText("「完成年月は引渡日」に直されました")
-  await expect(third.getByTestId(list).getByTestId("rule-item-input")).toHaveValue("完成年月は竣工日")
-  await reload(page)
-  await expect.poll(() => texts(page, list)).toEqual(["備考に「除外」「対象外」とある行は載せない", "完成年月は引渡日"])
-  await other.close()
-  await third.close()
+  await expect(page.getByTestId(list).getByTestId("rules-conflict")).toHaveCount(0)
 })
 
 /** 手元の R2（開発サーバーと同じ .wrangler/state）に変更案の記録を置く（サーバーのチャットが置くのと同じ形。承認はサーバーがここから読む） */
@@ -156,7 +117,7 @@ function putProposalRecord(caseId: string, record: ProposalRecord) {
   })
 }
 
-test("チャットのルールの項目の案を承認すると、顧客ルールに項目として出て、由来（年度の案件でチャットから）が付く", async ({ page }) => {
+test("チャットのルールに足す行の案を承認すると、顧客ルールの文章の最後に「- 」の行として足す", async ({ page }) => {
   const { customer, caseUrl } = await convertFixture(page, FIXTURE)
   created.push(customer)
   const caseId = caseUrl.split("/").at(-1)!
@@ -172,7 +133,7 @@ test("チャットのルールの項目の案を承認すると、顧客ルー�
       execute: ({ writer }) => {
         writer.write({ type: "start", messageId: "a1" })
         writer.write({ type: "text-start", id: "t" })
-        writer.write({ type: "text-delta", id: "t", delta: "顧客ルールに1項目足す案です。" })
+        writer.write({ type: "text-delta", id: "t", delta: "顧客ルールに1行足す案です。" })
         writer.write({ type: "text-end", id: "t" })
         writer.write({ type: "data-proposal", data: { id: proposal.id } })
         writer.write({ type: "data-proposal-content", data: { proposal, changes }, transient: true })
@@ -188,15 +149,9 @@ test("チャットのルールの項目の案を承認すると、顧客ルー�
   const card = page.getByTestId("proposal").last()
   await card.getByTestId("proposal-apply-all").click()
   await expect(page.getByTestId("proposal-closed").last()).toContainText("反映 1 件")
-  // 承認を取り消せる記録にも「ルールの項目は残る」と出す
-  await expect(page.getByTestId("proposal-undo-line").last()).toContainText("ルールの項目は取り消しても残ります")
+  // 承認を取り消せる記録にも「ルールに足した行は残る」と出す
+  await expect(page.getByTestId("proposal-undo-line").last()).toContainText("ルールに足した行は取り消しても残ります")
 
   await page.getByRole("link", { name: customer }).click()
-  const list = "customer-rules"
-  await expect.poll(() => texts(page, list)).toEqual([rule])
-  const origin = item(page, list, rule).getByTestId("rule-item-origin")
-  await expect(origin).toHaveText("2026年度の案件でチャットから")
-  await expect(origin).toHaveAttribute("data-source", "chat")
-  await origin.getByRole("link").click()
-  await expect(page).toHaveURL(caseUrl)
+  await expect(input(page, "customer-rules")).toHaveValue(`- ${rule}`)
 })
