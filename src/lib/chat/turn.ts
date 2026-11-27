@@ -579,7 +579,8 @@ export function chatTools(state: TurnState) {
         const change: Extract<ChatChange, { kind: "settings" }> = {
           kind: "settings",
           ...(input.tax && input.tax !== now.tax ? { tax: input.tax } : {}),
-          ...(input.selection && (input.selection !== now.selection || now.selectionBy === null) ? { selection: input.selection } : {}),
+          ...(input.selection && input.selection !== now.selection ? { selection: input.selection } : {}),
+          ...(input.selection && input.selection === now.selection && now.selectionBy === null ? { selection: input.selection, decideSelection: true as const } : {}),
           ...(basisChanged ? { basis: input.basis } : {}),
           ...(input.rounding && input.rounding !== now.rounding ? { rounding: input.rounding } : {}),
         }

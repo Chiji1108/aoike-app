@@ -157,9 +157,12 @@ test("プレビューの表で絞り込み・並べ替え・列の表示・手�
     await expect(edited.locator('td[data-field="startYm"]')).not.toHaveAttribute("data-status", "error")
     expect(await rowKeys(page)).toEqual(keys)
     await expect(edited.getByTestId("row-unmatched")).toBeVisible()
+    // 「!」の意味は凡例に書く（列が細いので行には印だけ）
+    await expect(page.getByTestId("legend-unmatched")).toContainText("今の絞り込み・検索に合わなくなった行")
     await page.getByTestId("outdated").getByRole("button", { name: "更新" }).click()
     await expect(edited).toHaveCount(0)
     await expect(page.getByTestId("outdated")).toHaveCount(0)
+    await expect(page.getByTestId("legend-unmatched")).toHaveCount(0)
     await filterButton(page, "all").click()
     await edited.locator('td[data-field="startYm"] button').click()
     await page.getByLabel("セルの値").fill("20231")

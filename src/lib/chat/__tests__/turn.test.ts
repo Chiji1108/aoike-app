@@ -1,4 +1,5 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
+import { describeSettings } from "../describe"
 import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { kojiRow } from "../../convert/__tests__/helpers"
@@ -186,7 +187,10 @@ describe("チャットの道具（決まった入力で）", () => {
   test("set_selection の載せる工事は、まだ誰も決めていなければ今と同じ値でも変更案にし（承認すると答えたことになる）、決めたあとは今と同じなら変更案にしない", async () => {
     const undecided = newTurnState({ ...table, selection: "rule7", selectionBy: null })
     await call(chatTools(undecided), "set_selection", { selection: "rule7" })
-    expect(undecided.pending).toEqual([{ kind: "settings", selection: "rule7" }])
+    expect(undecided.pending).toEqual([{ kind: "settings", selection: "rule7", decideSelection: true }])
+    // 何も変えない案に見えないように「決める」と書く
+    expect(describeSettings(undecided.pending[0] as Extract<ChatChange, { kind: "settings" }>)).toEqual(["載せる工事を7割ルールに決める"])
+    expect(describeSettings({ selection: "all" })).toEqual(["載せる工事: 全件"])
     const decided = newTurnState({ ...table, selection: "rule7", selectionBy: "staff" })
     expect(await call(chatTools(decided), "set_selection", { selection: "rule7" })).toMatchObject({ ok: true, same: true })
     expect(decided.pending).toEqual([])

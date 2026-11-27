@@ -16,7 +16,7 @@ function approve(w: CaseWork, proposalId: string, changes: ChatChange[]): CaseWo
 }
 
 /** 保存して読み直す（開き直したとき） */
-const reopen = (w: CaseWork) => fromSaved(savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(w)))), toSavedAiCache(w.aiCache))
+const reopen = (w: CaseWork) => fromSaved(savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(w)))), toSavedAiCache(w.aiCache), [])
 
 describe("承認の取り消し", () => {
   const base = { ...newWork("f"), edits: new Map([[editKey("r1", "client"), staff("元の手直し")]]) }

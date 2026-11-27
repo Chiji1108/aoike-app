@@ -111,7 +111,7 @@ describe("承認と聞き返し", () => {
     const open = newProposal("p3", { kind: "excel", fileId: "f1" }, [{ kind: "cell", rowKey: "s!2", field: "client", edit: { value: yamada, by: "chat" } }], null)
     const work = { ...newWork(), proposals: [open, decide(open, [0], "rejected")] }
     const saved = savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(work))))
-    expect(fromSaved(saved, []).proposals).toEqual(work.proposals)
+    expect(fromSaved(saved, [], []).proposals).toEqual(work.proposals)
     const { proposals: _, ...older } = toSavedWork(newWork())
     expect(savedWorkSchema.parse(older).proposals).toEqual([])
   })

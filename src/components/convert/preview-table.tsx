@@ -555,7 +555,7 @@ export function PreviewTable({
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <CellNote spec={spec} store={store.current!} byKey={byKey} />
-        <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} />
+        <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} unmatched={shown.some((r) => !liveKeys.has(r.key))} />
       </div>
 
       {/* 上に重なる窓（案件の画面のチャット）が隠す分（--chat-cover-table-b・--chat-cover-r）だけ、最後の行の下と右端の列の右にスクロールできる余白を足す */}
@@ -652,7 +652,7 @@ function IncludeHeader({ selection, onSelection, off }: { selection: SelectionMo
     ? `今は全件。押すと7割ルールで選び直します（手で入れ外しした行はそのまま）${off ? `。手で外した行・除外の行 ${off} 行は今も載せていません` : ""}`
     : "今は7割ルール。押すと全件を載せます（ダウンロードの段の7割と金額の「全件」と同じ。手で外した行・除外の行は載せません）"
   return (
-    <label className="flex justify-center" title={`載せる: ${title}`}>
+    <label className="flex flex-col items-center gap-0.5" title={`載せる: ${title}`}>
       <Checkbox
         aria-label={all ? "7割ルールに戻す（今は全件を載せる）" : "全件を載せる（今は7割ルール）"}
         checked={all}
@@ -661,10 +661,13 @@ function IncludeHeader({ selection, onSelection, off }: { selection: SelectionMo
         data-testid="include-all"
         data-selection={selection}
       />
-      <span className="sr-only">
-        載せる（{SELECTION_LABELS[selection]}
-        {all && off > 0 && <span data-testid="include-all-off">・外す {off}</span>}）
-      </span>
+      <span className="sr-only">載せる（{SELECTION_LABELS[selection]}）</span>
+      {/* 全件で手で外した行・除外の行の数は、目に見える形で小さく出す（列が細いので2行目に） */}
+      {all && off > 0 && (
+        <span className="text-[10px] leading-none font-normal whitespace-nowrap" data-testid="include-all-off">
+          外す{off}
+        </span>
+      )}
     </label>
   )
 }
@@ -807,7 +810,7 @@ function CellNote({ spec, store, byKey }: { spec: CsvSpec<KojiFieldId>; store: A
  * セルの色の凡例（色は STATUS・cellTone から）。案件の表にある色だけを出す。数えるのは全行（絞り込み・検索・載せない行も）の、見えている列:
  * 凡例はこの案件の表の色の見方なので、絞り込みや検索のたびに出入りして並びが動かないようにする
  */
-function ColorLegend({ rows, fields }: { rows: readonly Row[]; fields: readonly string[] }) {
+function ColorLegend({ rows, fields, unmatched }: { rows: readonly Row[]; fields: readonly string[]; unmatched: boolean }) {
   // 数えるのは見えている列だけ（「表示する列」で隠した列の色は表に出ない）
   const shownKey = fields.join(",")
   const tones = useMemo(() => {
@@ -816,9 +819,9 @@ function ColorLegend({ rows, fields }: { rows: readonly Row[]; fields: readonly 
     for (const r of rows) for (const f of shownFields) if (r.cells[f]) found.add(cellTone(r.cells[f]))
     return LEGEND_TONES.filter((t) => found.has(t))
   }, [rows, shownKey])
-  if (!tones.length) return null
+  if (!tones.length && !unmatched) return null
   return (
-    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="セルの色" data-testid="color-legend">
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="セルの色と印" data-testid="color-legend">
       {tones.map((t) => (
         <li key={t} className="flex items-center gap-1" title={LEGEND_TIPS[t]} data-tone={t}>
           {/* 見本はセルの淡い色では白い背景で見分けにくいので、同じ色の濃い方（注意書きの点と同じ） */}
@@ -827,6 +830,15 @@ function ColorLegend({ rows, fields }: { rows: readonly Row[]; fields: readonly 
           {LEGEND_TIPS[t] && <span className="sr-only">（{LEGEND_TIPS[t]}）</span>}
         </li>
       ))}
+      {/* 「載せる」の列の「!」（列が細いので行には印だけ。タッチでも読めるように意味は凡例に書く） */}
+      {unmatched && (
+        <li className="flex items-center gap-1 text-amber-700" data-testid="legend-unmatched">
+          <span className="font-semibold" aria-hidden>
+            !
+          </span>
+          手直しで今の絞り込み・検索に合わなくなった行（「更新」で外れる）
+        </li>
+      )}
     </ul>
   )
 }

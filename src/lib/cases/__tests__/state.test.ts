@@ -36,7 +36,7 @@ const cannedAi: AiCaller = async (req: AiBatchRequest) => ({
 })
 
 const viaJson = (v: unknown) => JSON.parse(JSON.stringify(v))
-const roundTrip = (w: CaseWork) => fromSaved(savedWorkSchema.parse(viaJson(toSavedWork(w))), savedAiCacheSchema.parse(viaJson(toSavedAiCache(w.aiCache))))
+const roundTrip = (w: CaseWork) => fromSaved(savedWorkSchema.parse(viaJson(toSavedWork(w))), savedAiCacheSchema.parse(viaJson(toSavedAiCache(w.aiCache))), [])
 
 describe("案件の状態の保存と読み出し", () => {
   test("保存した AI の結果から、AI を呼ばずに同じ行を作り直せ、手直し・選択・設定が残る", async () => {

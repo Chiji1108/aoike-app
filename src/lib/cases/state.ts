@@ -13,7 +13,7 @@ import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inqu
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
-import { savedSelectionBy, selectionBySchema, type SelectionBy } from "./selection"
+import { hasDownloadCopies, savedSelectionBy, selectionBySchema, type SelectionBy } from "./selection"
 import { basisSchema, cellEditSchema, fieldIdSchema, legacySelection, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
@@ -168,11 +168,8 @@ export const savedWorkSchema = z
   markFailure: z.object({ fileId: z.string().max(64), key: z.string().max(64), reason: z.string().max(200) }).nullable().default(null),
   allHintClosed: z.boolean().default(false),
   })
-  .transform(({ alreadyApplied, selection, selectionBy, ...w }) => ({
-    ...w,
-    selection: legacySelection(selection, alreadyApplied) ?? "rule7",
-    selectionBy: savedSelectionBy({ selectionBy, selection, alreadyApplied }),
-  }))
+  // 選び方の出どころ（selectionBy）は、無い前の形ではダウンロードの控えの有無も見るので、読むとき（fromSaved・previousSelection）に savedSelectionBy で決める
+  .transform(({ alreadyApplied, selection, ...w }) => ({ ...w, selection: legacySelection(selection, alreadyApplied) ?? "rule7" }))
 export type SavedWork = z.infer<typeof savedWorkSchema>
 
 /** AI の結果（大きい。変換したときだけ変わるので、変わったときだけ保存する） */
@@ -185,9 +182,13 @@ export function toSavedWork({ aiCache: _, ...w }: CaseWork): SavedWork {
 
 export const toSavedAiCache = (cache: AiCache): SavedAiCache => [...cache]
 
-/** 保存した作業を読む（前の形の聞き返しの答えの id は鍵に読み替える。lib/cases/asks.ts） */
-export function fromSaved(w: SavedWork, aiCache: SavedAiCache): CaseWork {
-  return withAskKeys({ ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
+/**
+ * 保存した作業を読む（前の形の聞き返しの答えの id は鍵に読み替える。lib/cases/asks.ts）。files は案件のファイル（前の形の載せる工事の出どころを
+ * ダウンロードの控えの有無から読む。lib/cases/selection.ts の savedSelectionBy）
+ */
+export function fromSaved(w: SavedWork, aiCache: SavedAiCache, files: readonly { kind: string }[]): CaseWork {
+  const selectionBy = savedSelectionBy({ selectionBy: w.selectionBy, selection: w.selection, downloaded: hasDownloadCopies(files) })
+  return withAskKeys({ ...w, selectionBy, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
 }
 
 /** D1 の1行に入る大きさ（D1 の上限は 2,000,000 バイト。少し余裕を持たせる）。作業と AI の結果はそれぞれ別の行 */

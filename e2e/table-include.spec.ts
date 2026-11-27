@@ -80,6 +80,7 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     await header(page).click()
     await rowBox(page, 0).click()
     await expect(page.getByTestId("include-all-off")).toBeVisible()
+    await expect(page.getByTestId("include-all-off")).toHaveText(/^外す\d+$/)
     await expect(header(page)).toHaveAttribute("aria-checked", "true")
     await rowBox(page, 0).click()
     await header(page).click()

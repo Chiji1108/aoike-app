@@ -31,7 +31,15 @@ export type ChatChange =
    */
   | { kind: "add"; rowKey: string; by: AddedRow["by"]; cells: Partial<Record<KojiFieldId, CellEdit>> }
   /** 7割と金額の設定（作業の画面のダウンロードの段の「7割と金額」）。rounding は金額の千円未満の扱い（承認すると変換し直す。前の変更案には無い） */
-  | { kind: "settings"; tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }
+  | {
+      kind: "settings"
+      tax?: TaxMode
+      selection?: SelectionMode
+      /** 載せる工事を今と同じ値で決める（まだ誰も決めていない案件。値は変えず、承認すると職員が決めた値になる。lib/cases/selection.ts） */
+      decideSelection?: true
+      basis?: Basis
+      rounding?: Rounding
+    }
   /** 全体ルール・顧客ルールへの追記（承認すると保存する）。source は足した項目の由来（chat: 職員が頼んだ追記、review: 案件を終えるときの振り返り） */
   | { kind: "rule"; scope: RuleScope; text: string; source: ProposedRuleSource }
   /**
@@ -304,6 +312,7 @@ export const chatChangeSchema: z.ZodType<ChatChange> = z.discriminatedUnion("kin
       kind: z.literal("settings"),
       tax: taxSchema.optional(),
       selection: selectionSchema.optional(),
+      decideSelection: z.literal(true).optional(),
       alreadyApplied: z.boolean().optional(),
       basis: basisSchema.optional(),
       rounding: roundingSchema.optional(),

@@ -196,7 +196,7 @@ export function initialCaseState(page: {
   previous?: { selection: SelectionMode | null } | null
 }, chatPrefs: ChatPrefs | null = null): CaseState {
   // 載せる工事は、新しい作業にだけ去年に決めた選び方を引き継ぐ（保存した作業は変えない。lib/cases/selection.ts の carrySelection）
-  const opened = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
+  const opened = page.state ? fromSaved(page.state.work, page.state.aiCache, page.files) : newWork(null, page.settings.rule7Tax)
   const w = carrySelection(opened, page.previous?.selection, !page.state)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
