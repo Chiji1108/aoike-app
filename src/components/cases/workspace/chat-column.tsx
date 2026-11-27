@@ -87,7 +87,7 @@ function ChatReport() {
   const { reconverting, hasTable, sources, unmarked, shown, output } = useTable(
     useShallow((t) => ({ reconverting: t.reconverting, hasTable: t.hasTable, sources: t.sources, unmarked: t.unmarked, shown: t.shown, output: t.output })),
   )
-  const { noSheetSource, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, asks: reportAsks(v.todo) })))
+  const { noSheetSource, sourceChoices, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, sourceChoices: v.sourceChoices, asks: reportAsks(v.todo) })))
 
   const sourceFile = rt.files.find((f) => f.id === work.sourceFileId)
   const phase = reportPhase({
@@ -99,6 +99,7 @@ function ChatReport() {
     converting: !!work.plan && (!work.converted || reconverting),
     hasTable,
     noSheetSource,
+    sourceChoices,
     sourceName: work.sourceFileId ? (sourceFile?.name ?? "") : null,
   })
   const sourceSheets = work.plan?.plan.sheets ?? []
@@ -136,6 +137,10 @@ function ChatReport() {
       location={location.sites > 0 ? { open: () => actions.showTab("location"), sites: location.sites } : null}
       onRetry={() => actions.retry(phase.kind === "failed" && phase.retry === "source" ? "source" : "convert")}
       uploads={rt.notes}
+      onChooseSource={(id) => {
+        const file = rt.files.find((f) => f.id === id)
+        if (file) actions.chooseSource(file)
+      }}
     />
   )
 }

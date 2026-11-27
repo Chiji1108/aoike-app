@@ -1,5 +1,7 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
 import { describeSettings } from "../describe"
+import { inquiryNumbers } from "../../inquiry/email"
+import { collectInquiries } from "../../inquiry/inquiry"
 import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { kojiRow } from "../../convert/__tests__/helpers"
@@ -440,8 +442,10 @@ describe("問い合わせの文面（propose_inquiry）", () => {
   const mail = { subject: "工事経歴書のご確認", intro: "資料ありがとうございました。いくつか教えてください。" }
   const others = { customerName: "サンプル建設工業", otherCustomers: async () => ["株式会社サンプル建設"] }
 
-  test("get_inquiries は理由の id と推定の根拠を返す", async () => {
+  test("get_inquiries は理由の id と推定の根拠と、メールと同じ工事の番号を返す", async () => {
     const out = await call(chatTools(newTurnState(asked)), "get_inquiries", {})
+    const numbers = inquiryNumbers(collectInquiries(deriveTable(asked).output, { tax: asked.tax }), deriveTable(asked).shown)
+    for (const c of out.cells as { key: string; no: number }[]) expect(c.no).toBe(numbers.get(c.key))
     expect(out.cells.find((c: { field: string }) => c.field === "endYm")).toMatchObject({ key: "s!3", reasonId: "needsReview", note: "引渡日から推定" })
     expect(out.cells.find((c: { field: string }) => c.field === "engineer")).toMatchObject({ reasonId: "missing" })
   })

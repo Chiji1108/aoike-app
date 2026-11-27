@@ -33,6 +33,8 @@ export type ReportProps = {
   location: { open: () => void; sites: number } | null
   onRetry: (() => void) | null
   uploads: UploadNote[]
+  /** 届いた表のファイルを変換の元にする（元を選んでいないとき） */
+  onChooseSource: (fileId: string) => void
 }
 
 const PHASE_TEXT = {
@@ -89,6 +91,19 @@ function Body(p: ReportProps) {
       <p className="text-sm" data-testid="no-sheet-source">
         表として読めるファイルがありません。チャットで「PDF から表を作って」と頼んでください（スキャン・手書きの PDF や写真も AI が見て読みます）。
       </p>
+    )
+  if (phase.kind === "chooseSource")
+    return (
+      <div className="grid gap-2 text-sm" data-testid="report-choose-source">
+        <p>変換の元を選んでください（届いた表のファイルのうち、どれを工事経歴の表として変換するか）。</p>
+        <div className="flex flex-wrap gap-2">
+          {phase.files.map((f) => (
+            <Button key={f.id} size="sm" variant="outline" onClick={() => p.onChooseSource(f.id)} data-testid="report-choose-source-file">
+              {f.name} を変換の元にする
+            </Button>
+          ))}
+        </div>
+      </div>
     )
   if (phase.kind === "reading" || phase.kind === "planning" || phase.kind === "converting")
     return (

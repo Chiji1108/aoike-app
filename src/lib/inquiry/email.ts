@@ -13,6 +13,7 @@ export const DEFAULT_SUBJECT = `工事経歴書の作成についてのご確認
 export const DEFAULT_INTRO = [
   "工事経歴書の作成にあたり、お預かりした資料だけでは分からない点がございましたので、",
   "お手数をおかけしますが、以下についてご教示いただけますでしょうか。",
+  "工事ごとに番号を振っておりますので、ご回答の際は番号を添えてください。",
 ].join("\n")
 
 type KojiRow = RowResult<KojiFieldId>
@@ -34,6 +35,22 @@ const workTitle = (row: KojiRow) => {
   return client ? `${work}（${client}）` : work
 }
 
+/** 工事名が同じ・無い工事を見分ける値の1行（着工・完成年月・請負代金のうち値のあるもの） */
+function workDetail(row: KojiRow): string {
+  const ym = (f: "startYm" | "endYm") => columnOf(f)!.show(row)
+  const amount = /^\d+$/.test(row.cells.amount.value) ? `${Number(row.cells.amount.value).toLocaleString("ja-JP")}千円` : ""
+  return [ym("startYm") && `着工 ${ym("startYm")}`, ym("endYm") && `完成 ${ym("endYm")}`, amount && `請負代金 ${amount}`].filter(Boolean).join("・")
+}
+
+/**
+ * メールで聞く工事の番号（1 から。画面の表の行の順で、セルの問い合わせのある行だけ）。メールの本文と、チャットの AI が顧客の答えを行に結びつける
+ * get_inquiries の no で同じ番号を使う。inquiries は外していない問い合わせ
+ */
+export function inquiryNumbers(inquiries: readonly Inquiry[], rows: readonly KojiRow[]): Map<string, number> {
+  const asked = new Set(inquiries.flatMap((q) => (q.kind === "cell" && columnOf(q.field) ? [q.rowKey] : [])))
+  return new Map(rows.filter((r) => asked.has(r.key)).map((r, i) => [r.key, i + 1]))
+}
+
 /**
  * 1つの工事で聞く項目の行。データに無い項目は名前だけ、推定に自信がない値は読んだ値を添えて確かめてもらう
  * （工事場所の都道府県と場所名は1つの項目にまとめる）
@@ -49,8 +66,8 @@ function askLines(row: KojiRow, qs: readonly CellInquiry[]): string[] {
 }
 
 /**
- * 顧客への問い合わせメールの件名と本文。案件全体の質問（税込・税抜）は1つずつ、セルの問い合わせは工事ごとに聞く項目を並べる
- * （CSV に載せる行の並びの順）。答え方の説明は聞く項目のものだけ。宛名・挨拶・結びは決まった文。rows は画面の表の行
+ * 顧客への問い合わせメールの件名と本文。案件全体の質問（税込・税抜）は1つずつ、セルの問い合わせは工事ごとに番号を振って聞く項目を並べる
+ * （画面の表の行の順。番号は inquiryNumbers。見出しの下に見分ける値の1行）。答え方の説明は聞く項目のものだけ。宛名・挨拶・結びは決まった文。rows は画面の表の行
  */
 export function inquiryEmail(inquiries: readonly Inquiry[], rows: readonly KojiRow[], text: InquiryText): { subject: string; body: string } {
   const sections: string[] = []
@@ -58,10 +75,12 @@ export function inquiryEmail(inquiries: readonly Inquiry[], rows: readonly KojiR
   cases.forEach((t, i) => sections.push(`${i + 1}. ${t}`))
   const cells = inquiries.filter((q): q is CellInquiry => q.kind === "cell")
   const byRow = groupBy(cells, (q) => q.rowKey)
+  const numbers = inquiryNumbers(cells, rows)
   const works = rows.flatMap((row) => {
-    const qs = byRow.get(row.key)
-    const lines = qs ? askLines(row, qs) : []
-    return lines.length ? [[`■ ${workTitle(row)}`, ...lines].join("\n")] : []
+    const no = numbers.get(row.key)
+    if (!no) return []
+    const detail = workDetail(row)
+    return [[`■ ${no}. ${workTitle(row)}`, ...(detail ? [`　（${detail}）`] : []), ...askLines(row, byRow.get(row.key)!)].join("\n")]
   })
   if (works.length) {
     const asked = new Set(cells.map((q) => columnOf(q.field)))

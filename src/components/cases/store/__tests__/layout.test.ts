@@ -165,6 +165,25 @@ describe("並べ方と画面の action（ui）", () => {
     expect(view()).toMatchObject({ noSheetSource: true, chatReady: true })
   })
 
+  test("元を選んでいない案件: 表のファイルが無ければ表を一から作るチャット、読める表のファイルがあれば元を選んでもらう", async () => {
+    const pdf = { ...FILES[0]!, id: "p1", name: "合成.pdf" }
+    const pdfOnly = createCaseSession({ ...page(), files: [pdf] }, fakeDeps(), noChannel)
+    pdfOnly.connect()
+    expect(pdfOnly.view(pdfOnly.store.getState())).toMatchObject({ noSheetSource: true, sourceChoices: [], chatReady: true })
+    const withSheet = createCaseSession({ ...page(), files: [pdf, FILES[0]!] }, fakeDeps(), noChannel)
+    withSheet.connect()
+    expect(withSheet.view(withSheet.store.getState())).toMatchObject({ noSheetSource: false, sourceChoices: [FILES[0]], chatReady: false })
+  })
+
+  test("読めない表のファイル（壊れた zip）は保存せずに知らせる", async () => {
+    const uploadFile = vi.fn(fakeDeps().uploadFile)
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ uploadFile }), noChannel)
+    s.connect()
+    await s.actions.attach([new File([new Uint8Array([0x50, 0x4b, 3, 4, 1, 2, 3])], "壊れた.xlsx")])
+    expect(uploadFile).not.toHaveBeenCalled()
+    expect(s.store.getState().runtime.notes.at(-1)).toMatchObject({ name: "壊れた.xlsx", tone: "error", text: expect.stringContaining("読めないファイルです") })
+  })
+
   test("壊れた Excel だけでは、表を一から作るチャットにならない", async () => {
     const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile: async () => new Uint8Array(0) }), noChannel)
     s.connect()

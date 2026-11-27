@@ -65,7 +65,7 @@ test("AI のメールの下書きを承認すると件名・前置き・本文�
   expect(engineers).toBeGreaterThan(0)
   await expect(page.getByTestId("inquiry-question")).toHaveCount(0)
   await expect(page.getByTestId("inquiry-subject")).toHaveValue("工事経歴書の作成についてのご確認（行政書士青池事務所）")
-  await expect(page.getByTestId("inquiry-email")).toHaveValue(/■ .+\n　・配置技術者/)
+  await expect(page.getByTestId("inquiry-email")).toHaveValue(/■ 1\. .+\n(　（.+）\n)?　・配置技術者/)
   await expect(page.getByTestId("inquiry-email")).not.toHaveValue(/Excel/)
 
   const texts: string[] = []

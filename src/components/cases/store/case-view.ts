@@ -1,6 +1,7 @@
 import { rowFix } from "@/components/convert/status"
 import { askFacts, askImpact, askPrompt, askWording } from "@/lib/cases/ask-impact"
 import { layoutOf } from "@/lib/cases/layout"
+import { isSheetFile, type CaseFile } from "@/lib/cases/types"
 import { selectionAdvice } from "@/lib/cases/selection-advice"
 import { activeView, type WorkView } from "@/lib/cases/steps"
 import { caseTodo, reportQuestionStates } from "@/lib/cases/todo"
@@ -16,6 +17,7 @@ import { memoLast, type TableDerived } from "./table"
 
 const NO_ROWS: RowResult<KojiFieldId>[] = []
 const NO_ASKS: PlanAsk[] = []
+const NO_FILES: CaseFile[] = []
 
 /** 計画の聞き返しの種類ごとの、表の絞り込みの名前と答えの選択肢（exclude は対象の行を載せない。keep は今のまま） */
 export const ASK_KINDS: Record<PlanAskKind, { label: string; options: { value: "exclude" | "keep"; label: string }[] }> = {
@@ -113,6 +115,8 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
   )
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
   const manualIncludedOf = memoLast((inclusion: TableDerived["inclusion"]) => manualIncludedCount(inclusion))
+  /** 届いた表のファイル（ファイルの一覧が変わったときだけ作り直す） */
+  const sheetFilesOf = memoLast((files: CaseState["runtime"]["files"]) => files.filter((f) => f.kind === "source" && isSheetFile(f.name)))
   const layoutOfInput = memoLast((wide: boolean, hasTable: boolean, workReady: boolean, workChoice: boolean | null, chatCollapsed: boolean) =>
     layoutOf({ wide, hasTable, workReady, workChoice, chatCollapsed }),
   )
@@ -131,8 +135,14 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     // 載せる工事を聞くかは去年で決まっているかだけで決まる（行や額が変わっても、聞き返しが出たり消えたりしない。変わるのはすすめる側だけ）
     const advice = selectionAdviceOf(t.shown, t.inclusion, summary)
     const questionStates = questionStatesOf(t.hasTable, w.selectionAnswered, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
-    /** 届いたファイルはあるが変換の元を選んでいない（PDF だけ・元にしなかった）案件か。AI に一から表を作らせる。元は作業の sourceFileId だけで決める */
-    const noSheetSource = !w.sourceFileId && !rt.loading && !rt.sourceError && rt.files.some((f) => f.kind === "source")
+    /**
+     * 変換の元（作業の sourceFileId）を選んでいない案件のうち、AI に一から表を作らせるもの（noSheetSource: 届いたファイルに表のファイルが無いか、
+     * もう AI が表を作っている〔足した行がある〕）と、届いた表のファイルから元を選んでもらうもの（sourceChoices）
+     */
+    const unsourced = !w.sourceFileId && !rt.loading && !rt.sourceError
+    const sheetFiles = sheetFilesOf(rt.files)
+    const noSheetSource = unsourced && rt.files.some((f) => f.kind === "source") && (!sheetFiles.length || w.added.length > 0)
+    const sourceChoices = unsourced && !noSheetSource ? sheetFiles : NO_FILES
     const out: CaseView = {
       rowFixes,
       inquiries,
@@ -145,6 +155,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, rt.status === "inquiring"),
       manualIncluded: manualIncludedOf(t.inclusion),
       noSheetSource,
+      sourceChoices,
       // チャットに送れるか（変換した、または変換の元の表が無い）
       chatReady: !!t.rows && !t.reconverting && (noSheetSource || (w.converted && !!rt.source && !!t.grid && !!t.plan)),
       chatCanSend: false,
@@ -178,6 +189,8 @@ export type CaseView = {
   todo: ReturnType<typeof caseTodo>
   manualIncluded: number
   noSheetSource: boolean
+  /** 元を選んでもらう届いた表のファイル（元を選んでいない・表を一から作るのでもないときだけ） */
+  sourceChoices: readonly CaseFile[]
   chatReady: boolean
   /** チャットに指示を送れるか（chatReady と ui.chatTurn から作る） */
   chatCanSend: boolean

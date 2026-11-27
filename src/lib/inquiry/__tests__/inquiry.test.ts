@@ -11,7 +11,7 @@ import { personToken } from "../../convert/persons"
 import type { MappingPlan } from "../../convert/plan"
 import type { AiBatchRequest } from "../../convert/ai-tasks"
 import { KOJI_KEIREKI, KOJI_PLAN_HINTS, type KojiFieldId } from "../../spec/koji-keireki"
-import { ADDRESSEE_PLACEHOLDER, DEFAULT_SUBJECT, inquiryEmail } from "../email"
+import { ADDRESSEE_PLACEHOLDER, DEFAULT_SUBJECT, inquiryEmail, inquiryNumbers } from "../email"
 import { EMPTY_INQUIRY_TEXT } from "../text"
 import { collectInquiries, CORRECTION_MESSAGE, readAiAnswers, type AiAnswer, type AnswerReport, type Inquiry } from "../inquiry"
 
@@ -128,17 +128,27 @@ describe("問い合わせのメール", () => {
     expect(body).toContain("2. 次の工事について、分かる範囲でお知らせください（3件）。")
     expect(body).toContain(
       [
-        "■ テストビル電気工事（株式会社テスト）",
+        "■ 1. テストビル電気工事（株式会社テスト）",
+        "　（着工 2024年4月・完成 2024年9月・請負代金 5,000千円）",
         "　・配置技術者",
         "",
-        "■ テスト倉庫改修工事（株式会社テスト）",
+        "■ 2. テスト倉庫改修工事（株式会社テスト）",
+        "　（着工 2024年4月・完成 2024年9月・請負代金 5,000千円）",
         "　・工事場所: 資料から「東京都港区」と読みました。違っていればお知らせください",
         "",
-        "■ テストビル電気工事（株式会社テスト）",
+        "■ 3. テストビル電気工事（株式会社テスト）",
+        "　（完成 2024年9月・請負代金 5,000千円）",
         "　・着工年月",
         "　・工事場所",
       ].join("\n"),
     )
+    // 同じ工事名でも番号と見分ける値で見分け、答えに番号を添えてもらう。番号は get_inquiries の no と同じ
+    expect(body).toContain("ご回答の際は番号を添えてください")
+    expect([...inquiryNumbers(qs, rows)]).toEqual([
+      [noEngineer.key, 1],
+      [guessedPlace.key, 2],
+      [noLocation.key, 3],
+    ])
     // 答え方の説明は聞く項目のものだけ
     expect(body).toContain("　※着工・完成年月は「2024年4月」のようにお知らせください。")
     expect(body).toContain("　※工事場所は都道府県から市区町村までお知らせください（例: 東京都千代田区）。")

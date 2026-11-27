@@ -20,7 +20,7 @@ import { Message, MessageContent, MessageFooter } from "@/components/ui/message"
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller"
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 import type { TableView } from "@/lib/cases/view"
-import { chatDataSchemas, chatMetadataSchema, currentAction, type ChatAction, type ChatMessage, type ChatRequest, type SavedChatAction } from "@/lib/chat/messages"
+import { chatDataSchemas, chatMetadataSchema, type ChatAction, type ChatMessage, type ChatRequest } from "@/lib/chat/messages"
 import type { MappingPlan } from "@/lib/convert/plan"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import type { ChatChange, Proposal } from "@/lib/chat/proposals"
@@ -521,9 +521,7 @@ const ACTION_BUTTONS = {
   export: { label: "ダウンロードの前の確認を開く", icon: <Download /> },
 } satisfies Record<ChatAction, { label: string; icon: React.ReactNode }>
 
-/** 保存した会話の前のボタン（edit_excel）は、今の同じ処理のボタンにする */
-function ActionButton({ action: saved, onAction }: { action: SavedChatAction; onAction: (a: ChatAction) => void }) {
-  const action = currentAction(saved)
+function ActionButton({ action, onAction }: { action: ChatAction; onAction: (a: ChatAction) => void }) {
   const b = ACTION_BUTTONS[action]
   return (
     <Button size="sm" variant="outline" className="w-fit" onClick={() => onAction(action)} data-testid="chat-action" data-action={action}>

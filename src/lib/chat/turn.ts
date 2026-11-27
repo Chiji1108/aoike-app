@@ -25,6 +25,7 @@ import { FEEDBACK_KIND_LABELS, feedbackInputSchema, feedbackNameCheck, feedbackT
 import { askReason, estimateUsd, MAX_SITES_PER_RUN, runSitesOf, siteOfRow, SOURCE_LABELS, type Outcome, type Site } from "../location/sites"
 import { ANSWER_FIELDS, collectInquiries, inquiryKey, readAiAnswers, REASONS, type AiAnswerReport } from "../inquiry/inquiry"
 import { introSchema, otherCustomerTest, subjectSchema } from "../inquiry/text"
+import { inquiryNumbers } from "../inquiry/email"
 import type { AddressLookup } from "../convert/address"
 import type { AiCache, AiCaller } from "../convert/pipeline"
 import type { Rounding } from "../convert/transforms"
@@ -92,11 +93,12 @@ ${fileLines || "（なし）"}
 - 分からないこと・データに無いこと（配置技術者・分からない工事場所など）は推測で埋めず、ask_customer で顧客への問い合わせに回す。住所の分割・工事名を整えること・調べられる工事場所は問い合わせに回さず事務所でやる。
 - 指示があいまいで、どちらにも取れるときや、決める前に職員の答えが要るときは、ask_staff で聞き返す（答えるまで変更案は反映されない）。
 - 職員が計画の聞き返し（「この案件」の計画の聞き返し）がどういうことかを聞いたら、元の Excel で対象の行と聞き返しの列の注記を読む（注記がほかの工事を指すなら、その工事の行があるかも見る）。注記ごとの意味の読み方、重複・対象外のおそれ、答え（載せない・載せる）で何が変わるか、迷うときに確かめること（表で見る・顧客に聞く）を、短い箇条書き（10行ほどまで）で返す。決めるのは事務所なので、どちらがよいかの勧めと変更案は、頼まれるまで出さない。
-- 顧客の回答（職員がチャットに貼ったメールの本文、届いた Excel・PDF などのファイル）は、まず await get_inquiries({}) で今顧客に聞いていることを読み、答えごとにどの工事（key）のどの項目への答えかを決めて await record_answers({"items":[{"key","field","answer"}]}) で送る（set_cells は使わない）。
+- 顧客の回答（職員がチャットに貼ったメールの本文、届いた Excel・PDF などのファイル）は、まず await get_inquiries({}) で今顧客に聞いていることを読み、答えごとにどの工事（key）のどの項目への答えかを決めて（顧客はメールの工事の番号〔get_inquiries の no〕を添えて答えるので、まず番号で key を決める）await record_answers({"items":[{"key","field","answer"}]}) で送る（set_cells は使わない）。
   - answer は顧客の答えを項目の値として読める形で書く: 年月は「2024年4月」、工事場所は field を place にして都道府県から市区町村まで（例「東京都千代田区」）、注文者・工事名・配置技術者は顧客の書いたまま（個人名も記号にせずそのまま。匿名化・字数などの検査は道具が変換と同じ決まりでやる）。今の値（推定）のとおりという答えは {"key","field","confirm":true}。
-  - 聞いていない項目でも、顧客がはっきり訂正していれば送ってよい。答えの無い項目は送らない（推測で埋めない）。どの工事への答えか決めきれない答え（工事名が似ている・番号が無い・2つの工事に当てはまる）は送らず、ask_staff で職員に聞く。税込・税抜の答えは set_selection の tax。
+  - 聞いていない項目でも、顧客がはっきり訂正していれば送ってよい。答えの無い項目は送らない（推測で埋めない）。どの工事への答えか決めきれない答え（番号が無く工事名が似ている・番号と工事名が食い違う・2つの工事に当てはまる）は送らず、ask_staff で職員に聞く。税込・税抜の答えは set_selection の tax。
 - 職員が顧客への問い合わせのメールの下書きを頼んだら、await get_inquiries({}) で今の問い合わせを読み、propose_inquiry を直接呼ぶ。表は変えない。
-  - 聞くこと（工事ごとの項目・推定の値）・記入のしかた・宛名・挨拶・結びは画面がメールの本文に付ける。あなたが書くのは件名（subject）と本文の前置き（intro。1〜3文）だけ。
+  - 聞くこと（番号を振った工事ごとの項目・推定の値）・記入のしかた・宛名・挨拶・結びは画面がメールの本文に付ける。あなたが書くのは件名（subject）と本文の前置き（intro。1〜3文）だけ。
+  - 前置きには、工事ごとに番号を振ってあるので答えに番号を添えてほしいことを1文入れる。
   - 何についての確認か（今年度の工事経歴書の作成のため、資料で分からない点がある、など）が顧客に伝わるように書く。事務所の中の言葉（項目の id・列記号・変換・AI・CSV）は使わない。
   - 個人名・表の記号（〔Ａ〕など）・ほかの顧客の名前は書かない（入っていれば受け取らない）。
 - 職員が「顧客ルールに追加して」「全体ルールに追加して」と言ったら propose_rule で足す項目の案を出す（1つの決まりを1項目に。今のルールと同じ項目は出さない。保存は職員の承認後）。
@@ -584,12 +586,14 @@ export function chatTools(state: TurnState) {
     }),
     get_inquiries: tool({
       description:
-        "顧客に今聞いていること（問い合わせ。CSV に載せる行のうち、書類に要る項目が空か推定に自信がないセル。職員が外したものは除く）を JSON 文字列で返す: {tax: 税込・税抜を聞いているか, cells:[{key, field, label, reason, reasonId（missing＝空・needsReview＝推定）, note?（推定の根拠などセルのメモ）, value, workName, client, amount, source}]}。顧客の回答を読む前・問い合わせのメールの下書きを作る前に呼ぶ。",
+        "顧客に今聞いていること（問い合わせ。CSV に載せる行のうち、書類に要る項目が空か推定に自信がないセル。職員が外したものは除く）を JSON 文字列で返す: {tax: 税込・税抜を聞いているか, cells:[{no（メールの工事の番号。顧客は答えにこの番号を添える）, key, field, label, reason, reasonId（missing＝空・needsReview＝推定）, note?（推定の根拠などセルのメモ）, value, workName, client, amount, source}]}。顧客の回答を読む前・問い合わせのメールの下書きを作る前に呼ぶ。",
       inputSchema: z.strictObject({}),
       execute: counted<object>(async () => {
         const v = view()
         const rowOf = new Map(v.output.map((r) => [r.key, r]))
         const qs = inquiriesOf(v)
+        // メールの本文と同じ番号（画面の表の行の順）
+        const numbers = inquiryNumbers(qs, v.shown)
         state.log.push({ tool: "get_inquiries", summary: `${qs.length}件` })
         const text = (key: string, f: KojiFieldId) => editText(rowOf.get(key)!.cells[f], state.letters)
         // セルのメモは値と同じ記号で出し、分かっている個人名も伏せる（名前を確かめられないときはメモを出さない）
@@ -607,6 +611,7 @@ export function chatTools(state: TurnState) {
             q.kind === "cell"
               ? [
                   {
+                    no: numbers.get(q.rowKey),
                     key: q.rowKey,
                     field: q.field,
                     label: fieldLabel(q.field),
@@ -849,7 +854,7 @@ export function chatTools(state: TurnState) {
     }),
     propose_inquiry: tool({
       description:
-        "顧客への問い合わせメールの件名と前置きの案を出す（表は変えない）。subject: メールの件名、intro: 本文の前置き（1〜3文）。聞くこと（工事ごとの項目）・記入のしかた・宛名・挨拶・結びは画面が本文に付ける。" +
+        "顧客への問い合わせメールの件名と前置きの案を出す（表は変えない）。subject: メールの件名、intro: 本文の前置き（1〜3文）。聞くこと（番号を振った工事ごとの項目）・記入のしかた・宛名・挨拶・結びは画面が本文に付ける。前置きには、答えに工事の番号を添えてほしいことを1文入れる。" +
         "個人名・表の記号・ほかの顧客の名前は書かない（入っていれば受け取らない）。JSON 文字列 {ok} を返す。職員が承認するとメールの件名と前置きに使う。",
       inputSchema: z.strictObject({ subject: subjectSchema, intro: introSchema }),
       execute: counted<{ subject: string; intro: string }>(({ subject, intro }) =>
