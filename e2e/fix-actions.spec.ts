@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 /**
@@ -68,7 +69,7 @@ async function fakeSuggest(page: Page, sent: string[]) {
     (url) => callsServerFn(url.href, ["runAiBatch"]),
     async (route) => {
       const body = route.request().postData() ?? ""
-      if (!body.includes("suggestGyoshu")) return route.continue()
+      if (!body.includes("suggestGyoshu")) return route.fallback()
       sent.push(body)
       const results = Array.from({ length: 20 }, (_, id) =>
         id === 0

@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs"
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { sealExpiryOf } from "../src/lib/fit/alerts"
 import { addMonths, daysBetween } from "../src/lib/period"
 import { open } from "./helpers"

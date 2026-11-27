@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, liveTest, test } from "./fake-ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
 import { callsServerFn, deleteCustomer, openNewCase, openTab, reload, showAllRows } from "./helpers"
@@ -115,8 +116,7 @@ test("チャットで「端数は四捨五入で」→ 変更案に「千円未�
 })
 
 /** 本物の AI を呼ぶ（E2E_LIVE_AI=1 のときだけ。費用は1回 $0.1 ほど） */
-test("本物の AI: 「端数は四捨五入で」で千円未満の扱いの変更案が出て、承認すると四捨五入になる", async ({ page }) => {
-  test.skip(process.env.E2E_LIVE_AI !== "1", "E2E_LIVE_AI=1 のときだけ")
+liveTest("本物の AI: 「端数は四捨五入で」で千円未満の扱いの変更案が出て、承認すると四捨五入になる", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)

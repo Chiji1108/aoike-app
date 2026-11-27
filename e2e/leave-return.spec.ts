@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname

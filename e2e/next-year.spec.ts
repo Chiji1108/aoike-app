@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs"
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { fileBytes, attachAndConvert, callsServerFn, csvCount, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname

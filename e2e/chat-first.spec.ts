@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import ExcelJS from "exceljs"
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
 import { fileBytes, callsServerFn, csvCount, deleteCustomer, openExport, openNewCase, openTab, reload, showAllRows } from "./helpers"

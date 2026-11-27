@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 /**
@@ -64,7 +65,7 @@ async function fakeAi(page: Page) {
   await page.route(
     (url) => callsServerFn(url.href, ["runAiBatch"]),
     async (route) => {
-      if (!(route.request().postData() ?? "").includes("suggestGyoshu")) return route.continue()
+      if (!(route.request().postData() ?? "").includes("suggestGyoshu")) return route.fallback()
       const results = Array.from({ length: 20 }, (_, id) => (id === 0 ? { id, value: "", basis: "none", confident: false, note: "" } : { id, value: "2", basis: "workName", confident: true, note: "工事名の「工事」" }))
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ result: { ok: true, json: { results }, usd: 0.01 } }) })
     },

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
-import { expect, test, type Locator, type Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { convertFixture, csvCount, deleteCustomer, open, openExport, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname

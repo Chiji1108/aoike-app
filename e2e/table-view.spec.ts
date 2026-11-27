@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs"
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import * as XLSX from "xlsx"
 import { GYOSHU } from "../src/lib/spec/code-sets"
 import { attachAndConvert, convertFixture, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"

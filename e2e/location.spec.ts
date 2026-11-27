@@ -2,7 +2,8 @@ import { execFileSync } from "node:child_process"
 import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, liveTest, test } from "./fake-ai"
 import { newProposal, proposalKey, type ProposalRecord } from "../src/lib/chat/proposals"
 import { outcomeChanges } from "../src/lib/location/changes"
 import { siteKeyOf, type Outcome, type Site } from "../src/lib/location/sites"
@@ -186,8 +187,7 @@ test("承認の前に行ごとの都道府県・場所名（今 → 新）と出
 })
 
 /** 本物の AI と Web 検索（E2E_LIVE_AI=1 のときだけ。費用は1回 $0.2 ほど） */
-test("本物の検索で調べる → 進み具合 → 変更案 → 承認 → 表", async ({ page }) => {
-  test.skip(process.env.E2E_LIVE_AI !== "1", "E2E_LIVE_AI=1 のときだけ")
+liveTest("本物の検索で調べる → 進み具合 → 変更案 → 承認 → 表", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   await convertAll(page)
