@@ -156,6 +156,15 @@ const sizeOf = (e: UndoEntry) => new TextEncoder().encode(JSON.stringify(e)).byt
  * 記録を足す。足した記録の枠で、数と大きさの上限を超えたら、その枠の古いものから捨てる（ほかの枠の記録は捨てない）。
  * 1件だけで枠の大きさを超える記録は中身を捨て、取り消せない印だけを残す
  */
+/**
+ * 載せる工事の選び方を変えた、一番新しい取り消しの記録の印（proposalId。取り消していないもの）。「答える」の載せる工事の行の「取り消す」に使う
+ * （答える・表の見出し・7割と金額・変更案の承認のどれで決めても、同じ行から取り消せる）
+ */
+export function lastSelectionUndo(list: readonly UndoEntry[]): string | null {
+  for (let i = list.length - 1; i >= 0; i--) if (list[i]!.selection && !list[i]!.undone) return list[i]!.proposalId
+  return null
+}
+
 export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntry[] {
   const kind = kindOf(entry)
   const limit = UNDO_LIMITS[kind]

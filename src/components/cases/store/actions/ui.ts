@@ -57,10 +57,12 @@ export function goChat(env: CaseEnv, to: ChatTarget) {
 }
 
 /**
- * チャットに決まった指示を送る（「答える」の段の「AI に聞く」。送るのはチャットの欄。ui.chatSend を読んで送り、takeChatSend で外す）。
+ * チャットに決まった指示を送る（「答える」の段の「AI に聞く」。送るのはチャットの欄。ui.chatSend を読んで送り、takeChatSend で外す。送れる間だけ受け付ける）。
  * 移るのは goChat と同じ（狭い画面では作業の画面を閉じ、たたんだ窓はその場だけ開く）。フォーカスはチャットの入力欄へ
  */
 export function askChat(env: CaseEnv, text: string) {
+  // 送れない間（返事の途中・会話の読み込み中）は受け付けない（ボタンも押せない。頼みを残してあとで勝手に送らない）
+  if (!env.store.getState().ui.chatCanSend) return
   const collapsed = env.view(env.store.getState()).layout.chatCollapsed
   setUi(env.store, (u) => ({
     ...(u.wide ? {} : { workChoice: false }),

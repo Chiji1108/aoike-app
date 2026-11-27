@@ -195,8 +195,9 @@ export function initialCaseState(page: {
   /** 去年の案件（載せる工事を去年と同じにする） */
   previous?: { selection: SelectionMode | null } | null
 }, chatPrefs: ChatPrefs | null = null): CaseState {
-  // 載せる工事は、まだ誰も決めていなければ去年に決めた選び方を引き継ぐ（新しい案件も保存した作業も同じ。lib/cases/selection.ts の carrySelection）
-  const w = carrySelection(page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax), page.previous?.selection)
+  // 載せる工事は、新しい作業にだけ去年に決めた選び方を引き継ぐ（保存した作業は変えない。lib/cases/selection.ts の carrySelection）
+  const opened = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
+  const w = carrySelection(opened, page.previous?.selection, !page.state)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
     contents: new Map(page.proposals.map((r) => [r.proposal.id, r.changes])),

@@ -29,10 +29,17 @@ test("今の段は最初の済んでいない段。選ぶまでは今の段を�
 })
 
 test("載せる工事のおすすめ: 少ない行・決算書の額より小さい合計は全件、ほかは7割ルール", () => {
-  expect(selectionAdvice({ rows: 8, total: 0, basis: {} })).toMatchObject({ recommended: "all" })
-  expect(selectionAdvice({ rows: 40, total: 700, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "all" })
-  expect(selectionAdvice({ rows: 40, total: 1000, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "rule7" })
-  expect(selectionAdvice({ rows: 40, total: 1000, basis: {} })).toMatchObject({ recommended: "rule7" })
+  expect(selectionAdvice({ previous: null, rows: 8, total: 0, basis: {} })).toMatchObject({ recommended: "all" })
+  expect(selectionAdvice({ previous: null, rows: 40, total: 700, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "all" })
+  expect(selectionAdvice({ previous: null, rows: 40, total: 1000, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "rule7" })
+  expect(selectionAdvice({ previous: null, rows: 40, total: 1000, basis: {} })).toMatchObject({ recommended: "rule7" })
+})
+
+test("載せる工事のおすすめの理由は去年に合わせる: 去年に決めていれば去年の値、去年があって決めていなければ「初めての顧客」と言わない", () => {
+  expect(selectionAdvice({ previous: { selection: "all" }, rows: 40, total: 0, basis: {} })).toEqual({ recommended: "all", reason: "去年は全件でした" })
+  expect(selectionAdvice({ previous: { selection: "rule7" }, rows: 3, total: 0, basis: {} })).toEqual({ recommended: "rule7", reason: "去年は7割ルールでした" })
+  expect(selectionAdvice({ previous: { selection: null }, rows: 40, total: 0, basis: {} }).reason).toBe("去年は選び方を決めていなかったので、7割ルールから始めます")
+  expect(selectionAdvice({ previous: null, rows: 40, total: 0, basis: {} }).reason).toBe("初めての顧客は7割ルールから始めます")
 })
 
 test("次の段は、その段より後ろの最初の済んでいない段（前の段が残っていても戻らない）。無ければダウンロード", () => {
@@ -44,8 +51,8 @@ test("次の段は、その段より後ろの最初の済んでいない段（�
 
 test("全件をすすめる閾値: 行が FEW_ROWS 行以下、または表の合計が決算書の額の FILTERED_RATIO 以下", () => {
   expect([FEW_ROWS, FILTERED_RATIO]).toEqual([12, 0.85])
-  expect(selectionAdvice({ rows: FEW_ROWS, total: 0, basis: {} })).toMatchObject({ recommended: "all" })
-  expect(selectionAdvice({ rows: FEW_ROWS + 1, total: 0, basis: {} })).toMatchObject({ recommended: "rule7" })
-  expect(selectionAdvice({ rows: 40, total: 850, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "all" })
-  expect(selectionAdvice({ rows: 40, total: 851, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "rule7" })
+  expect(selectionAdvice({ previous: null, rows: FEW_ROWS, total: 0, basis: {} })).toMatchObject({ recommended: "all" })
+  expect(selectionAdvice({ previous: null, rows: FEW_ROWS + 1, total: 0, basis: {} })).toMatchObject({ recommended: "rule7" })
+  expect(selectionAdvice({ previous: null, rows: 40, total: 850, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "all" })
+  expect(selectionAdvice({ previous: null, rows: 40, total: 851, basis: { "01": { total: 1000 } } })).toMatchObject({ recommended: "rule7" })
 })

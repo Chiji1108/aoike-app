@@ -228,15 +228,16 @@ export function ChatPanel(props: ChatPanelProps) {
     return !failed.current
   }
   /**
-   * 作業の画面から頼まれた決まった指示（「答える」の段の「AI に聞く」。ui.chatSend）を、送れるようになったら1回だけ送る。
-   * 受け取ったら頼みを外す（送れなかったら、職員がもう一度押す）
+   * 作業の画面から頼まれた決まった指示（「答える」の段の「AI に聞く」。ui.chatSend）を、受け取ったその場で1回だけ送る。
+   * 頼みはいつも外し、その場で送れなければ捨てる（あとで勝手に送らない。頼むのは送れる間だけ〔actions/ui.ts の askChat〕）
    */
   const chatSend = useCase((s) => s.ui.chatSend)
   useEffect(() => {
-    if (!chatSend || !canSend) return
+    if (!chatSend) return
     actions.takeChatSend()
-    void send(chatSend.text, { keepInput: true })
-  }, [chatSend, canSend])
+    if (canSend) void send(chatSend.text, { keepInput: true })
+    // 送れるかは受け取ったときの値で決める（あとで送れるようになっても送らない）
+  }, [chatSend])
   /** 会話にもう送った指示（once の案内を出さない） */
   const sentTexts = new Set(messages.flatMap((m) => (m.role === "user" ? [m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")] : [])))
 

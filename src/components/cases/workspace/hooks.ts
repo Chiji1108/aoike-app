@@ -9,6 +9,7 @@ import { INQUIRY_SUGGESTION, REVIEW_SUGGESTION } from "@/components/cases/store/
 import type { ProposalActions } from "@/components/chat/proposal-card"
 import type { Suggestion } from "@/components/chat/chat-panel"
 import { awaitsAnswer } from "@/lib/cases/todo"
+import { lastSelectionUndo } from "@/lib/cases/undo"
 import { carryoverReady } from "@/lib/chat/carryover"
 import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
 import { REVIEW_PROMPT } from "@/lib/chat/review"
@@ -63,6 +64,7 @@ export function useReportQuestions(): ReportQuestion[] {
   )
   const tax = useCase((s) => s.work.tax)
   const selection = useCase((s) => s.work.selection)
+  const selectionUndo = useCase((s) => lastSelectionUndo(s.work.undo))
   const reportAnswers = useCase((s) => s.work.reportAnswers)
   const undoStates = useCase((s) => derive(s).undoStates)
   return useMemo(() => {
@@ -79,7 +81,8 @@ export function useReportQuestions(): ReportQuestion[] {
           detail: [advice.reason, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でも変えられます"].filter(Boolean).join("。"),
           options: (["rule7", "all"] as const).map((v) => ({ value: v, label: `${SELECTION_LABELS[v]}${v === recommended ? "（おすすめ）" : ""}` })),
           answered: answered ? SELECTION_LABELS[selection] : null,
-          undo: answered ? undoAnswer(id) : null,
+          // どこで決めても（答える・表の見出し・7割と金額・変更案の承認）、選び方を変えた一番新しい記録を取り消す
+          undo: answered && selectionUndo && undoStates.get(selectionUndo)?.can ? () => actions.undoWithNotice(selectionUndo, "載せる工事") : null,
         }
       }
       if (id === "tax") {
@@ -116,7 +119,7 @@ export function useReportQuestions(): ReportQuestion[] {
         undo: label !== null ? undoAnswer(r.key) : null,
       }
     })
-  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, reportAnswers, undoStates])
+  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, selectionUndo, reportAnswers, undoStates])
 }
 
 /** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き・振り返り）。押すと決まった指示を送る */

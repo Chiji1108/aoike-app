@@ -5,6 +5,7 @@ import type { CaseDeps } from "../deps"
 import { createCaseSession } from "../session"
 import { currentStep, nextStep, stepDone } from "@/lib/cases/steps"
 import { newProposal } from "@/lib/chat/proposals"
+import { lastSelectionUndo } from "@/lib/cases/undo"
 import { receiveProposal } from "../actions/proposals"
 import { fakeDeps, FILES, page } from "./helpers"
 
@@ -57,6 +58,10 @@ describe("並べ方と画面の action（ui）", () => {
   test("狭い画面で「答える」の段の「AI に聞く」: 作業の画面を閉じ、チャットに送る指示とチャットの入力欄への頼みを書く（受け取ったら外す）", async () => {
     const s = await converted(false)
     s.actions.showTab("answer")
+    // 送れない間は受け付けない（頼みを残さない）
+    s.actions.askChat("説明して")
+    expect(s.store.getState().ui.chatSend).toBeNull()
+    s.actions.setChatCanSend(true)
     s.actions.askChat("説明して")
     expect(layout(s)).toMatchObject({ covered: false, workShown: false })
     const ui = s.store.getState().ui
@@ -216,6 +221,7 @@ describe("チャットの窓（広い画面で表があるとき）", () => {
     const { saved, prefs } = memoryPrefs({ collapsed: true, size: null, hintShown: true })
     const s = await convertedWith(prefs)
     const writes = saved.writes
+    s.actions.setChatCanSend(true)
     s.actions.askChat("説明して")
     expect(layout(s)).toMatchObject({ chat: "window", chatCollapsed: false, workShown: true })
     expect(s.store.getState().ui.chatSend).toEqual({ text: "説明して" })
@@ -301,6 +307,8 @@ describe("載せる工事を誰が決めたか（selectionBy）", () => {
     expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
     s.actions.changeSelection("rule7")
     expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
+    // 「答える」の載せる工事の行の「取り消す」は、この記録を指す
+    expect(lastSelectionUndo(s.store.getState().work.undo)).toMatch(/^selection:/)
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
     const undo = s.store.getState().work.undo.length
     s.actions.changeSelection("rule7")
@@ -313,9 +321,11 @@ describe("載せる工事を誰が決めたか（selectionBy）", () => {
     receiveProposal(s.store, { proposal: newProposal("p-sel", { kind: "chat", messageId: "m" }, [change], null), changes: [change] }, "replace")
     await s.actions.decideProposal("p-sel", [0], "applied")
     expect(s.store.getState().work).toMatchObject({ selection: "all", selectionBy: "staff" })
+    expect(lastSelectionUndo(s.store.getState().work.undo)).toBe("p-sel")
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
     s.actions.undoWithNotice("p-sel")
     expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
+    expect(lastSelectionUndo(s.store.getState().work.undo)).toBeNull()
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
   })
 })

@@ -233,6 +233,10 @@ test("ダウンロードの段に7割の確かめと決算書の額を入れる�
   await expect.poll(() => csvCount(page)).toBe(7)
   await openTab(page, "answer")
   await expect(question(page, "selection")).toHaveAttribute("data-answered", "全件")
+  // 7割と金額で答えても、答えるの段の行から取り消せる
+  await question(page, "selection").getByTestId("report-question-undo").click()
+  await expect(question(page, "selection")).toHaveAttribute("data-pending", "1")
+  await expect.poll(() => csvCount(page)).toBeLessThan(7)
 })
 
 test("狭い画面: 段の並びは横にスクロールし、続きがある側の端を薄くする。「次は」で移った段は見えるところへ送る", async ({ page }) => {

@@ -22,12 +22,13 @@ export const selectionDecided = (s: { selectionBy?: SelectionBy | null }) => (s.
 
 /**
  * 保存した作業の出どころを読む。この項目より前の保存は選び方をいつも書いていた（既定の7割ルールも）ので、値で分ける:
- * 全件（既定値ではない）か前の形の alreadyApplied（職員が切り替えた）があれば職員が決めた値、7割ルールだけなら既定値のままと見なして聞く
+ * 全件（既定値ではない）か前の形の alreadyApplied が true（全件に切り替えた）なら職員が決めた値、7割ルール（alreadyApplied が false も既定値）なら
+ * 既定値のままと見なして聞く
  * （はっきり7割を選んでいた案件も一度聞くことになるが、聞き漏らすよりよい）
  */
 export function savedSelectionBy(saved: { selectionBy?: SelectionBy | null; selection?: SelectionMode; alreadyApplied?: boolean }): SelectionBy | null {
   if (saved.selectionBy !== undefined) return saved.selectionBy
-  return saved.selection === "all" || saved.alreadyApplied !== undefined ? "staff" : null
+  return saved.selection === "all" || saved.alreadyApplied === true ? "staff" : null
 }
 
 /**
@@ -46,11 +47,11 @@ export const previousSelection = (saved: { converted: boolean; selection: Select
   saved?.converted && selectionDecided(saved) ? saved.selection : null
 
 /**
- * 去年の選び方を引き継ぐ（1か所）。案件を開いたときに、まだ誰も決めていなければ（selectionBy が null）、去年に決めた選び方を当てて previous にする。
- * 新しい案件でも、前に保存した作業でも同じ。職員が決めた値・もう引き継いだ値は変えない
+ * 去年の選び方を引き継ぐ（1か所）。新しい作業（保存した作業が無い）にだけ、去年に決めた選び方を当てて previous にする。
+ * 保存した作業は、まだ誰も決めていなくても変えない（開いただけで選び方が黙って変わらないように。「答える」で聞き、去年の値をおすすめにする）
  */
-export function carrySelection<T extends SelectionSource>(work: T, previous: SelectionMode | null | undefined): T {
-  return work.selectionBy === null && previous ? setSelection(work, previous, "previous") : work
+export function carrySelection<T extends SelectionSource>(work: T, previous: SelectionMode | null | undefined, isNew: boolean): T {
+  return isNew && work.selectionBy === null && previous ? setSelection(work, previous, "previous") : work
 }
 
 /**

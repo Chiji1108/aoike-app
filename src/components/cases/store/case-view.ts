@@ -101,7 +101,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
   const selectionAdviceOf = memoLast((shown: TableDerived["shown"], inclusion: TableDerived["inclusion"], basis: CaseState["work"]["basis"]) => {
     const rows = (shown ?? []).filter((r) => inclusion.get(r.key)?.reason !== "excluded")
     const total = rows.reduce((s, r) => s + (/^\d+$/.test(r.cells.amount.value) ? Number(r.cells.amount.value) : 0), 0)
-    return selectionAdvice({ rows: rows.length, total, basis })
+    return selectionAdvice({ previous: config.previous ? { selection: config.previous.selection } : null, rows: rows.length, total, basis })
   })
   /** 報告の聞き返しと答えたか（lib/cases/todo.ts。報告・ダウンロードの前の確認・「答える」で同じもの） */
   const questionStatesOf = memoLast(
