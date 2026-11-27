@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { savedWorkSchema, toSavedAiCache, toSavedWork, type CaseWork } from "@/lib/cases/state"
+import { newWork, savedWorkSchema, toSavedAiCache, toSavedWork, type CaseWork } from "@/lib/cases/state"
 import { GYOSHU_UNDO, UNDO_LIMITS } from "@/lib/cases/undo"
 import { approvedChatProposals } from "@/lib/chat/carryover"
 import { applyChanges, closeUnrecorded, decide, newProposal, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
@@ -13,11 +13,15 @@ const change: ChatChange = { kind: "inquiryMail", subject: "確認のお願い",
 const store = () => createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], previousUnsaved: false, state: null, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" } }))
 
 describe("案件のストア", () => {
-  test("新しい案件の載せる工事は、去年の案件で決めた選び方（無ければ7割ルール）。保存した作業があればそちら", () => {
+  test("載せる工事は、まだ誰も決めていなければ去年の案件で決めた選び方を引き継ぐ（新しい案件も保存した作業も。無ければ7割ルール）", () => {
     const base = { kase: { status: "converting" as const, costUsd: 0 }, files: [], previousUnsaved: false, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" as const } }
     expect(initialCaseState({ ...base, state: null, previous: { selection: "all" } }).work).toMatchObject({ selection: "all", selectionBy: "previous" })
     expect(initialCaseState({ ...base, state: null, previous: { selection: null } }).work.selection).toBe("rule7")
     expect(initialCaseState({ ...base, state: null }).work.selection).toBe("rule7")
+    // 前に保存した今年の作業でも、まだ誰も決めていなければ去年の決めた選び方を引き継ぐ。職員が決めた値は変えない
+    const saved = (by: "staff" | null) => ({ work: toSavedWork({ ...newWork("f"), converted: true, selection: "rule7", selectionBy: by }), aiCache: [] })
+    expect(initialCaseState({ ...base, state: saved(null), previous: { selection: "all" } }).work).toMatchObject({ selection: "all", selectionBy: "previous" })
+    expect(initialCaseState({ ...base, state: saved("staff"), previous: { selection: "all" } }).work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
   })
 
   test("変更案は中身と一緒に1回で入り、派生は同じ状態なら同じ参照を返す", () => {

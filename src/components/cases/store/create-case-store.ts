@@ -6,7 +6,7 @@ import type { FinalImport } from "@/components/convert/final-import-panel"
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
 import type { CaseFile, CaseStatus } from "@/lib/cases/types"
-import { setSelection } from "@/lib/cases/selection"
+import { carrySelection } from "@/lib/cases/selection"
 import type { StepId } from "@/lib/cases/steps"
 import { NO_ADDRESSES, type AddressBook } from "@/lib/convert/address"
 import type { Rule7Tax, SelectionMode } from "@/lib/convert/koji-selection"
@@ -195,10 +195,8 @@ export function initialCaseState(page: {
   /** 去年の案件（載せる工事を去年と同じにする） */
   previous?: { selection: SelectionMode | null } | null
 }, chatPrefs: ChatPrefs | null = null): CaseState {
-  // 新しい案件の載せる工事は、去年の案件で決めていればそれを引き継ぐ（lib/cases/selection-advice.ts。聞かずに知らせだけ）
-  const fresh = newWork(null, page.settings.rule7Tax)
-  const carried = page.previous?.selection
-  const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : carried ? setSelection(fresh, carried, "previous") : fresh
+  // 載せる工事は、まだ誰も決めていなければ去年に決めた選び方を引き継ぐ（新しい案件も保存した作業も同じ。lib/cases/selection.ts の carrySelection）
+  const w = carrySelection(page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax), page.previous?.selection)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
     contents: new Map(page.proposals.map((r) => [r.proposal.id, r.changes])),

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
-import { newWork, savedWorkSchema, toSavedWork } from "../state"
-import { previousSelection, setSelection } from "../selection"
+import { fromSaved, newWork, savedWorkSchema, toSavedWork } from "../state"
+import { carrySelection, previousSelection, selectionQuestion, setSelection } from "../selection"
+import { undo, undoEntry } from "../undo"
 
 /** 保存した作業の JSON（今の形）。over で項目を差し替え・消す（undefined） */
 const savedJson = (over: Record<string, unknown>) => {
@@ -35,5 +36,59 @@ describe("載せる工事を誰が決めたか（保存の読み方）", () => {
     expect(previousSelection(parse({ selection: "rule7", selectionBy: "previous" }))).toBe("rule7")
     expect(previousSelection(parse({ selection: "all", selectionBy: "staff", converted: false }))).toBeNull()
     expect(previousSelection(undefined)).toBeNull()
+  })
+})
+
+describe("載せる工事の取り消し（数え方は税と同じ）", () => {
+  const work = (selection: "rule7" | "all", by: "staff" | null) => ({ ...newWork("f"), selection, selectionBy: by })
+  const entryOf = () => {
+    const before = work("rule7", null)
+    const after = setSelection(before, "all", "staff")
+    const entry = undoEntry(before, after, { id: "u1", proposalId: "selection:1", kind: "op", label: "載せる工事の切り替え", at: 0 })!
+    return { after, entry }
+  }
+
+  test("そのまま取り消すと1件戻したと数え、出どころも戻る", () => {
+    const { after, entry } = entryOf()
+    const r = undo({ ...after, undo: [entry] }, "u1")!
+    expect(r).toMatchObject({ reverted: 1, kept: 0 })
+    expect(r.work).toMatchObject({ selection: "rule7", selectionBy: null })
+  })
+
+  test("あとで職員が変えていれば戻さずに残し、残した件数に数える（警告が出る）", () => {
+    const { after, entry } = entryOf()
+    const changed = setSelection(after, "rule7", "staff")
+    const r = undo({ ...changed, undo: [entry] }, "u1")!
+    expect(r).toMatchObject({ reverted: 0, kept: 1 })
+    expect(r.work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
+  })
+})
+
+/**
+ * 聞くか・答えたか・引き継ぐかの組み合わせ（作業の selectionBy だけで決まる）。
+ * 去年: 去年の保存から previousSelection で読む値。今年: 新しい案件（state なし）か、保存した作業（selectionBy が null）か、職員が変えたあと
+ */
+describe("載せる工事を聞くか・答えたか・引き継ぐか（組み合わせ）", () => {
+  const lastYear = {
+    none: undefined,
+    decided: savedWorkSchema.parse(savedJson({ selection: "all", selectionBy: "staff" })),
+    defaulted: savedWorkSchema.parse(savedJson({ selection: "rule7", selectionBy: null })),
+  }
+  const thisYear = {
+    fresh: () => newWork("f"),
+    saved: () => fromSaved(savedWorkSchema.parse(savedJson({ selection: "rule7", selectionBy: null })), []),
+    staffChanged: () => setSelection(newWork("f"), "rule7", "staff"),
+  }
+  const cases = [
+    { name: "去年なし × 今年は新規", last: lastYear.none, now: thisYear.fresh, selection: "rule7", by: null, question: { answered: false } },
+    { name: "去年が決め済み × 今年は新規", last: lastYear.decided, now: thisYear.fresh, selection: "all", by: "previous", question: null },
+    { name: "去年が決め済み × 今年は保存済み（null）", last: lastYear.decided, now: thisYear.saved, selection: "all", by: "previous", question: null },
+    { name: "去年が既定値のまま × 今年は新規", last: lastYear.defaulted, now: thisYear.fresh, selection: "rule7", by: null, question: { answered: false } },
+    { name: "去年が決め済み × 今年に職員が変えたあと", last: lastYear.decided, now: thisYear.staffChanged, selection: "rule7", by: "staff", question: { answered: true } },
+  ] as const
+  test.each(cases)("$name", ({ last, now, selection, by, question }) => {
+    const w = carrySelection(now(), previousSelection(last))
+    expect(w).toMatchObject({ selection, selectionBy: by })
+    expect(selectionQuestion(w.selectionBy)).toEqual(question)
   })
 })

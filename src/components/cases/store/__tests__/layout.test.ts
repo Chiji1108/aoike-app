@@ -296,6 +296,17 @@ describe("載せる工事を誰が決めたか（selectionBy）", () => {
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
   })
 
+  test("今と同じ7割ルール（既定値）を7割と金額で選んでも、職員が決めた値になって答えたことになる。もう職員が決めた同じ値なら何もしない", async () => {
+    const s = await converted(true)
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
+    s.actions.changeSelection("rule7")
+    expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: "staff" })
+    expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: true })
+    const undo = s.store.getState().work.undo.length
+    s.actions.changeSelection("rule7")
+    expect(s.store.getState().work.undo).toHaveLength(undo)
+  })
+
   test("チャットの変更案（settings.selection）を承認すると答えたことになり、承認を取り消すと聞き直す", async () => {
     const s = await converted(true)
     const change = { kind: "settings" as const, selection: "all" as const }

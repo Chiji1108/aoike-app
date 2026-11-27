@@ -248,6 +248,8 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
     if (present.length) plan = { ...plan, plan: { ...plan.plan, rowFilter: withExclusions(plan.plan.rowFilter, [], present) } }
   }
   const tax = revert(entry.tax, { tax: work.tax, taxBy: work.taxBy })
+  // 載せる工事の選び方と出どころも税と同じく、数える前に戻す（戻した・あとで変えたので残した件数に入る）
+  const selection = revert(entry.selection, { selection: work.selection, selectionBy: work.selectionBy })
   // メールの件名・前置きごとに戻す（あとで直した文は残す）
   const text = entry.inquiryText ? revertInquiryText(work.inquiryText, entry.inquiryText) : { text: work.inquiryText, reverted: 0, kept: 0 }
   reverted += text.reverted
@@ -267,7 +269,6 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
   // 聞き返しの答えの記録は、答え1つを1件と数える（答えで変えた設定・計画は答えの一部）
   const answers = entry.reportAnswers?.length ? entry.reportAnswers.filter(([k, , after]) => (work.reportAnswers[k] ?? null) === after).length : null
   const counts = answers === null ? { reverted, kept } : { reverted: answers, kept: entry.reportAnswers!.length - answers }
-  const selection = revert(entry.selection, { selection: work.selection, selectionBy: work.selectionBy })
   return { work: setSelection(setTax(next, tax.tax, tax.taxBy), selection.selection, selection.selectionBy), ...counts, planChanged: plan !== work.plan }
 }
 

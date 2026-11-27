@@ -72,11 +72,11 @@ export function useReportQuestions(): ReportQuestion[] {
     return questionStates.map(({ id, answered }): ReportQuestion => {
       if (id === "selection") {
         // 載せる工事（lib/cases/selection-advice.ts の案を「おすすめ」に添える）。答えたあとも表の見出しのチェック・7割と金額で変えられる
-        const recommended = advice.ask ? advice.recommended : null
+        const recommended = advice.recommended
         return {
           id,
           text: "載せる工事は？",
-          detail: [advice.ask ? advice.reason : null, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でも変えられます"].filter(Boolean).join("。"),
+          detail: [advice.reason, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の「載せる」の見出しのチェック・ダウンロードの段の「7割と金額」でも変えられます"].filter(Boolean).join("。"),
           options: (["rule7", "all"] as const).map((v) => ({ value: v, label: `${SELECTION_LABELS[v]}${v === recommended ? "（おすすめ）" : ""}` })),
           answered: answered ? SELECTION_LABELS[selection] : null,
           undo: answered ? undoAnswer(id) : null,

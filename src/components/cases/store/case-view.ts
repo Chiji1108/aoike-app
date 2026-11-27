@@ -101,19 +101,18 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
   const selectionAdviceOf = memoLast((shown: TableDerived["shown"], inclusion: TableDerived["inclusion"], basis: CaseState["work"]["basis"]) => {
     const rows = (shown ?? []).filter((r) => inclusion.get(r.key)?.reason !== "excluded")
     const total = rows.reduce((s, r) => s + (/^\d+$/.test(r.cells.amount.value) ? Number(r.cells.amount.value) : 0), 0)
-    return selectionAdvice({ previous: config.previous?.selection ?? null, rows: rows.length, total, basis })
+    return selectionAdvice({ rows: rows.length, total, basis })
   })
   /** 報告の聞き返しと答えたか（lib/cases/todo.ts。報告・ダウンロードの前の確認・「答える」で同じもの） */
   const questionStatesOf = memoLast(
     (
       hasTable: boolean,
-      askSelection: boolean,
       selectionBy: CaseState["work"]["selectionBy"],
       tax: CaseState["work"]["tax"],
       taxBy: CaseState["work"]["taxBy"],
       reportAnswers: CaseState["work"]["reportAnswers"],
       asks: readonly { id: string; key: string }[],
-    ) => reportQuestionStates({ hasTable, askSelection, selectionBy, tax, taxBy, reportAnswers, asks }),
+    ) => reportQuestionStates({ hasTable, selectionBy, tax, taxBy, reportAnswers, asks }),
   )
   /**
    * 残りの件数（lib/cases/todo.ts が1回だけ数える）。次にやること・ダウンロードの前の確認・表の「直す」・業種のタブ・タブの数・
@@ -164,7 +163,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     const askRows = askRowsOf(t.sources, t.shown, planAsks, t.plan)
     // 載せる工事を聞くかは去年で決まっているかだけで決まる（行や額が変わっても、聞き返しが出たり消えたりしない。変わるのはすすめる側だけ）
     const advice = selectionAdviceOf(t.shown, t.inclusion, w.basis)
-    const questionStates = questionStatesOf(t.hasTable, advice.ask, w.selectionBy, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
+    const questionStates = questionStatesOf(t.hasTable, w.selectionBy, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
     /** 問い合わせを送ったか（案件が問い合わせ中か、問い合わせの Excel・メールの下書き〔件名〕を出した） */
     const inquirySent = rt.status === "inquiring" || rt.files.some((f) => f.kind === "inquiry_sheet") || w.inquiryText.subject !== null
     const previousSide = previousSideOfSheets(rt.previous)

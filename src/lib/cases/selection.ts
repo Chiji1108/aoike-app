@@ -44,3 +44,18 @@ export const selectionSettingSchema = z.union([
  */
 export const previousSelection = (saved: { converted: boolean; selection: SelectionMode; selectionBy: SelectionBy | null } | undefined): SelectionMode | null =>
   saved?.converted && selectionDecided(saved) ? saved.selection : null
+
+/**
+ * 去年の選び方を引き継ぐ（1か所）。案件を開いたときに、まだ誰も決めていなければ（selectionBy が null）、去年に決めた選び方を当てて previous にする。
+ * 新しい案件でも、前に保存した作業でも同じ。職員が決めた値・もう引き継いだ値は変えない
+ */
+export function carrySelection<T extends SelectionSource>(work: T, previous: SelectionMode | null | undefined): T {
+  return work.selectionBy === null && previous ? setSelection(work, previous, "previous") : work
+}
+
+/**
+ * 「答える」の載せる工事の聞き返し（selectionBy だけで決める）: null は聞く（答えていない）、staff は答えた、previous は聞かない（去年から引き継いだ知らせだけ）
+ */
+export function selectionQuestion(selectionBy: SelectionBy | null): { answered: boolean } | null {
+  return selectionBy === "previous" ? null : { answered: selectionBy === "staff" }
+}

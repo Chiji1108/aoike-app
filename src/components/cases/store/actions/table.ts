@@ -148,7 +148,9 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
  * 取り消しの記録に残し、通知の「取り消す」で戻せる。職員が選んだので「答える」の載せる工事にも答えたことにする
  */
 export function changeSelection(env: CaseEnv, mode: SelectionMode) {
-  if (env.store.getState().work.selection === mode) return
+  // 同じ選び方を職員がもう決めているときだけ何もしない（既定値・引き継いだ値と同じ値を選んでも、職員が決めた値になる）
+  const now = env.store.getState().work
+  if (now.selection === mode && now.selectionBy === "staff") return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
   // 職員が決めた値として出どころと一緒に書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
   const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, "staff"))
