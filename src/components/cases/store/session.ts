@@ -93,7 +93,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     clearManual: () => table.clearManual(env),
     closeAllHint: () => table.closeAllHint(env),
     answerReport: (id: string, value: string) => table.answerReport(env, id, value),
-    closeAskConfirm: (ok: boolean) => table.closeAskConfirm(env, ok),
     // 画面（actions/ui.ts）
     setWide: (wide: boolean) => ui.setWide(env, wide),
     setTab: (t: WorkTab) => ui.setTab(env, t),

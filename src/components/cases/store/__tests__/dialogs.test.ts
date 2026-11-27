@@ -49,22 +49,6 @@ describe("計画の聞き返しの答えは並び順ではなく聞き返しの�
     expect(s.store.getState().work.reportAnswers).toEqual({})
   })
 
-  test("確かめを開いている間に計画が立て直されたら、確かめの「載せない」は別の聞き返しに当てない", async () => {
-    const s = await converted()
-    setAsks(s, [ASK_B])
-    s.actions.answerReport("plan-ask-0", "exclude")
-    const confirm = s.store.getState().ui.dialogs.askConfirm
-    expect(confirm?.key).toBe(askKey(ASK_B))
-    const rowFilter = s.store.getState().work.plan!.plan.rowFilter
-    setAsks(s, [ASK_C])
-    s.actions.closeAskConfirm(true)
-    const { work, ui } = s.store.getState()
-    expect(ui.dialogs.askConfirm).toBeNull()
-    expect(work.reportAnswers).toEqual({})
-    expect(work.plan!.plan.rowFilter).toEqual(rowFilter)
-    expect(work.undo).toEqual([])
-  })
-
   test("鍵は値の順・前後の空白・全角半角を見ない", () => {
     expect(askKey({ kind: "doubtful", column: 3, values: ["Ａ ", "b"] })).toBe(askKey({ kind: "doubtful", column: 3, values: ["b", "A"] }))
     expect(askKey({ kind: "doubtful", column: 3, values: ["a"] })).not.toBe(askKey({ kind: "doubtful", column: 4, values: ["a"] }))

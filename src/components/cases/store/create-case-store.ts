@@ -21,7 +21,6 @@ export type Source = { fileId: string; name: string; sheets: SheetGrid[] }
 export type PeerState = "none" | "open" | "saved"
 
 /** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
-export type AskConfirm = { key: string; option: string; title: string; lines: string[] }
 
 /** チャットの欄の中の移り先（target の要素、無ければ最初の答えを待つもの）と、その中でフォーカスを合わせるボタン */
 export type ChatTarget = { target: string; button?: string }
@@ -115,9 +114,9 @@ export type CaseState = {
     /** 表の絞り込みの理由・聞き返し（kind は開いているもので決まる: 直すの段は直す行、表はすべて。null は選んでいない） */
     filter: TableFilter | null
     /**
-     * ダイアログ: delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ
+     * ダイアログ: delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）
      */
-    dialogs: { delete: boolean; downloads: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
+    dialogs: { delete: boolean; downloads: boolean; pendingSources: CaseFile[] }
     /** ファイルをドラッグしている */
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
@@ -220,7 +219,7 @@ export function initialCaseState(page: {
       tool: null,
       workChoice: null,
       filter: null,
-      dialogs: { delete: false, downloads: false, pendingSources: [], askConfirm: null },
+      dialogs: { delete: false, downloads: false, pendingSources: [] },
       dragging: false,
       focus: null,
       chatTurn: { loaded: false, sending: false },

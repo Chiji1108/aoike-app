@@ -1,11 +1,10 @@
 import { expect, test, type Page } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
-import { callsServerFn, csvCount, deleteCustomer, openNewCase, openTab } from "./helpers"
+import { callsServerFn, deleteCustomer, openNewCase, openTab } from "./helpers"
 
 /**
- * 計画の聞き返しのカードの「AI に聞く」と、載せる件数の表示: 押すと聞き返しを特定できる決まった質問が職員の発言としてチャットに出て、AI の返事が続く
+ * 計画の聞き返しのカードの「AI に聞く」: 押すと聞き返しを特定できる決まった質問が職員の発言としてチャットに出て、AI の返事が続く
  * （返事の間は押せない。答えではないので聞き返しは開いたまま）。狭い画面でも押すとチャットに質問が見える。
- * 件数の表示は対象の行のうち今載せている数を出し、答えで件数が変わるときだけボタンに件数を付ける。
  * 計画の AI とチャットは決まった応答にする（合成 fixture）
  */
 
@@ -115,7 +114,7 @@ test("聞き返しの「AI に聞く」で、聞き返しを特定できる質�
     await expect(page.getByTestId("chat-messages")).toContainText(ANSWER)
     await expect(ask).toBeEnabled()
     expect(texts).toHaveLength(1)
-    expect(texts[0]).toMatch(/^計画の聞き返し「備考（K列）に注記のある行があります。」は、どういうことですか？ 対象は表の 1 行（元の Excel の「工事経歴」\d+行目。今載せているのは \d 行）です。/)
+    expect(texts[0]).toMatch(/^計画の聞き返し「備考（K列）に注記のある行があります。」は、どういうことですか？ 対象は表の 1 行（元の Excel の「工事経歴」\d+行目）です。/)
     // 答えではないので聞き返しは開いたまま。入力欄の書きかけは消さない
     await expect(question(page)).toHaveAttribute("data-pending", "1")
   })
@@ -140,38 +139,6 @@ test("聞き返しの「AI に聞く」で、聞き返しを特定できる質�
     await question(page).locator('[data-value="keep"]').click()
     await expect(question(page)).toHaveAttribute("data-answered", "載せる")
     await expect(question(page).getByTestId("report-question-ask")).toHaveCount(0)
-    // 答えたあとは件数の説明を出さない（答えで載せ方が変わると事実と合わない）
     await expect(question(page).getByTestId("report-question-detail")).toHaveText("該当 1 行")
-  })
-})
-
-test("載せる件数の表示: 対象の行のうち今載せている数を出し、件数が変わるときだけボタンに件数を付ける。変わらないときは理由を書く", async ({ page }) => {
-  const { customer } = await openNewCase(page)
-  created.push(customer)
-  await fakePlan(page)
-  await upload(page)
-
-  await test.step("7割で選ぶ（はじめ）: 対象の行は7割に入っておらず件数が変わらないので、ボタンは答えだけで、理由を書く", async () => {
-    await expect(question(page).getByTestId("report-question-detail")).toHaveText("該当 1 行（今載せているのは 0 行）。どちらでも載せる件数は変わりません（この 1 行は今載せていません）")
-    await expect(question(page).getByTestId("report-answer")).toHaveText(["載せない", "載せる"])
-  })
-
-  await test.step("全件を載せる: 外すと1件減るので、ボタンに件数を付ける", async () => {
-    await openTab(page, "selection")
-    await page.getByTestId("selection-all").click()
-    await expect.poll(() => csvCount(page)).toBe(7)
-    await expect(question(page).getByTestId("report-question-detail")).toHaveText("該当 1 行（今載せているのは 1 行）")
-    await expect(question(page).getByTestId("report-answer")).toHaveText(["載せない（載せる 7 → 6 件）", "載せる（7 件のまま）"])
-  })
-
-  await test.step("対象の行を手で外すと、どちらでも件数は変わらないと書き、ボタンに件数を付けない", async () => {
-    await openTab(page, "answer")
-    await question(page).getByTestId("report-question-view").click()
-    const row = page.locator('[data-testid="preview-table"] tbody tr[data-row-key]')
-    await expect(row).toHaveCount(1)
-    await row.getByRole("checkbox", { name: "CSVに載せる" }).click()
-    await expect.poll(() => csvCount(page)).toBe(6)
-    await expect(question(page).getByTestId("report-question-detail")).toHaveText("該当 1 行（今載せているのは 0 行）。どちらでも載せる件数は変わりません（この 1 行は今載せていません）")
-    await expect(question(page).getByTestId("report-answer")).toHaveText(["載せない", "載せる"])
   })
 })

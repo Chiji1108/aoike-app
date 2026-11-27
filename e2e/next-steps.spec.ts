@@ -95,7 +95,7 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
     // 合成 fixture は工事が少ないので、顧客の側で選んだ一覧と見て全件をすすめる（12行以下）
     await expect(question(page, "selection").locator('[data-value="all"]')).toHaveText("全件（おすすめ）")
     await expect(question(page)).toContainText("備考（K列）に注記のある行があります。")
-    await expect(question(page).getByTestId("report-question-detail")).toHaveText("該当 1 行（今載せているのは 0 行）。どちらでも載せる件数は変わりません（この 1 行は今載せていません）")
+    await expect(question(page).getByTestId("report-question-detail")).toHaveText("該当 1 行")
     await expect(question(page).getByTestId("report-answer")).toHaveText(["載せない", "載せる"])
   })
 
