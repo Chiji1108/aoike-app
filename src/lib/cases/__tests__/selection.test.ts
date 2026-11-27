@@ -22,7 +22,7 @@ describe("載せる工事に答えたか（保存の読み方）", () => {
     expect(savedWorkSchema.safeParse(savedJson({ selectionAnswered: undefined })).success).toBe(false)
     expect(savedWorkSchema.safeParse(savedJson({ selectionAnswered: undefined, selectionBy: "staff" })).success).toBe(false)
     expect(savedWorkSchema.safeParse(savedJson({ selectionAnswered: undefined, selection: undefined, alreadyApplied: true })).success).toBe(false)
-    const legacyUndo = { id: "u1", proposalId: "selection:1", label: "", at: 0, edits: [], manual: [], added: [], external: [], selection: ["all", "rule7"] }
+    const legacyUndo = { id: "u1", proposalId: "selection:1", kind: "op", label: "", at: 0, edits: [], manual: [], added: [], external: [], selection: ["all", "rule7"] }
     expect(savedWorkSchema.safeParse(savedJson({ undo: [legacyUndo] })).success).toBe(false)
   })
 })
@@ -31,7 +31,7 @@ describe("載せる工事の取り消し（数え方は税と同じ）", () => {
   const entryOf = () => {
     const before = newWork("f")
     const after = setSelection(before, "all", true)
-    const entry = undoEntry(before, after, { id: "u1", proposalId: "selection:1", label: "載せる工事の切り替え", at: 0 })!
+    const entry = undoEntry(before, after, { id: "u1", proposalId: "selection:1", kind: "op", label: "載せる工事の切り替え", at: 0 })!
     return { after, entry }
   }
 

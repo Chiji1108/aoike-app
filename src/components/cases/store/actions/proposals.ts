@@ -1,7 +1,7 @@
 import { toast } from "sonner"
 import { MAX_ADDED_ROWS } from "@/lib/cases/added"
 import { MAX_REJECTED_EXCEL, type CaseWork } from "@/lib/cases/state"
-import { canUndo, pushUndo, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
+import { canUndo, pushUndo, undo, undoEntry, type UndoEntry, type UndoKind } from "@/lib/cases/undo"
 import { addedCountAfter, applyChanges, approvedChange, decide, decisionOf, isAnswered, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
 import type { MappingPlan, ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
@@ -26,10 +26,10 @@ export function receiveProposal(store: CaseStore, record: ProposalRecord, how: "
 }
 
 /**
- * 取り消せる変更の記録の中身。group は取り消すときの単位（変更案の id・`report:<聞き返し>`・操作の印と id）、
+ * 取り消せる変更の記録の中身。group は取り消すときの単位（変更案の id・`report:<聞き返し>`・操作の印と id）、kind は上限を数える枠、
  * external は戻さない外への書き込み、exclusions は計画の聞き返しの答えで足した出さない行の決まり（計画の前後の代わりに、足した分だけを残す）
  */
-export type CommitMeta = { group: string; external?: UndoEntry["external"]; exclusions?: ValueFilter[] }
+export type CommitMeta = { group: string; kind: UndoKind; external?: UndoEntry["external"]; exclusions?: ValueFilter[] }
 
 /** 入れた変更の取り消し: undoable は取り消せる、tooLarge は記録が大きすぎて取り消せない、none は記録が無い（変わったものが無かった） */
 export type Committed = "undoable" | "tooLarge" | "none"
@@ -46,6 +46,7 @@ export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) 
     const entry = undoEntry(before, meta.exclusions ? { ...after, plan: before.plan } : after, {
       id: crypto.randomUUID(),
       proposalId: meta.group,
+      kind: meta.kind,
       label: meta.group,
       at: Date.now(),
       external: meta.external,
@@ -155,7 +156,7 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   }
   const apply = (items: number[], external: UndoEntry["external"] = []) => {
     if (!items.length) return
-    commit(store, { group: id, external }, (s) => {
+    commit(store, { group: id, kind: "approval", external }, (s) => {
       const w = s.work
       const edited = env.table(s).view?.edited ?? []
       const overlaid = applyChanges(w, edited, items.map((i) => approvedChange(p, changes[i]!)))
@@ -186,7 +187,7 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
         // サーバーが変更案の記録から追記し、足した印も一緒に書く（開き直して同じ項目をもう一度承認しても二度足さない）
         await deps.approveRule(id, i)
         if (!stillOpen()) return true
-        commit(store, { group: id, external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
+        commit(store, { group: id, kind: "approval", external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
       }
       return false
     })

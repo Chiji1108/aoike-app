@@ -80,7 +80,7 @@ export function toggleRange(env: CaseEnv, keys: readonly string[], included: boo
     return
   }
   const id = `${RANGE_UNDO}${crypto.randomUUID()}`
-  const committed = commit(env.store, { group: id }, ({ work: w }) => {
+  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => {
     const manual = new Map(w.manual)
     for (const k of keys) manual.set(k, included)
     return { ...w, manual }
@@ -95,7 +95,7 @@ export function toggleRange(env: CaseEnv, keys: readonly string[], included: boo
 export function confirmCell(env: CaseEnv, rowKey: string, field: KojiFieldId) {
   const id = `${CONFIRM_UNDO}${crypto.randomUUID()}`
   let found = false
-  const committed = commit(env.store, { group: id }, (s) => {
+  const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
     const { shown, letters } = env.table(s)
     const cell = shown?.find((r) => r.key === rowKey)?.cells[field]
     if (!cell) return s.work
@@ -114,7 +114,7 @@ export function confirmCell(env: CaseEnv, rowKey: string, field: KojiFieldId) {
 export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[], how: "plan" | "pick") {
   if (!decisions.length) return
   const id = `${GYOSHU_UNDO}${crypto.randomUUID()}`
-  const committed = commit(env.store, { group: id }, (s) => {
+  const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
     const { work: w, contents } = s
     const { letters } = env.table(s)
     const pending = pendingGyoshuItems(w.proposals, contents)
@@ -150,7 +150,7 @@ export function changeSelection(env: CaseEnv, mode: SelectionMode) {
   if (selectionSettled(env.store.getState().work, mode)) return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
   // 選び方と一緒に「答えた」を書く（「答える」の載せる工事にも答えたことになる。取り消すと一緒に戻る）
-  const committed = commit(env.store, { group: id }, ({ work: w }) => setSelection(w, mode, true))
+  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => setSelection(w, mode, true))
   notifyCommitted(env, `載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, id, "載せる工事の切り替え")
 }
 
@@ -195,13 +195,13 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
   if (id === "selection") {
     // 載せる工事（7割ルール／全件）。答えたあとも表の見出しのチェック・ダウンロードの段の7割と金額で変えられる
     if (value !== "rule7" && value !== "all") return
-    commit(store, { group: reportUndoId(id) }, ({ work: w }) => setSelection(w, value, true))
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => setSelection(w, value, true))
     return
   }
   if (id === "tax") {
     // 「分からない（顧客に聞く）」も職員が決めた値（計画のし直しで上書きしない）
     const next = value === "included" || value === "excluded" ? value : "unknown"
-    commit(store, { group: reportUndoId(id) }, ({ work: w }) => ({ ...setTax(w, next, "staff"), reportAnswers: { ...w.reportAnswers, tax: value === "ask" ? "ask" : next } }))
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...setTax(w, next, "staff"), reportAnswers: { ...w.reportAnswers, tax: value === "ask" ? "ask" : next } }))
     return
   }
   const { askRows, askEffects, planAsks } = env.view(store.getState())
@@ -272,7 +272,7 @@ export function answerAsk(env: CaseEnv, key: string, value: "exclude" | "keep") 
     }
     supersedeConversion(env)
   }
-  commit(store, { group: reportUndoId(key), exclusions: added }, (s) => {
+  commit(store, { group: reportUndoId(key), kind: "approval", exclusions: added }, (s) => {
     const w = s.work
     // 間に計画が立て直されて聞き返しが無くなっていれば答えない
     if (!w.plan || !w.plan.plan.asks?.some((a) => askKey(a) === key)) return w

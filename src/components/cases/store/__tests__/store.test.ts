@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { newWork, savedWorkSchema, toSavedAiCache, toSavedWork } from "@/lib/cases/state"
-import { GYOSHU_UNDO, UNDO_LIMIT } from "@/lib/cases/undo"
+import { GYOSHU_UNDO, UNDO_LIMITS } from "@/lib/cases/undo"
 import { applyChanges, closeUnrecorded, decide, newProposal, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
 import { commit, receiveProposal, undoGroup } from "../actions/proposals"
 import { createCaseStore, initialCaseState, setWork, type CaseStore } from "../create-case-store"
@@ -67,12 +67,12 @@ const reopen = (s: CaseStore, records: ProposalRecord[] = [], unreadable: string
 }
 /** 画面の承認と同じく、表に重ねる部分を承認の記録にして入れる */
 const approve = (s: CaseStore, id: string, items: number[]) =>
-  commit(s, { group: id }, ({ work: w, contents }) => ({
+  commit(s, { group: id, kind: "approval" }, ({ work: w, contents }) => ({
     ...applyChanges(w, [], items.map((i) => contents.get(id)![i]!)),
     proposals: w.proposals.map((p) => (p.id === id ? decide(p, items, "applied") : p)),
   }))
 /** 業種の一覧で決めるのと同じ操作の記録 */
-const op = (s: CaseStore, i: number) => commit(s, { group: `${GYOSHU_UNDO}${i}` }, ({ work: w }) => ({ ...w, manual: new Map(w.manual).set(`op${i}`, i % 2 === 0) }))
+const op = (s: CaseStore, i: number) => commit(s, { group: `${GYOSHU_UNDO}${i}`, kind: "op" }, ({ work: w }) => ({ ...w, manual: new Map(w.manual).set(`op${i}`, i % 2 === 0) }))
 
 describe("変更案を足す（receiveProposal）", () => {
   test("ifUnknown は作業にもうある変更案を置き換えない（決め終わったものを開き直さない）。replace は置き換えて最後に回す", () => {
@@ -129,18 +129,21 @@ describe("開いたときの中身の無い変更案", () => {
 })
 
 describe("取り消し（commit・undoGroup）", () => {
-  test("積むのは commit の1か所。変わったときだけ記録を積む", () => {
+  test("積むのは commit の1か所。変わったときだけ記録を積み、枠（kind）を記録に書く", () => {
     const s = store()
     receiveProposal(s, chatRecord("p", [cell("r1", "x")]), "replace")
     expect(approve(s, "p", [0])).toBe("undoable")
     expect(op(s, 0)).toBe("undoable")
-    expect(commit(s, { group: `${GYOSHU_UNDO}none` }, ({ work: w }) => w)).toBe("none")
-    expect(s.getState().work.undo.map((e) => e.proposalId)).toEqual(["p", `${GYOSHU_UNDO}0`])
+    expect(commit(s, { group: `${GYOSHU_UNDO}none`, kind: "op" }, ({ work: w }) => w)).toBe("none")
+    expect(s.getState().work.undo.map((e) => [e.proposalId, e.kind])).toEqual([
+      ["p", "approval"],
+      [`${GYOSHU_UNDO}0`, "op"],
+    ])
   })
 
   test("記録が大きすぎて取り消せない変更は tooLarge を返す", () => {
     const s = store()
-    const huge = commit(s, { group: `${GYOSHU_UNDO}huge` }, ({ work: w }) => ({
+    const huge = commit(s, { group: `${GYOSHU_UNDO}huge`, kind: "op" }, ({ work: w }) => ({
       ...w,
       edits: new Map(Array.from({ length: 3000 }, (_, i) => [`r${i}:workName`, { value: "あ".repeat(80), by: "staff" as const }])),
     }))
@@ -149,19 +152,19 @@ describe("取り消し（commit・undoGroup）", () => {
     expect(undoGroup(s, `${GYOSHU_UNDO}huge`)).toBeNull()
   })
 
-  test("承認を取り消す（変更案は開き直さない）。記録は数の上限を超えると古いものから捨てる", () => {
+  test("承認 → 業種の一覧で50回決める → 承認を取り消せる（操作が承認の記録を押し出さない）", () => {
     const s = store()
     receiveProposal(s, chatRecord("p", [cell("r1", "承認した値")]), "replace")
     approve(s, "p", [0])
+    for (let i = 0; i < 50; i++) op(s, i)
+    expect(s.getState().work.undo.filter((e) => e.kind === "op")).toHaveLength(UNDO_LIMITS.op.entries)
     expect(derive(s.getState()).undoStates.get("p")?.can).toBe(true)
     expect(undoGroup(s, "p")).toEqual({ reverted: 1, kept: 0, planChanged: false })
     expect(s.getState().work.edits.has("r1:workName")).toBe(false)
+    // 変更案は開き直さない
     expect(s.getState().work.proposals[0]).toMatchObject({ state: "closed", applied: 1 })
     expect(derive(s.getState()).undoStates.get("p")).toMatchObject({ can: false, undone: true })
     expect(undoGroup(s, "p")).toBeNull()
-    for (let i = 0; i < UNDO_LIMIT.entries + 5; i++) op(s, i)
-    expect(s.getState().work.undo).toHaveLength(UNDO_LIMIT.entries)
-    expect(s.getState().work.undo.some((e) => e.proposalId === "p")).toBe(false)
   })
 
   test("2つのタブ: 片方で承認して保存し、もう片方が開き直して取り消すと、取り消した事実も保存に入る", () => {
