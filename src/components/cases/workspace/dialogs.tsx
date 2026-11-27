@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DownloadsDialog } from "./downloads-dialog"
 
-/** 案件の画面のダイアログ（削除・ダウンロードの履歴・聞き返しの答えの確かめ・変換の元の確かめ）。開くかは ui.dialogs（ダウンロードの前の確認は段の中身） */
+/** 案件の画面のダイアログ（削除・ダウンロードの履歴・変換の元の確かめ）。開くかは ui.dialogs（ダウンロードの前の確認は段の中身） */
 export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; name: string }; fiscalYear: number }) {
   const router = useRouter()
   const { config, actions } = useCaseSession()
@@ -28,36 +28,9 @@ export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; 
         customerName={customer.name}
         onDeleted={() => router.navigate({ to: "/csv/customers/$customerId", params: { customerId: customer.id } })}
       />
-      <AskConfirmDialog />
       <SourceConfirmDialog />
       <DownloadsDialog />
     </>
-  )
-}
-
-/** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
-function AskConfirmDialog() {
-  const actions = useCaseActions()
-  const confirm = useCase((s) => s.ui.dialogs.askConfirm)
-  return (
-    <AlertDialog open={!!confirm} onOpenChange={(open) => !open && actions.closeAskConfirm(false)}>
-      <AlertDialogContent data-testid="ask-confirm">
-        <AlertDialogHeader>
-          <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
-          <AlertDialogDescription className="grid gap-1">
-            {confirm?.lines.map((l) => (
-              <span key={l}>{l}</span>
-            ))}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel data-testid="ask-confirm-cancel">やめる</AlertDialogCancel>
-          <AlertDialogAction onClick={() => actions.closeAskConfirm(true)} data-testid="ask-confirm-ok">
-            {confirm?.option}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   )
 }
 

@@ -54,8 +54,8 @@ export function useGyoshuSuggest() {
  */
 export function useReportQuestions(): ReportQuestion[] {
   const actions = useCaseActions()
-  const { questionStates, askRows, askEffects, planAsks, advice } = useCaseView(
-    useShallow((v) => ({ questionStates: v.questionStates, askRows: v.askRows, askEffects: v.askEffects, planAsks: v.planAsks, advice: v.selectionAdvice })),
+  const { questionStates, askRows, planAsks, advice } = useCaseView(
+    useShallow((v) => ({ questionStates: v.questionStates, askRows: v.askRows, planAsks: v.planAsks, advice: v.selectionAdvice })),
   )
   const tax = useCase((s) => s.work.tax)
   const selection = useCase((s) => s.work.selection)
@@ -98,22 +98,19 @@ export function useReportQuestions(): ReportQuestion[] {
       const r = askRows[i]!
       const kind = ASK_KINDS[planAsks[i]!.kind]
       const label = answered ? (kind.options.find((o) => o.value === reportAnswers[r.key])?.label ?? null) : null
-      const { wording, facts, prompt } = askEffects[i]!
       return {
         id,
         text: planAsks[i]!.text,
-        // 答えたあとは数だけ（答えで載せ方が変わったあとの件数の説明は事実と合わない）
-        detail: [label === null ? wording.detail : wording.count, facts].filter(Boolean).join("。"),
-        // 押すとどう変わるか（載せる件数）を答えに添える（変わらないときは detail に理由を書き、ボタンには付けない）
-        options: kind.options.map((o) => ({ value: o.value, label: wording.label(o.value, o.label) })),
+        detail: `該当 ${r.keys.size} 行`,
+        options: kind.options,
         answered: label,
         // まだ答えていない聞き返しだけ、チャットの AI に説明を頼める（決まった質問を職員の発言として送る）
-        prompt: label === null ? prompt : undefined,
+        prompt: label === null ? r.prompt : undefined,
         view: () => actions.viewAsk(r.id),
         undo: label !== null ? undoAnswer(r.key) : null,
       }
     })
-  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, reportAnswers, undoStates])
+  }, [actions, questionStates, askRows, planAsks, advice, tax, selection, reportAnswers, undoStates])
 }
 
 /**

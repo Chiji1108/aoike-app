@@ -251,7 +251,7 @@ test("業種が空の行に業種のタブで AI の案を出し、承認する�
   })
 })
 
-test("計画の聞き返しの答えに載せる件数の見込みが付き、大半を外す答えは押す前に確かめる", async ({ page }) => {
+test("計画の聞き返しは該当の行数だけを出し、「載せない」を押すとその場で答えになる", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   // 工種（B列）に値のある行＝全行を「載せるか迷う行」として聞く
@@ -262,23 +262,9 @@ test("計画の聞き返しの答えに載せる件数の見込みが付き、�
   await expect.poll(() => csvCount(page)).toBe(7)
   await openTab(page, "answer")
   const question = page.locator('[data-testid="answer-section"] [data-testid="report-question"][data-question="plan-ask-0"]')
-  await expect(question.getByTestId("report-answer")).toHaveText(["載せない（載せる 7 → 0 件）", "載せる（7 件のまま）"])
-  await expect(question.getByTestId("report-question-detail")).toContainText("データの 7 行のうち 7 行が当たります。")
-
-  await test.step("押すと確かめが出る。やめると何も変わらない", async () => {
-    await question.locator('[data-value="exclude"]').click()
-    const confirm = page.getByTestId("ask-confirm")
-    await expect(confirm).toContainText("載せる工事が 7 件から 0 件に減ります")
-    await confirm.getByTestId("ask-confirm-cancel").click()
-    await expect(confirm).toBeHidden()
-    await expect(question).toHaveAttribute("data-pending", "1")
-    expect(await csvCount(page)).toBe(7)
-  })
-
-  await test.step("確かめて押すと答えになる", async () => {
-    await question.locator('[data-value="exclude"]').click()
-    await page.getByTestId("ask-confirm").getByTestId("ask-confirm-ok").click()
-    await expect(question).toHaveAttribute("data-answered", "載せない")
-    await expect.poll(() => csvCount(page), { timeout: 60_000 }).toBe(0)
-  })
+  await expect(question.getByTestId("report-answer")).toHaveText(["載せない", "載せる"])
+  await expect(question.getByTestId("report-question-detail")).toHaveText("該当 7 行")
+  await question.locator('[data-value="exclude"]').click()
+  await expect(question).toHaveAttribute("data-answered", "載せない")
+  await expect.poll(() => csvCount(page), { timeout: 60_000 }).toBe(0)
 })

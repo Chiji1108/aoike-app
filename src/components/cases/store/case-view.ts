@@ -1,5 +1,5 @@
 import { rowFix } from "@/components/convert/status"
-import { askFacts, askImpact, askPrompt, askWording } from "@/lib/cases/ask-impact"
+import { askPrompt } from "@/lib/cases/ask-prompt"
 import { layoutOf } from "@/lib/cases/layout"
 import { isSheetFile, type CaseFile } from "@/lib/cases/types"
 import { selectionAdvice } from "@/lib/cases/selection-advice"
@@ -46,38 +46,10 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       const targets = new Set(askTargets(a, sources.rows, rf).map(sourceKey))
       const rows = shown.filter((r) => targets.has(sourceKey(r)))
       // id は画面の並び（表の絞り込み・欄の印）、key は答えと取り消しの単位（並び順に依らない。lib/convert/plan.ts の askKey）
-      return { id: `plan-ask-${i}`, key: askKey(a), label: ASK_KINDS[a.kind].label, keys: new Set(rows.map((r) => r.key)), rows }
+      // prompt は「AI に聞く」で送る決まった質問
+      return { id: `plan-ask-${i}`, key: askKey(a), label: ASK_KINDS[a.kind].label, keys: new Set(rows.map((r) => r.key)), rows, prompt: askPrompt(a.text, rows) }
     })
   })
-  /**
-   * 聞き返しの「載せない」側の答えで、載せる件数と7割がどう変わるか（今の7割の選び方・入れ外しで選び直す。表・ダウンロードの前の確認と同じ計算）と、
-   * 対象がデータの大半になるときの事実（決まった処理で数える）
-   */
-  const askEffectsOf = memoLast(
-    (
-      askRows: ReturnType<typeof askRowsOf>,
-      edited: TableDerived["edited"],
-      shown: TableDerived["shown"],
-      selected: TableDerived["selected"],
-      summary: ReturnType<typeof summaryOf>,
-      planAsks: readonly PlanAsk[],
-      manual: CaseState["work"]["manual"],
-      tax: CaseState["work"]["tax"],
-      basis: CaseState["work"]["basis"],
-      rule7Tax: CaseState["work"]["rule7Tax"],
-      selection: CaseState["work"]["selection"],
-    ) =>
-      askRows.map((r, i) => {
-        const impact = edited && shown && selected ? askImpact(edited, { manual, tax, basis, rule7Tax, selection }, r.keys, { inclusion: selected, summary }) : null
-        return {
-          impact,
-          facts: shown ? askFacts(planAsks[i]!.kind, shown, r.keys) : undefined,
-          // カードの言葉と「AI に聞く」の質問（行や設定が変わったときだけ作り直す）
-          wording: askWording(impact, r.keys.size),
-          prompt: askPrompt(planAsks[i]!.text, r.rows, impact?.targets ?? null),
-        }
-      }),
-  )
   const askIdsOf = memoLast((askRows: ReturnType<typeof askRowsOf>) => askRows.map((r) => ({ id: r.id, key: r.key })))
   /** 載せる工事の既定の案（lib/cases/selection-advice.ts）。載せうる行は除外していない行 */
   const selectionAdviceOf = memoLast((shown: TableDerived["shown"], inclusion: TableDerived["inclusion"], summary: ReturnType<typeof summaryOf>) => {
@@ -149,7 +121,6 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       summary,
       planAsks,
       askRows,
-      askEffects: askEffectsOf(askRows, t.edited, t.shown, t.selected, summary, planAsks, w.manual, w.tax, w.basis, w.rule7Tax, w.selection),
       questionStates,
       selectionAdvice: advice,
       todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, rt.status === "inquiring"),
@@ -182,8 +153,7 @@ export type CaseView = {
   inquiries: ReturnType<typeof collectInquiries>
   summary: ReturnType<typeof summarizeKoji>
   planAsks: readonly PlanAsk[]
-  askRows: { id: string; key: string; label: string; keys: Set<string>; rows: NonNullable<TableDerived["shown"]> }[]
-  askEffects: { impact: ReturnType<typeof askImpact> | null; facts: string | undefined; wording: ReturnType<typeof askWording>; prompt: ReturnType<typeof askPrompt> }[]
+  askRows: { id: string; key: string; label: string; keys: Set<string>; rows: NonNullable<TableDerived["shown"]>; prompt: string | undefined }[]
   questionStates: ReturnType<typeof reportQuestionStates>
   selectionAdvice: ReturnType<typeof selectionAdvice>
   todo: ReturnType<typeof caseTodo>

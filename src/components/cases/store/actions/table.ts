@@ -1,7 +1,6 @@
 import { toast } from "sonner"
 import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { CONFIRM_LABEL, shortLabel } from "@/components/convert/status"
-import { needsConfirm } from "@/lib/cases/ask-impact"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
 import { pendingGyoshuItems } from "@/lib/cases/todo"
@@ -17,7 +16,7 @@ import { inquiryKey } from "@/lib/inquiry/inquiry"
 import type { InquiryText } from "@/lib/inquiry/text"
 import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { ASK_KINDS } from "../case-view"
-import { setUi, setWork } from "../create-case-store"
+import { setWork } from "../create-case-store"
 import type { CaseEnv } from "../env"
 import { commit, undoGroup, type Committed } from "./proposals"
 import { supersedeConversion } from "./source"
@@ -207,8 +206,7 @@ export function answerProposal(env: CaseEnv, id: string, a: "yes" | "no") {
 }
 
 /**
- * 報告の聞き返しに答える。税込・税抜の答えは取り消しの記録（cases/undo.ts）に残す（取り消すと聞き返しを開き直し、税の設定も戻る）。
- * 計画の聞き返しで載せる件数が大きく減る答えは、押す前に何件減るか・7割に届くかの確かめを出す（数はその時点の状態から）
+ * 報告の聞き返しに答える。答えは取り消しの記録（cases/undo.ts）に残す（取り消すと聞き返しを開き直し、税の設定も戻る）
  */
 export function answerReport(env: CaseEnv, id: string, value: string) {
   const { store } = env
@@ -224,41 +222,9 @@ export function answerReport(env: CaseEnv, id: string, value: string) {
     commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...setTax(w, next, "staff"), reportAnswers: { ...w.reportAnswers, tax: value === "ask" ? "ask" : next } }))
     return
   }
-  const { askRows, askEffects, planAsks } = env.view(store.getState())
-  const i = askRows.findIndex((r) => r.id === id)
-  // 答えるのは押した聞き返しの鍵（確かめを開いている間に計画が変わっても、別の聞き返しに当てない）
-  const key = askRows[i]?.key
-  if (!key) return
-  if (value === "keep") return answerAsk(env, key, value)
-  if (value !== "exclude") return
-  const effect = askEffects[i]
-  if (effect?.impact && needsConfirm(effect.impact)) {
-    const { before, after, shortBefore, shortAfter } = effect.impact
-    const newlyShort = shortAfter.filter((g) => !shortBefore.includes(g))
-    setUi(store, (u) => ({
-      dialogs: {
-        ...u.dialogs,
-        askConfirm: {
-          key,
-          option: ASK_KINDS[planAsks[i]!.kind].options.find((o) => o.value === "exclude")!.label,
-          title: `載せる工事が ${before} 件から ${after} 件に減ります`,
-          lines: [
-            effect.facts,
-            after === 0 ? "載せる工事がなくなります。" : newlyShort.length ? `7割に届かなくなります: ${newlyShort.join("・")}` : "7割には届きます（決算書の額を入れていない業種は、表の合計で見ています）。",
-          ].filter((x): x is string => !!x),
-        },
-      },
-    }))
-    return
-  }
-  answerAsk(env, key, value)
-}
-
-/** 聞き返しの答えの確かめを閉じる（ok なら「載せない」で答える） */
-export function closeAskConfirm(env: CaseEnv, ok: boolean) {
-  const pending = env.store.getState().ui.dialogs.askConfirm
-  if (ok && pending) answerAsk(env, pending.key, "exclude")
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, askConfirm: null } }))
+  // 答えるのは押した聞き返しの鍵（計画が変わっても、別の聞き返しに当てない）
+  const key = env.view(store.getState()).askRows.find((r) => r.id === id)?.key
+  if (key && (value === "keep" || value === "exclude")) answerAsk(env, key, value)
 }
 
 /**

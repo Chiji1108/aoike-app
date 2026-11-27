@@ -161,33 +161,6 @@ test("ダウンロードの段: 残りは点とツールチップ。聞き返し
   })
 })
 
-test("答えるの段でも、載せる件数が大きく減る答えは確かめを重ねて出し、やめると戻る", async ({ page }) => {
-  // 工種（B列）に値のある行＝全行を「載せるか迷う行」として聞く
-  await convert(page, { ...PLAN, amountTax: "included", asks: [{ kind: "doubtful", text: "工種の列に値のある行があります。", column: 1, values: [] }] })
-  await ask(page, "selection").locator('[data-value="all"]').click()
-  await expect.poll(() => csvCount(page)).toBe(7)
-  const confirm = page.getByTestId("ask-confirm")
-
-  await ask(page, "plan-ask-0").locator('[data-value="exclude"]').click()
-  await expect(confirm).toContainText("載せる工事が 7 件から 0 件に減ります")
-  await confirm.getByTestId("ask-confirm-cancel").click()
-  await expect(confirm).toBeHidden()
-  await expect(ask(page, "plan-ask-0")).toHaveAttribute("data-pending", "1")
-  expect(await csvCount(page)).toBe(7)
-
-  // Escape は確かめだけを閉じる
-  await ask(page, "plan-ask-0").locator('[data-value="exclude"]').click()
-  await expect(confirm).toBeVisible()
-  await page.keyboard.press("Escape")
-  await expect(confirm).toBeHidden()
-  await expect(page.getByTestId("work-panel")).toHaveAttribute("data-view", "answer")
-
-  await ask(page, "plan-ask-0").locator('[data-value="exclude"]').click()
-  await confirm.getByTestId("ask-confirm-ok").click()
-  await expect(ask(page, "plan-ask-0")).toHaveAttribute("data-answered", "載せない")
-  await expect.poll(() => csvCount(page), { timeout: 60_000 }).toBe(0)
-})
-
 /** チャットのサーバーの代わりに、聞き返しの付いた変更案（行を1つ外す）を返す */
 async function fakeChatWithQuestion(page: Page, changes: ChatChange[]) {
   await page.route("**/api/csv/cases/*/chat", async (route) => {
