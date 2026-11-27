@@ -63,7 +63,7 @@ export function inquiryEmail(inquiries: readonly Inquiry[], rows: readonly KojiR
   })
   if (works.length) {
     const asked = new Set(cells.map((q) => columnOf(q.field)))
-    const hints = ASK_COLUMNS.flatMap((c) => (c.hint && asked.has(c) ? [c.hint] : []))
+    const hints = [...new Set(ASK_COLUMNS.flatMap((c) => (c.hint && asked.has(c) ? [c.hint] : [])))]
     sections.push(
       [
         `${cases.length + 1}. 次の工事について、分かる範囲でお知らせください（${works.length}件）。`,

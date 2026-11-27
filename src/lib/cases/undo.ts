@@ -23,6 +23,8 @@ import { diffInquiryText, inquiryTextDiffSchema, revertInquiryText, type Inquiry
 export type Undoable = {
   edits: CellEdits
   manual: ReadonlyMap<string, boolean>
+  /** 聞かないと決めた問い合わせ（inquiryKey） */
+  dismissed: ReadonlySet<string>
   added: readonly AddedRow[]
   tax: TaxSetting["tax"]
   taxBy: TaxBy | null
@@ -56,6 +58,8 @@ export type UndoEntry = {
   /** [手直しの鍵, 前, 後]（null は無かった） */
   edits: [string, CellEdit | null, CellEdit | null][]
   manual: [string, boolean | null, boolean | null][]
+  /** 聞かないと決めた問い合わせの [鍵, 前, 後]（変えたときだけ） */
+  dismissed?: [string, boolean, boolean][]
   /** 承認で足した行（取り消すと外す） */
   added: AddedRow[]
   /** 税の設定と出どころ（一緒に戻す） */
@@ -97,7 +101,8 @@ export const SELECTION_UNDO = "selection:"
 export const RANGE_UNDO = "include:"
 export const GYOSHU_UNDO = "gyoshu:"
 export const CONFIRM_UNDO = "confirm:"
-const OP_MARKS = [SELECTION_UNDO, RANGE_UNDO, GYOSHU_UNDO, CONFIRM_UNDO]
+export const DISMISS_UNDO = "dismiss:"
+const OP_MARKS = [SELECTION_UNDO, RANGE_UNDO, GYOSHU_UNDO, CONFIRM_UNDO, DISMISS_UNDO]
 
 /** 記録の枠（kind の無い前の記録は、操作の印で始まるものを op、ほかを approval とみなす） */
 export const kindOf = (e: Pick<UndoEntry, "kind" | "proposalId">): UndoKind => e.kind ?? (OP_MARKS.some((m) => e.proposalId.startsWith(m)) ? "op" : "approval")
@@ -115,6 +120,8 @@ export function undoEntry(
   for (const [k, v] of before.edits) if (!after.edits.has(k)) edits.push([k, v, null])
   const manual: UndoEntry["manual"] = []
   for (const [k, v] of after.manual) if (before.manual.get(k) !== v) manual.push([k, before.manual.get(k) ?? null, v])
+  const dismissed: [string, boolean, boolean][] =
+    before.dismissed === after.dismissed ? [] : [...new Set([...before.dismissed, ...after.dismissed])].flatMap((k) => (before.dismissed.has(k) === after.dismissed.has(k) ? [] : [[k, before.dismissed.has(k), after.dismissed.has(k)] as [string, boolean, boolean]]))
   const had = new Set(before.added.map((a) => a.key))
   const added = after.added.filter((a) => !had.has(a.key))
   // 聞き返しの答えは聞き返しごと（ほかの聞き返しにあとで答えても、この答えだけを戻せる）
@@ -129,6 +136,7 @@ export function undoEntry(
     ...(meta.exclusions?.length ? { exclusions: meta.exclusions } : {}),
     edits,
     manual,
+    ...(dismissed.length ? { dismissed } : {}),
     added,
     ...(before.tax !== after.tax || before.taxBy !== after.taxBy
       ? { tax: [{ tax: before.tax, taxBy: before.taxBy }, { tax: after.tax, taxBy: after.taxBy }] as Pair<TaxSetting> }
@@ -142,7 +150,7 @@ export function undoEntry(
     ...(text ? { inquiryText: text } : {}),
     ...(answers.length ? { reportAnswers: answers } : {}),
   }
-  const changed = edits.length || manual.length || added.length || entry.tax || entry.selection || entry.basis || entry.rounding || entry.plan || entry.inquiryText || entry.reportAnswers || entry.exclusions
+  const changed = edits.length || manual.length || dismissed.length || added.length || entry.tax || entry.selection || entry.basis || entry.rounding || entry.plan || entry.inquiryText || entry.reportAnswers || entry.exclusions
   if (!changed && !entry.external.length) return null
   return entry
 }
@@ -173,7 +181,7 @@ export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntr
 
 /** 取り消せる記録か（取り消した・中身が無い・戻す値が無いものは取り消せない） */
 export const canUndo = (e: UndoEntry) =>
-  !e.undone && !e.tooLarge && (e.edits.length > 0 || e.manual.length > 0 || e.added.length > 0 || !!e.tax || !!e.selection || !!e.basis || !!e.rounding || !!e.plan || !!e.inquiryText || !!e.reportAnswers?.length || !!e.exclusions?.length)
+  !e.undone && !e.tooLarge && (e.edits.length > 0 || e.manual.length > 0 || !!e.dismissed?.length || e.added.length > 0 || !!e.tax || !!e.selection || !!e.basis || !!e.rounding || !!e.plan || !!e.inquiryText || !!e.reportAnswers?.length || !!e.exclusions?.length)
 
 /** 変換の報告の聞き返しの答えの記録の印（聞き返しの鍵ごと。税は tax、載せる工事は selection、計画の聞き返しは askKey） */
 export const reportUndoId = (key: string) => `report:${key}`
@@ -209,6 +217,16 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
     }
     if (before === null) manual.delete(k)
     else manual.set(k, before)
+    reverted++
+  }
+  const dismissed = new Set(work.dismissed)
+  for (const [k, before, after] of entry.dismissed ?? []) {
+    if (dismissed.has(k) !== after) {
+      kept++
+      continue
+    }
+    if (before) dismissed.add(k)
+    else dismissed.delete(k)
     reverted++
   }
   // 足した行は、その行のセルを承認のあとに変えていなければ外す。記録の「後」と違うセルか、記録に無い項目の手直しがあれば行を残して数える
@@ -259,6 +277,7 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
     ...work,
     edits,
     manual,
+    dismissed,
     added: work.added.filter((a) => !removed.has(a.key)),
     basis: revert(entry.basis, work.basis),
     rounding: revert(entry.rounding, work.rounding),
@@ -283,6 +302,7 @@ export const undoEntrySchema: z.ZodType<UndoEntry> = z.object({
   at: z.number(),
   edits: z.array(z.tuple([z.string(), cellEditSchema.nullable(), cellEditSchema.nullable()])),
   manual: z.array(z.tuple([z.string(), z.boolean().nullable(), z.boolean().nullable()])),
+  dismissed: z.array(z.tuple([z.string(), z.boolean(), z.boolean()])).optional(),
   added: z.array(addedRowSchema),
   tax: pair(taxSettingSchema).optional(),
   selection: pair(selectionSettingSchema).optional(),

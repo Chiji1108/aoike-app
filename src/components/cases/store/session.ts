@@ -84,6 +84,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     decideGyoshu: (decisions: readonly GyoshuDecision[], how: "plan" | "pick") => table.decideGyoshu(env, decisions, how),
     changeSelection: (mode: SelectionMode) => table.changeSelection(env, mode),
     toggleInquiry: (key: string, ask: boolean) => table.toggleInquiry(env, key, ask),
+    dismissRemaining: () => table.dismissRemaining(env),
     setInquiryText: (next: (prev: InquiryText) => InquiryText) => table.setInquiryText(env, next),
     setTax: (t: TaxMode) => table.setTaxMode(env, t),
     setRule7Tax: (t: Rule7Tax) => table.setRule7Tax(env, t),

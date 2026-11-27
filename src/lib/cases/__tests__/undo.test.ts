@@ -61,6 +61,19 @@ describe("承認の取り消し", () => {
     expect(r2.work.edits.get(editKey("r2", "client"))).toEqual(chat("㈲青池"))
   })
 
+  test("聞かないと決めた問い合わせも取り消せ（開き直しても）、あとで職員が入れ直したものは戻さずに数える", () => {
+    const after = { ...base, dismissed: new Set(["r1:engineer", "r2:endYm"]) }
+    const entry = undoEntry(base, after, { id: "d", proposalId: "dismiss:x", kind: "op", label: "", at: 0 })!
+    expect(entry.dismissed).toEqual([
+      ["r1:engineer", false, true],
+      ["r2:endYm", false, true],
+    ])
+    const w = reopen({ ...after, undo: [entry] })
+    expect(undo(w, "d")!.work.dismissed).toEqual(new Set())
+    const r = undo({ ...w, dismissed: new Set(["r1:engineer"]) }, "d")!
+    expect([r.reverted, r.kept, [...r.work.dismissed]]).toEqual([1, 1, []])
+  })
+
   test("千円未満の扱いの承認も取り消せる（開き直しても）。承認のあとに職員が変えていれば戻さずに数える", () => {
     const amount = chat("3500")
     const w = approve(base, "p1", [{ kind: "settings", rounding: "round" }, { kind: "cell", rowKey: "r1", field: "amount", edit: amount }])

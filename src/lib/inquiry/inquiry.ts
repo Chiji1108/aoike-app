@@ -121,11 +121,14 @@ function shownYearMonth(f: KojiFieldId) {
   }
 }
 
+/** 年月の答え方（着工年月・完成年月のどちらを聞くときも添える。メールには1回だけ） */
+const YEAR_MONTH_HINT = "着工・完成年月は「2024年4月」のようにお知らせください。"
+
 export const ASK_COLUMNS: readonly AskColumn[] = [
   { label: "工事名", fields: ["workName"], show: valueOf("workName"), parse: text("workName"), transform: "ai.anonymizeWorkName" },
   { label: "注文者", fields: ["client"], show: valueOf("client"), parse: text("client"), transform: "ai.anonymizeClient" },
-  { label: "着工年月", fields: ["startYm"], show: shownYearMonth("startYm"), hint: "着工・完成年月は「2024年4月」のようにお知らせください。", parse: yearMonth("startYm") },
-  { label: "完成年月", fields: ["endYm"], show: shownYearMonth("endYm"), parse: yearMonth("endYm") },
+  { label: "着工年月", fields: ["startYm"], show: shownYearMonth("startYm"), hint: YEAR_MONTH_HINT, parse: yearMonth("startYm") },
+  { label: "完成年月", fields: ["endYm"], show: shownYearMonth("endYm"), hint: YEAR_MONTH_HINT, parse: yearMonth("endYm") },
   {
     label: "工事場所",
     fields: ["prefecture", "place"],

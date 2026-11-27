@@ -32,7 +32,8 @@ const askSource = (env: CaseEnv, file: CaseFile) =>
 
 /**
  * 届いたファイルを付ける（チャットの📎でアップロードしたファイル、画面にドラッグしたファイル）。どれも届いたファイルとして保存する
- * （顧客の回答のファイルもチャットの AI が読む）。変換の元がまだ無ければ最初の表を変換の元にし、もう元があれば変換の元にするか聞く
+ * （顧客の回答のファイルもチャットの AI が読む）。変換の元がまだ無ければ最初の表を変換の元にする。もう元があれば保存するだけ
+ * （元を変えるときは、ファイルの行の「変換の元にする」から選ぶ）
  */
 export async function attach(env: CaseEnv, list: readonly File[]) {
   const { store } = env
@@ -46,12 +47,14 @@ export async function attach(env: CaseEnv, list: readonly File[]) {
       else note(env, { name: f.name, text: "届いたファイルとして保存しました（チャットの AI は読めます）" })
       continue
     }
-    if (!hasSource) {
-      hasSource = true
-      // PDF から足した行があれば、変換の元にすると消えるので確かめる
-      if (store.getState().work.added.length) askSource(env, saved)
-      else await openSource(env, saved, true)
-    } else askSource(env, saved)
+    if (hasSource) {
+      note(env, { name: f.name, text: "届いたファイルとして保存しました（変換の元はそのまま。チャットの AI は読めます）" })
+      continue
+    }
+    hasSource = true
+    // PDF から足した行があれば、変換の元にすると消えるので確かめる
+    if (store.getState().work.added.length) askSource(env, saved)
+    else await openSource(env, saved, true)
   }
 }
 

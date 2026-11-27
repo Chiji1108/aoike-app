@@ -14,6 +14,13 @@ const rows = [guessedEnd(2), guessedEnd(3), kojiRow({ ...full, engineer: "" }, 4
 const qs = collectInquiries(rows, { tax: "unknown" })
 
 describe("メールの件名と前置き", () => {
+  test("年月の答え方は、着工年月・完成年月のどちらを聞くときも1回だけ添える", () => {
+    const endOnly = [guessedEnd(2)]
+    const body = inquiryEmail(collectInquiries(endOnly, { tax: "included" }), endOnly, EMPTY_INQUIRY_TEXT).body
+    expect(body.match(/「2024年4月」のようにお知らせください/g)).toHaveLength(1)
+    expect(inquiryEmail(qs, rows, EMPTY_INQUIRY_TEXT).body.match(/「2024年4月」のようにお知らせください/g)).toHaveLength(1)
+  })
+
   test("承認した件名と前置きを使い、無ければ決まった文。前の作業の質問の文（questions）は読み捨てる", () => {
     const text = applyInquiryChange(EMPTY_INQUIRY_TEXT, { kind: "inquiryMail", subject: "工事経歴書のご確認", intro: "資料ありがとうございました。いくつか教えてください。" })
     const mail = inquiryEmail(qs, rows, text)

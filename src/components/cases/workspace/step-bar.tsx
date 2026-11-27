@@ -133,6 +133,6 @@ function stepTitle(id: StepId, s: CaseTodo) {
   if (id === "answer") return "報告の聞き返し・チャットの変更案に答える（載せる工事・税込か税抜か・計画の聞き返しなど）"
   if (id === "gyoshu") return "7割で載りうる行の業種をまとめて決める（決めるたびに載せる行が入れ替わるので、直すより先に）"
   if (id === "fix") return s.fix.rows ? `直す行（${fixBreakdown(s.fix)}）` : "直す行はありません"
-  if (id === "inquiry") return s.inquiry.state === "waiting" ? "顧客に送りました。答えのメールはチャットに貼る・ファイルは📎で付けると、AI が顧客の回答の変更案にします" : "顧客に聞くことを確かめて送る"
+  if (id === "inquiry") return s.inquiry.state === "waiting" ? "顧客に送りました。答えのメールはチャットに貼り、ファイルは📎で付けてから、チャットで「回答を読んで」と頼みます" : "顧客に聞くことを確かめて送る"
   return exportTitle(s)
 }

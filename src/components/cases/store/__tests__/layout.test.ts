@@ -123,6 +123,19 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.store.getState().runtime.inquiryHint).toBe("sent")
   })
 
+  test("「残りは聞かない」はまだ答えのない問い合わせをまとめて外し（問い合わせの段は済み）、1つの取り消しの記録で戻せる", async () => {
+    const s = await converted(true)
+    const todo = () => s.view(s.store.getState()).todo.inquiry
+    const before = todo().active
+    expect(before).toBeGreaterThan(0)
+    s.actions.dismissRemaining()
+    expect(todo()).toMatchObject({ active: 0, state: "done" })
+    const entry = s.store.getState().work.undo.at(-1)!
+    expect(entry).toMatchObject({ proposalId: expect.stringMatching(/^dismiss:/), kind: "op" })
+    s.actions.undoWithNotice(entry.proposalId)
+    expect(todo().active).toBe(before)
+  })
+
   test("並べ方は同じ状態なら同じもの（selector が描画ごとに新しいものを返さない）", async () => {
     const s = await converted(true)
     const a = layout(s)
@@ -130,13 +143,10 @@ describe("並べ方と画面の action（ui）", () => {
     expect(layout(s)).toBe(a)
   })
 
-  test("変換の元があるときに表を付けると「変換の元にしますか」を開き、付けるだけなら元を変えない（ダイアログは action で開く）", async () => {
+  test("変換の元があるときに表を付けると、届いたファイルとして保存するだけで元は変えない（「変換の元にしますか」を出さない）", async () => {
     const s = await converted(true)
     const bytes = fixture("sample-messy.xlsx")
     await s.actions.attach([new File([bytes as BlobPart], "合成の追加.xlsx")])
-    const pending = s.store.getState().ui.dialogs.pendingSources
-    expect(pending.map((f) => f.name)).toEqual(["合成の追加.xlsx"])
-    s.actions.confirmSource(pending[0]!.id, false)
     expect(s.store.getState().ui.dialogs.pendingSources).toEqual([])
     expect(s.store.getState().work.sourceFileId).toBe("f1")
     expect(s.store.getState().runtime.files.map((f) => f.name)).toContain("合成の追加.xlsx")
