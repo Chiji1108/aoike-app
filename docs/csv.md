@@ -91,8 +91,12 @@ E2E_CHROME='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' E2E_PA
 ほかの worktree の dev サーバーとポートがぶつかるときは `E2E_PORT=3217` のように変える（ログインの戻り先が合うよう、`.dev.vars` の `BETTER_AUTH_URL` も同じポートにする）。
 パスワードはコミットしないでください（環境変数で渡す）。ログインは1回だけ行い、状態を `test-results/`（git の管理外）に置いて使い回します。
 React がつながる前の入力や押下は効かないので、ページを開く・再読み込みするときは `e2e/helpers.ts` の `open`・`reload` を使います（画面が立てる `<html data-hydrated>` を待つ）。
-`.dev.vars` に `ANTHROPIC_API_KEY` があれば実際に AI を呼びます（サンプルは数行なので費用はわずか）。
-チャットの確かめは、チャットのサーバーの代わりに決まった返事を返して画面の流れを見ます。本物の AI にチャットさせる1件は `E2E_LIVE_AI=1` のときだけ走ります（1回 $0.1 ほど）。
+ふだんの e2e は本物の AI を呼びません（費用がかからず、AI の返事の揺れや待ちで落ちない）。ブラウザからの AI の通信を差し替えます（本番のコードは変えない）:
+- 列の計画（`planWithAi`）と値ごとの判断（`runAiBatch`）は、`e2e/fake-ai.ts` が録っておいた答え（`e2e/fixtures/ai-answers.json`）を返す。計画は送った抜き出しの SHA-256、値ごとの判断は種類・指示・値で引く。spec は `@playwright/test` ではなく `./fake-ai` の `test` を使う（差し替えは context.route なので、spec が page.route で決めた答えが先に使われる。spec の route で扱わない要求は `route.fallback()` でこちらへ回す）。
+- 録っていない要求が来ると、AI の失敗として返し、そのテストを落とす（「録っていない AI の要求」）。合成のサンプルや AI に送る中身を変えたら、`E2E_RECORD_AI=1` を付けて流して録り直す（録っていない要求だけ本物の AI に届けて書き足す。1回 $1 ほど。要らなくなった答えは消してから録ってもよい）。
+- チャットは、spec がチャットのサーバーの代わりに決まった返事を返して画面の流れを見る。
+- 本物の AI で確かめるテスト（チャット・工事場所の調査）は `liveTest` で書き、`E2E_LIVE_AI=1` のときだけ走る（差し替えない。1件 $0.1〜0.2 ほど）。
+- `.dev.vars` の `ANTHROPIC_API_KEY` は、チャットと計画の画面を出すのに要る（無いと計画を立てない）。
 
 ### 実例での照合（`scripts/eval.ts`）
 

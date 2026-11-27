@@ -1,0 +1,564 @@
+{
+  "plans": [
+    {
+      "sheets": [
+        "工事経歴",
+        "メモ"
+      ],
+      "key": "41bcd1b7e4a5ab50412f40e93567e01ad6dda60847d9019700a6b75689ae8674",
+      "json": {
+        "sheets": [
+          0
+        ],
+        "sheetReason": "シート「工事経歴」が工事ごとに1行の工事経歴一覧です。シート「メモ」は担当者のメモだけなので選びませんでした。",
+        "headerRow": 2,
+        "dataStart": 3,
+        "skipRows": [
+          10,
+          11,
+          12
+        ],
+        "excludeColumns": [],
+        "amountUnit": "yen",
+        "amountTax": "included",
+        "fields": {
+          "gyoshu": {
+            "kind": "column",
+            "column": 1,
+            "transform": "rule.gyoshu",
+            "instruction": null
+          },
+          "client": {
+            "kind": "column",
+            "column": 3,
+            "transform": "ai.anonymizeClient",
+            "instruction": null
+          },
+          "motoukeShitauke": {
+            "kind": "columns",
+            "columns": [
+              4,
+              3
+            ],
+            "transform": "rule.motoukeShitauke",
+            "instruction": null
+          },
+          "jv": {
+            "kind": "missing"
+          },
+          "workName": {
+            "kind": "column",
+            "column": 2,
+            "transform": "ai.anonymizeWorkName",
+            "instruction": null
+          },
+          "prefecture": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressPrefecture",
+            "instruction": null
+          },
+          "place": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressCity",
+            "instruction": null
+          },
+          "engineer": {
+            "kind": "column",
+            "column": 9,
+            "transform": "rule.personNameSpace",
+            "instruction": null
+          },
+          "amount": {
+            "kind": "column",
+            "column": 6,
+            "transform": "rule.yenToThousand",
+            "instruction": null
+          },
+          "specialAmount": {
+            "kind": "missing"
+          },
+          "startYm": {
+            "kind": "column",
+            "column": 7,
+            "transform": "rule.periodStart",
+            "instruction": null
+          },
+          "endYm": {
+            "kind": "column",
+            "column": 8,
+            "transform": "rule.yearMonth",
+            "instruction": null
+          },
+          "chiefEngineer": {
+            "kind": "missing"
+          },
+          "supervisingEngineer": {
+            "kind": "missing"
+          }
+        },
+        "unusedColumns": [
+          {
+            "column": 0,
+            "header": "No.",
+            "reason": "通し番号で、取込の項目にありません。"
+          },
+          {
+            "column": 10,
+            "header": "備考",
+            "reason": "取込の項目にありません（「追加工事あり」の記載は notes に記載）。"
+          }
+        ],
+        "notes": [
+          "配置技術者には「現場代理人」の列を使っており、現場代理人が配置技術者（主任技術者等）と同じ人とは限りません。",
+          "備考に「追加工事あり」とある行（No.6）は、契約金額に追加分が入っていないかもしれません。",
+          "シート「メモ」に「7月の工事は書類待ち」とあり、7月着工の工事（No.4）の内容が確定していないかもしれません。"
+        ],
+        "asks": []
+      }
+    },
+    {
+      "sheets": [
+        "工事経歴",
+        "メモ"
+      ],
+      "key": "1a12fe4cca48e0c781884230ee1e3df43c78bd8eeb3c72283e990f509c378dd6",
+      "json": {
+        "sheets": [
+          0
+        ],
+        "sheetReason": "「工事経歴」シートが工事ごとに1行の一覧です。「メモ」シートは担当者のメモ書きだけなので選びませんでした。",
+        "headerRow": 2,
+        "dataStart": 3,
+        "skipRows": [
+          10,
+          11,
+          12
+        ],
+        "excludeColumns": [],
+        "amountUnit": "yen",
+        "amountTax": "included",
+        "fields": {
+          "gyoshu": {
+            "kind": "column",
+            "column": 1,
+            "transform": "rule.gyoshu",
+            "instruction": null
+          },
+          "client": {
+            "kind": "column",
+            "column": 3,
+            "transform": "ai.anonymizeClient",
+            "instruction": null
+          },
+          "motoukeShitauke": {
+            "kind": "columns",
+            "columns": [
+              4,
+              3
+            ],
+            "transform": "rule.motoukeShitauke",
+            "instruction": null
+          },
+          "jv": {
+            "kind": "missing"
+          },
+          "workName": {
+            "kind": "column",
+            "column": 2,
+            "transform": "ai.anonymizeWorkName",
+            "instruction": null
+          },
+          "prefecture": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressPrefecture",
+            "instruction": null
+          },
+          "place": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressCity",
+            "instruction": null
+          },
+          "engineer": {
+            "kind": "column",
+            "column": 9,
+            "transform": "rule.personNameSpace",
+            "instruction": null
+          },
+          "amount": {
+            "kind": "column",
+            "column": 6,
+            "transform": "rule.yenToThousand",
+            "instruction": null
+          },
+          "specialAmount": {
+            "kind": "missing"
+          },
+          "startYm": {
+            "kind": "column",
+            "column": 8,
+            "transform": "rule.periodStart",
+            "instruction": null
+          },
+          "endYm": {
+            "kind": "column",
+            "column": 7,
+            "transform": "rule.yearMonth",
+            "instruction": null
+          },
+          "chiefEngineer": {
+            "kind": "missing"
+          },
+          "supervisingEngineer": {
+            "kind": "missing"
+          }
+        },
+        "unusedColumns": [
+          {
+            "column": 0,
+            "header": "No.",
+            "reason": "連番のため不要"
+          },
+          {
+            "column": 10,
+            "header": "備考",
+            "reason": "取り込む項目に当たらない注記"
+          },
+          {
+            "column": 11,
+            "header": "担当部署",
+            "reason": "全行「工務部」で取り込む項目に当たらない"
+          }
+        ],
+        "notes": [
+          "備考に「追加工事あり」とある行（No.6）は、契約金額に追加分が入っているかもしれません。",
+          "配置技術者は「現場代理人」の列から取っており、現場代理人が配置技術者（主任技術者等）と同じ人とは限りません。",
+          "「メモ」シートに「7月の工事は書類待ち」とあり、2023年7月着工のNo.4の書類がそろっていない可能性があります。"
+        ],
+        "asks": []
+      }
+    },
+    {
+      "sheets": [
+        "工事経歴"
+      ],
+      "key": "9d7fc80bc6437f2c5ee3a1e2a8fa5bac1199bc490f4583e8c1db7455e874606d",
+      "json": {
+        "sheets": [
+          0
+        ],
+        "sheetReason": "ブックのシートは「工事経歴」の1枚だけで、工事ごとに1行の一覧になっているため選びました。",
+        "headerRow": 2,
+        "dataStart": 3,
+        "skipRows": [],
+        "excludeColumns": [],
+        "amountUnit": "yen",
+        "amountTax": "unknown",
+        "fields": {
+          "gyoshu": {
+            "kind": "column",
+            "column": 1,
+            "transform": "rule.gyoshu",
+            "instruction": null
+          },
+          "client": {
+            "kind": "column",
+            "column": 3,
+            "transform": "ai.anonymizeClient",
+            "instruction": null
+          },
+          "motoukeShitauke": {
+            "kind": "columns",
+            "columns": [
+              4,
+              3
+            ],
+            "transform": "rule.motoukeShitauke",
+            "instruction": null
+          },
+          "jv": {
+            "kind": "missing"
+          },
+          "workName": {
+            "kind": "column",
+            "column": 2,
+            "transform": "ai.anonymizeWorkName",
+            "instruction": null
+          },
+          "prefecture": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressPrefecture",
+            "instruction": null
+          },
+          "place": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressCity",
+            "instruction": null
+          },
+          "engineer": {
+            "kind": "column",
+            "column": 9,
+            "transform": "rule.personNameSpace",
+            "instruction": null
+          },
+          "amount": {
+            "kind": "column",
+            "column": 6,
+            "transform": "rule.yenToThousand",
+            "instruction": null
+          },
+          "specialAmount": {
+            "kind": "missing"
+          },
+          "startYm": {
+            "kind": "column",
+            "column": 7,
+            "transform": "rule.periodStart",
+            "instruction": null
+          },
+          "endYm": {
+            "kind": "column",
+            "column": 8,
+            "transform": "rule.yearMonth",
+            "instruction": null
+          },
+          "chiefEngineer": {
+            "kind": "missing"
+          },
+          "supervisingEngineer": {
+            "kind": "missing"
+          }
+        },
+        "unusedColumns": [
+          {
+            "column": 0,
+            "header": "No.",
+            "reason": "通し番号で、工事経歴書の項目にないため。"
+          },
+          {
+            "column": 10,
+            "header": "備考",
+            "reason": "見出しだけで値が入っていないため。"
+          }
+        ],
+        "notes": [
+          "配置技術者にはJ列の「現場代理人」を使っており、現場代理人が配置技術者（主任技術者・監理技術者）と同じ人とは限りません。"
+        ],
+        "asks": [
+          {
+            "kind": "doubtful",
+            "text": "G列の契約金額が「見積中」の行は、契約が決まっていない工事かもしれず、請負代金がありません。",
+            "column": 6,
+            "values": [
+              "見積中"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "sheets": [
+        "2025年（令和7年）記入用フォーム",
+        "メモ"
+      ],
+      "key": "ffb3cd388265bb46ca1bfa2c03b49962b5fbc4eb12326d6cd23665baf9d50730",
+      "json": {
+        "sheets": [
+          0
+        ],
+        "sheetReason": "シート0「2025年（令和7年）記入用フォーム」は、工事が1行ずつ並ぶ工事経歴の一覧なので選びました。シート1「メモ」は担当者のメモだけで、工事の一覧ではありません。",
+        "headerRow": 2,
+        "dataStart": 3,
+        "skipRows": [
+          10,
+          11,
+          12
+        ],
+        "excludeColumns": [],
+        "amountUnit": "yen",
+        "amountTax": "included",
+        "fields": {
+          "gyoshu": {
+            "kind": "column",
+            "column": 1,
+            "transform": "rule.gyoshu",
+            "instruction": null
+          },
+          "client": {
+            "kind": "column",
+            "column": 3,
+            "transform": "ai.anonymizeClient",
+            "instruction": null
+          },
+          "motoukeShitauke": {
+            "kind": "columns",
+            "columns": [
+              4,
+              3
+            ],
+            "transform": "rule.motoukeShitauke",
+            "instruction": null
+          },
+          "jv": {
+            "kind": "missing"
+          },
+          "workName": {
+            "kind": "column",
+            "column": 2,
+            "transform": "ai.anonymizeWorkName",
+            "instruction": null
+          },
+          "prefecture": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressPrefecture",
+            "instruction": null
+          },
+          "place": {
+            "kind": "column",
+            "column": 5,
+            "transform": "rule.addressCity",
+            "instruction": null
+          },
+          "engineer": {
+            "kind": "column",
+            "column": 9,
+            "transform": "rule.personNameSpace",
+            "instruction": null
+          },
+          "amount": {
+            "kind": "column",
+            "column": 6,
+            "transform": "rule.yenToThousand",
+            "instruction": null
+          },
+          "specialAmount": {
+            "kind": "missing"
+          },
+          "startYm": {
+            "kind": "column",
+            "column": 7,
+            "transform": "rule.periodStart",
+            "instruction": null
+          },
+          "endYm": {
+            "kind": "column",
+            "column": 8,
+            "transform": "rule.yearMonth",
+            "instruction": null
+          },
+          "chiefEngineer": {
+            "kind": "missing"
+          },
+          "supervisingEngineer": {
+            "kind": "missing"
+          }
+        },
+        "unusedColumns": [
+          {
+            "column": 0,
+            "header": "No.",
+            "reason": "通し番号で、工事経歴書には使いません。"
+          },
+          {
+            "column": 10,
+            "header": "備考",
+            "reason": "「追加工事あり」の注記だけで、取り込む項目に当たりません。"
+          }
+        ],
+        "notes": [
+          "配置技術者には「現場代理人」の列を使っており、現場代理人が配置技術者（主任技術者・監理技術者）と同じ人とは限りません。",
+          "No.6（倉庫照明LED化工事）は備考に「追加工事あり」とあり、契約金額に追加分が入っているかもしれません。",
+          "メモのシートに「7月の工事は書類待ち」とあり、着工が2023年7月のNo.4（△△マンション給排水更新工事）の書類がそろっていないかもしれません。"
+        ],
+        "asks": []
+      }
+    }
+  ],
+  "items": {
+    "personName": {
+      "青池一郎": {
+        "value": "青池　一郎",
+        "needsReview": false,
+        "note": ""
+      },
+      "鈴木次郎": {
+        "value": "鈴木　次郎",
+        "needsReview": false,
+        "note": ""
+      },
+      "佐藤花子": {
+        "value": "佐藤　花子",
+        "needsReview": false,
+        "note": ""
+      }
+    },
+    "splitAddress": {
+      "横浜市中区山下町10": {
+        "prefecture": "神奈川県",
+        "city": "横浜市中区",
+        "rest": "山下町10",
+        "prefectureInferred": true,
+        "needsReview": false,
+        "note": ""
+      },
+      "川崎市川崎区駅前本町5": {
+        "prefecture": "神奈川県",
+        "city": "川崎市川崎区",
+        "rest": "駅前本町5",
+        "prefectureInferred": true,
+        "needsReview": false,
+        "note": ""
+      }
+    },
+    "anonymizeWorkName": {
+      "山田太郎邸新築工事": {
+        "value": "〔1〕邸新築工事",
+        "needsReview": false,
+        "note": "",
+        "persons": [
+          "山田太郎"
+        ]
+      },
+      "鈴木様邸リフォーム工事": {
+        "value": "〔1〕様邸リフォーム工事",
+        "needsReview": false,
+        "note": "",
+        "persons": [
+          "鈴木"
+        ]
+      },
+      "山田太郎邸電気設備工事": {
+        "value": "〔1〕邸電気設備工事",
+        "needsReview": false,
+        "note": "",
+        "persons": [
+          "山田太郎"
+        ]
+      }
+    },
+    "anonymizeClient": {
+      "山田太郎": {
+        "value": "〔1〕",
+        "needsReview": false,
+        "note": "",
+        "persons": [
+          "山田太郎"
+        ]
+      },
+      "鈴木一郎": {
+        "value": "〔1〕",
+        "needsReview": false,
+        "note": "",
+        "persons": [
+          "鈴木一郎"
+        ]
+      }
+    }
+  }
+}

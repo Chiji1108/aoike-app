@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url"
-import { expect, test, type Page, type Route } from "@playwright/test"
+import type { Page, Route } from "@playwright/test"
+import { expect, liveTest, test } from "./fake-ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatMetadata } from "../src/lib/chat/messages"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
@@ -341,8 +342,7 @@ test("聞き返しに答えるまで承認できない。「いいえ」で全�
 })
 
 /** ルールに足す行はサーバーが変更案の記録（R2）から足すので、本物の指示でも確かめる（E2E_LIVE_AI=1 のときだけ。偽の記録で確かめるのは rules.spec.ts） */
-test("本物の AI: 顧客ルールに足す行の案を承認すると顧客ルールの文章の最後に足す。同じ項目をもう一度承認しても二度足さない", async ({ page }) => {
-  test.skip(process.env.E2E_LIVE_AI !== "1", "E2E_LIVE_AI=1 のときだけ")
+liveTest("本物の AI: 顧客ルールに足す行の案を承認すると顧客ルールの文章の最後に足す。同じ項目をもう一度承認しても二度足さない", async ({ page }) => {
   const { customer, caseUrl } = await convertFixture(page, FIXTURE)
   created.push(customer)
   const rule = `E2E${Date.now()}`
@@ -458,8 +458,7 @@ test("スキャンの PDF と手書きの写真だけの案件: チャットに 
   await expect(rows.first().locator(`[title*="${IMAGE_READ_NOTE}"]`).first()).toBeAttached()
 })
 
-test("本物の AI: スキャンの PDF の2ページ目（手書き）だけを見て行を足す（ページを切り出して見せる）", async ({ page }) => {
-  test.skip(process.env.E2E_LIVE_AI !== "1", "E2E_LIVE_AI=1 のときだけ")
+liveTest("本物の AI: スキャンの PDF の2ページ目（手書き）だけを見て行を足す（ページを切り出して見せる）", async ({ page }) => {
   const opened = await openNewCase(page)
   created.push(opened.customer)
   await page.getByTestId("chat-file-input").setInputFiles(fileURLToPath(new URL("../fixtures/eval/synth-scan/工事経歴_スキャン.pdf", import.meta.url)))
@@ -481,8 +480,7 @@ test("本物の AI: スキャンの PDF の2ページ目（手書き）だけを
   expect(views).toContainEqual({ from: 2, to: 2, total: 2 })
 })
 
-test("本物の AI: PDF だけの案件で AI が一から表を作る", async ({ page }) => {
-  test.skip(process.env.E2E_LIVE_AI !== "1", "E2E_LIVE_AI=1 のときだけ")
+liveTest("本物の AI: PDF だけの案件で AI が一から表を作る", async ({ page }) => {
   const { customer } = await openPdfCase(page)
   created.push(customer)
   await send(page, "PDF から工事経歴の表を作って。業種はどちらも内装仕上（19）")
@@ -497,8 +495,7 @@ test("本物の AI: PDF だけの案件で AI が一から表を作る", async (
 })
 
 /** 本物の AI を呼ぶ（E2E_LIVE_AI=1 のときだけ。費用は1回 $0.1 ほど） */
-test("本物の AI: 指示 → 変更案 → 承認 → CSV。会話は開き直しても残り、会話を終えると印が付く", async ({ page }) => {
-  test.skip(process.env.E2E_LIVE_AI !== "1", "E2E_LIVE_AI=1 のときだけ")
+liveTest("本物の AI: 指示 → 変更案 → 承認 → CSV。会話は開き直しても残り、会話を終えると印が付く", async ({ page }) => {
   const { customer, caseUrl } = await convertFixture(page, FIXTURE)
   created.push(customer)
   await send(page, "注文者の「株式会社」を「㈱」にして。ほかは変えないで")

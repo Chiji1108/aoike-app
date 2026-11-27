@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test"
+import type { Page } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
 import { INQUIRY_TEXT_PROMPT } from "../src/lib/inquiry/text"

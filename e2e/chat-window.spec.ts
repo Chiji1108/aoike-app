@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Route } from "@playwright/test"
+import type { Page, Route } from "@playwright/test"
+import { expect, test } from "./fake-ai"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import { callsServerFn, deleteCustomer, openNewCase, openTab, reload, showAllRows } from "./helpers"
 import { syntheticPdf } from "./pdf"
