@@ -7,7 +7,7 @@ import { tryParseJson } from "../json"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
 /**
- * 個人名の確かめ。外に送る・案にする文字列（ルールの案・問い合わせのメールの下書き・要望・工事場所の調査）に、
+ * 個人名の確かめ。外に送る・案にする文字列（ルールの案・問い合わせのメールの下書き・工事場所の調査）に、
  * 表の人（印の人・配置技術者）と保存した作業から分かっている個人名が入っていないかを見る（AI に見せるメモからは伏せる）
  */
 
@@ -152,7 +152,7 @@ export function personalNameTest(names: Iterable<string>): (text: string) => boo
 export const MARK_RE = new RegExp(`〔(?:[Ａ-Ｚ]+|未掲載[０-９0-9]+)〕|${NAME_MARK}`)
 
 /**
- * ルールの案・メールの下書き・要望に入れない個人名: 表の印の人・配置技術者・置換と手直しの人（保存の前のものも）と、names（サーバーが保存した作業から集めたもの）。
+ * ルールの案・メールの下書きに入れない個人名: 表の印の人・配置技術者・置換と手直しの人（保存の前のものも）と、names（サーバーが保存した作業から集めたもの）。
  * hide は AI に見せる文字列の名前を〔個人名〕にし、has は文に個人名か表の記号があるか（空白で区切った氏名も見る）
  */
 export function nameGuard(table: Pick<CaseTable, "rows" | "edits" | "replacements">, names: Iterable<string> = []) {

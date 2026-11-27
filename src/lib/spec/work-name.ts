@@ -15,9 +15,6 @@ const ADDED_RE = new RegExp(`に伴う(?:${named.map((g) => escapeRe(g.label)).j
 /** 業種の言葉（「に伴う〇〇工事」）で終わるか */
 export const endsWithGyoshuWords = (name: string) => ADDED_RE.test(name)
 
-/** 業種の工事の名の一覧（知っている語に入れる） */
-export const GYOSHU_WORK_LABELS: readonly string[] = named.map((g) => `${g.label}工事`)
-
 
 /**
  * 工事名の末尾に業種の言葉を付ける（「〇〇ビル新築工事」+ 管 → 「〇〇ビル新築に伴う管工事」、「〜設置」→「〜設置に伴う電気工事」）。

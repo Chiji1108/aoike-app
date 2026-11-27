@@ -33,7 +33,6 @@ export function fakeDeps(over: Partial<CaseDeps> = {}): CaseDeps {
     runAiBatch: async () => NO_AI,
     recordProposal: async () => undefined,
     approveRule: async () => undefined,
-    approveLocations: async () => undefined,
     updateStatus: async () => undefined,
     uploadFile: async (kind, _f, name) => ({ ...file(crypto.randomUUID()), kind, name }),
     fetchFile: async () => fixture("sample-messy.xlsx"),

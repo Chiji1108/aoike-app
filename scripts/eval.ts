@@ -7,8 +7,7 @@
  *            | answers（顧客の回答: answerInstructions をメールの本文として順に送る。聞いていたセルの答えを answerTruth と比べる）
  *            | inquiry（問い合わせの文面: 変換の結果に画面の「AI で文面を作る」と同じ指示を送り、質問の文とメールの下書きの案を全部承認したものとして、
  *              問い合わせのうち AI の文で聞く数・まとめた質問の数・決まった言葉や個人名・工事名・ほかの案件の顧客名が文に入っていないかを数える）
- *            | location（工事場所の調査: 変換の結果から調べる現場を集め、画面の一括調査と同じ手順で調べ、変更案を全部承認して都道府県・場所名を比べる。
- *              覚えた結果は EVAL_OUT の location-memory.sqlite に残るので、2回目は覚えた結果を使う）
+ *            | location（工事場所の調査: 変換の結果から調べる現場を集め、画面の一括調査と同じ手順で調べ、変更案を全部承認して都道府県・場所名を比べる）
  *   案件定義の files に、変換の元のほかに AI に渡すファイル（技術者の一覧・PDF など）を書ける（チャットの指示のときコンテナに置く。画面で案件に付けたファイルと同じ）
  *   回ごとに summary-<case>-<variant>.json（終わったか・一致率・行・指示の回数・時間・費用）を書き、費用は使うたびに costs.jsonl に足す（落ちても残る）。
  *   落ちたとき・費用の上限で指示を止めたときは 1 で終わる。並べた表は scripts/eval-report.ts、案件定義の variants をまとめて流すのは scripts/eval-run.ts
@@ -19,7 +18,7 @@
  */
 import Anthropic, { toFile } from "@anthropic-ai/sdk"
 import type { ModelMessage } from "ai"
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { newWork } from "../src/lib/cases/state"
 import { withPlanTax } from "../src/lib/cases/tax"
@@ -28,7 +27,6 @@ import { caseContext } from "../src/lib/chat/context"
 import { applyChanges, type ChatChange } from "../src/lib/chat/proposals"
 import { DEFAULT_GLOBAL_RULE_ITEMS, rulesText, ruleTextSchema } from "../src/lib/chat/rules"
 import { checkReport, newTurnState, startTurn, systemPrompt, type InquiryDeps, type TurnState } from "../src/lib/chat/turn"
-import { memoryFeedback } from "../src/lib/feedback/memory"
 import type { RowResult } from "../src/lib/convert/convert"
 import { heuristicPlan, planSheets, sheetByNames } from "../src/lib/convert/heuristic-plan"
 import { runConversion } from "../src/lib/convert/pipeline"
@@ -79,7 +77,7 @@ type CaseDef = {
   planInstructions?: string[]
   /** 変換の元のほかに AI に渡すファイル（ROOT からの相対パスか絶対パス。技術者の一覧・PDF など） */
   files?: string[]
-  /** scripts/eval-run.ts で順に流す variant（location を2つ書くと、1回目は調べ、2回目は覚えた結果を使う） */
+  /** scripts/eval-run.ts で順に流す variant */
   variants?: string[]
   /** 去年として使う案件（rules はその edit の顧客ルール、計画の AI にはその baseline の計画を添える）。無ければこの案件 */
   editFrom?: string
@@ -328,8 +326,6 @@ async function chatPhase(p: {
   const log: TurnLogEntry[] = []
   const generated = new Set<string>()
   const viewStates: ViewState[] = []
-  /** 要望（本番の csv_feedback の代わり。この会話の間だけ持つ。同じ要望は件数を足す） */
-  const { deps: feedback } = memoryFeedback([def!.customerName], [GLOBAL_RULES, ...p.customerItems])
   let status: RunSummary["status"] = "done"
   let reason: string | undefined
   let error: unknown = null
@@ -372,7 +368,6 @@ async function chatPhase(p: {
         { lookup: fileAddressLookup },
         null,
         p.inquiry ?? null,
-        feedback,
         localViewer(anthropic, uploads),
         messages,
       )
@@ -421,7 +416,7 @@ async function chatPhase(p: {
       table = applyChanges(table, deriveTable(table).edited, state.pending)
       const rules = state.pending.flatMap((c) => (c.kind === "rule" && c.scope === "customer" ? [c.text] : []))
       const score = compare(csvRows(table))
-      log.push({ turn: i + 1, plan: planChanges, text, ms: Date.now() - t0, steps: steps.length, calls, toolCalls: state.toolCalls, usage, usd, pending: state.pending, question: state.question, rules, feedback: state.feedbackRecorded, tools: state.log, reply, report: checkReport(deriveTable(table), state.letters), score })
+      log.push({ turn: i + 1, plan: planChanges, text, ms: Date.now() - t0, steps: steps.length, calls, toolCalls: state.toolCalls, usage, usd, pending: state.pending, question: state.question, rules, tools: state.log, reply, report: checkReport(deriveTable(table), state.letters), score })
       console.log(`\n# turn ${i + 1}「${text}」 ${Math.round((Date.now() - t0) / 1000)}s steps ${steps.length} tools ${state.toolCalls} [${calls.join(",")}] $${usd.toFixed(3)}`)
       if (state.question) console.log("  question:", state.question)
       console.log("  reply:", reply.replace(/\n+/g, " ").slice(0, 400))
@@ -442,7 +437,7 @@ async function chatPhase(p: {
 
 /**
  * 工事場所の調査の照合。画面と同じく CSV に載せる行から調べる現場を集め（lib/location/sites.ts）、Workflow と同じ手順（server/location-run.ts）を
- * その場で回す（失敗した検索は2回までやり直す）。変更案は全部承認したものとして表に重ね、承認した工事場所を覚える（画面の承認と同じ）
+ * その場で回す（失敗した検索は2回までやり直す）。変更案は全部承認したものとして表に重ねる
  */
 async function locationEval() {
   const { migratedDb } = await import("../src/server/__tests__/sqlite")
@@ -452,28 +447,21 @@ async function locationEval() {
   const { locationTargets, MAX_SITES_PER_RUN } = await import("../src/lib/location/sites")
   const { jaSchema, placeIndex } = await import("../src/lib/location/check")
   const schema = await import("../src/db/cases-schema")
-  const { eq } = await import("drizzle-orm")
   const index = placeIndex(jaSchema.parse(JSON.parse(readFileSync(join(ROOT, "public/japanese-addresses/api/ja.json"), "utf8"))))
-  const { db } = migratedDb(join(OUT!, "location-memory.sqlite"))
-  // 何回目かは、この回のフォルダの <case>-location-<n>.json の数で決める（2回目からは覚えた結果を使う）
-  const prefix = `${caseId}-location-`
-  const n = readdirSync(OUT!).filter((f) => f.startsWith(prefix) && /^\d+\.json$/.test(f.slice(prefix.length))).length + 1
-  current = `location-${n}`
-  // 顧客は案件定義の名前ごとに1つ（覚えた結果をまたいで使う）。案件は回ごとに作る
+  const { db } = migratedDb()
   const customerId = `eval-${caseId}`
-  await db.insert(schema.csvCustomers).values({ id: customerId, name: def!.customerName }).onConflictDoNothing()
+  await db.insert(schema.csvCustomers).values({ id: customerId, name: def!.customerName })
   const kaseId = crypto.randomUUID()
   await db.insert(schema.csvCases).values({ id: kaseId, customerId, fiscalYear: 2026 })
   let table = tableOf(base)
   const all = locationTargets(deriveTable(table))
-  // EVAL_LOCATION_LIMIT で調べる現場を先頭から絞る（費用の上限に合わせた抜き取り。2回目も同じ現場になる）
+  // EVAL_LOCATION_LIMIT で調べる現場を先頭から絞る（費用の上限に合わせた抜き取り）
   // 画面のサーバーと同じく、分かっている個人名を含む現場は送らない（照合には保存した作業が無いので、変換の結果の印の人で確かめる）
   const { guardPersonal } = await import("../src/lib/location/sites")
   const { namesOfTable, nameScrubber } = await import("../src/lib/chat/names")
   const scrub = nameScrubber(namesOfTable({ rows: base.rows, edits: [] }))
   const sites = guardPersonal(all.slice(0, Math.min(MAX_SITES_PER_RUN, Number(process.env.EVAL_LOCATION_LIMIT ?? MAX_SITES_PER_RUN))), (t) => scrub(t) !== t)
-  const memorizedBefore = (await loc.memorized(db, customerId, sites.map((s) => s.key))).size
-  console.log(`調べる現場 ${all.length}（この回 ${sites.length}、覚えた結果 ${memorizedBefore}、調べない ${sites.filter((s) => s.skip).length}）`)
+  console.log(`調べる現場 ${all.length}（この回 ${sites.length}、調べない ${sites.filter((s) => s.skip).length}）`)
   const created = await loc.createRun(db, kaseId, sites)
   if (!created.ok) throw new Error(created.reason)
   const records: import("../src/lib/chat/proposals").ProposalRecord[] = []
@@ -511,11 +499,6 @@ async function locationEval() {
   const record = records.at(-1)
   const changes = record?.changes ?? []
   table = applyChanges(table, deriveTable(table).edited, changes)
-  const remembered = await loc.remember(
-    db,
-    kaseId,
-    changes.flatMap((c) => (c.kind === "location" ? [{ site: c.site, found: c }] : [])),
-  )
   const bySource = new Map<string, number>()
   for (const c of changes) {
     const k = c.kind === "location" ? c.source : c.kind
@@ -525,18 +508,15 @@ async function locationEval() {
   const baseScore = compare(csvRows(tableOf(base)))
   const field = (c: ReturnType<typeof compare>, f: KojiFieldId) => c.perField.find((x) => x.field === f)!
   const rate = (x: { ok: number; n: number }) => `${x.ok}/${x.n}（${((x.ok / Math.max(1, x.n)) * 100).toFixed(1)}%）`
-  console.log(`\n# 工事場所の調査 ${Math.round(ms / 1000)}s searches ${run!.searches} $${run!.usd.toFixed(3)} 結果 ${JSON.stringify(Object.fromEntries(bySource))} 覚えた ${remembered}`)
+  console.log(`\n# 工事場所の調査 ${Math.round(ms / 1000)}s searches ${run!.searches} $${run!.usd.toFixed(3)} 結果 ${JSON.stringify(Object.fromEntries(bySource))}`)
   console.log(`  都道府県 ${rate(field(baseScore, "prefecture"))} → ${rate(field(score, "prefecture"))}`)
   console.log(`  場所名   ${rate(field(baseScore, "place"))} → ${rate(field(score, "place"))}`)
   printScore("  score", score)
   // 都道府県・場所名の食い違い（職員の値 ⇐ こちら）
   console.log("  都道府県の違い:", field(score, "prefecture").misses.slice(0, 20).join(" / "))
   console.log("  場所名の違い:", field(score, "place").misses.slice(0, 30).join(" / "))
-  await db.delete(schema.csvLocationSites).where(eq(schema.csvLocationSites.runId, created.run.id))
-  await db.delete(schema.csvLocationRuns).where(eq(schema.csvLocationRuns.id, created.run.id))
-  await db.delete(schema.csvCases).where(eq(schema.csvCases.id, kaseId))
   writeSummary(current, { status: "done", score, turns: 0, ms, conversionUsd: base.usd, usd: run!.usd, searches: run!.searches })
-  writeFileSync(join(OUT!, `${caseId}-location-${n}.json`), JSON.stringify({ ms, searches: run!.searches, usd: run!.usd, conversionUsd: base.usd, sites: sites.length, memorizedBefore, bySource: Object.fromEntries(bySource), changes, score, baseScore }, null, 1))
+  writeFileSync(join(OUT!, `${caseId}-location.json`), JSON.stringify({ ms, searches: run!.searches, usd: run!.usd, conversionUsd: base.usd, sites: sites.length, bySource: Object.fromEntries(bySource), changes, score, baseScore }, null, 1))
 }
 
 

@@ -85,7 +85,7 @@ export type CaseState = {
     gen: { source: number; case: number; conversion: number; status: number }
     /** 引いた住所（増えたら表を作り直す） */
     addressBook: AddressBook
-    /** ルールの追記・工事場所を保存している間（変更案の承認を止める） */
+    /** ルールの追記を保存している間（変更案の承認を止める） */
     busy: { rule: boolean }
     /** アップロードしたファイルをどう扱ったか（報告に出す。最後の10件） */
     notes: UploadNote[]

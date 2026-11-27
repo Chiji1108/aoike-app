@@ -10,7 +10,7 @@ import { errorMessage } from "@/lib/errors"
 import type { UsdJpy } from "@/lib/fx"
 import type { CaseTableWire } from "@/lib/chat/wire"
 import { estimateUsd, MAX_SITES_PER_RUN, runSitesOf } from "@/lib/location/sites"
-import { getLocationRunFn, memorizedSitesFn, startLocationSearchFn, stopLocationSearchFn } from "@/server/location-fns"
+import { getLocationRunFn, startLocationSearchFn, stopLocationSearchFn } from "@/server/location-fns"
 
 /** 走っている回の進み具合を読み直す間隔 */
 const POLL_MS = 3_000
@@ -19,7 +19,7 @@ type RunProgress = NonNullable<Awaited<ReturnType<typeof getLocationRunFn>>["run
 
 /**
  * 工事場所の一括調査（案件の画面とチャットの「調べ始める」が共有する）。調べる現場は今の表から集め（lib/location/sites.ts）、
- * 覚えた結果のある現場を数えて件数と費用の目安を出す。職員が「調べ始める」を押すと裏の処理（Workflow）が始まり、数秒ごとに進み具合を読む。
+ * 調べる現場の件数と費用の目安を出す。職員が「調べ始める」を押すと裏の処理（Workflow）が始まり、数秒ごとに進み具合を読む。
  * 終わった回の変更案は onRecord で案件の作業に足す（開き直したときは案件の画面が R2 から読む）
  */
 export function useLocationSearch({
@@ -42,35 +42,12 @@ export function useLocationSearch({
 }) {
   const runOf = useMemo(() => (view ? runSitesOf(view) : { sites: [], over: 0 }), [view])
   const sites = runOf.sites
-  const keysSig = sites.map((s) => s.key).join("\n")
-  const [memorized, setMemorized] = useState<ReadonlySet<string> | null>(null)
   const [run, setRun] = useState<RunProgress | null>(null)
   /** 走っている回の裏の処理がもう動いていない（もう一度始められる。始めるときにサーバーが回を「失敗」にする） */
   const [lost, setLost] = useState(false)
   const [starting, setStarting] = useState(false)
   const live = useRef({ onRecord, onCaseCost, table })
   live.current = { onRecord, onCaseCost, table }
-
-  useEffect(() => {
-    let alive = true
-    const keys = keysSig ? keysSig.split("\n") : []
-    if (!keys.length) {
-      setMemorized(new Set())
-      return
-    }
-    setMemorized(null)
-    // 表を直している間に何度も聞かないよう、少し待ってから聞く
-    const timer = setTimeout(() => {
-      void memorizedSitesFn({ data: { caseId, keys } }).then(
-        (r) => alive && setMemorized(new Set(r.keys)),
-        () => alive && setMemorized(new Set()),
-      )
-    }, 400)
-    return () => {
-      alive = false
-      clearTimeout(timer)
-    }
-  }, [caseId, keysSig])
 
   /** 走っている回の進み具合を読み直す（費用・結果の変更案は最新の props の関数に渡す） */
   const refresh = useCallback(async () => {
@@ -92,7 +69,6 @@ export function useLocationSearch({
     return () => clearInterval(timer)
   }, [running, refresh])
 
-  const known = memorized ? sites.filter((s) => memorized.has(s.key)).length : null
   // 読む部品（チャット・報告・工事場所のタブ）が、調査の状態が変わったときだけ描き直るよう、同じ状態なら同じものを返す
   return useMemo(() => {
     async function start() {
@@ -125,8 +101,7 @@ export function useLocationSearch({
       sites: sites.length,
       over: runOf.over,
       skipped: sites.filter((s) => s.skip).length,
-      memorized: known,
-      usd: memorized ? estimateUsd(sites, memorized) : null,
+      usd: estimateUsd(sites),
       run,
       lost,
       running,
@@ -135,7 +110,7 @@ export function useLocationSearch({
       start,
       stop,
     }
-  }, [caseId, refresh, sites, runOf.over, known, memorized, run, lost, running, starting, undecided])
+  }, [caseId, refresh, sites, runOf.over, run, lost, running, starting, undecided])
 }
 
 export type LocationSearch = ReturnType<typeof useLocationSearch>
@@ -185,11 +160,10 @@ export function LocationSearchStatus({ search, fx, testId }: { search: LocationS
         <div className="flex flex-wrap items-center gap-2">
           <span data-testid={`${testId}-count`}>
             場所が空いている・推定に自信の無い現場 {search.sites} 件
-            {search.memorized === null ? "" : `（前の年度に承認した結果 ${search.memorized} 件・個人名などで調べない ${search.skipped} 件）`}。費用の目安{" "}
-            {search.usd === null ? "…" : <Cost usd={search.usd} fx={fx} />}
+            {search.skipped > 0 && `（個人名などで調べない ${search.skipped} 件）`}。費用の目安 <Cost usd={search.usd} fx={fx} />
             {search.over > 0 && `。1回に ${MAX_SITES_PER_RUN} 件までなので、残り ${search.over} 件は次の回で`}
           </span>
-          <Button size="sm" disabled={search.starting || search.usd === null || search.undecided} onClick={() => void search.start()} data-testid={`${testId}-start`}>
+          <Button size="sm" disabled={search.starting || search.undecided} onClick={() => void search.start()} data-testid={`${testId}-start`}>
             {search.starting ? <Loader2 className="animate-spin" /> : <MapPin />} 調べ始める
           </Button>
           {search.undecided && <span className="text-xs text-muted-foreground">前の調査の変更案を決めると、残りを調べられます。</span>}
@@ -219,7 +193,7 @@ export function LocationPanel({
 }) {
   return (
     <div className="grid gap-3 rounded-xl border bg-muted/20 p-3" data-testid="location-panel">
-      <p className="text-xs text-muted-foreground">都道府県が空か推定に自信の無い現場を、覚えた結果 → AI の知識 → Web 検索の順に調べます（個人名のある現場は調べません）。結果は要確認で入ります。</p>
+      <p className="text-xs text-muted-foreground">都道府県が空か推定に自信の無い現場を、AI の知識 → Web 検索の順に調べます（個人名のある現場は調べません）。結果は要確認で入ります。</p>
       <LocationSearchStatus search={search} fx={fx} testId="location" />
       {proposals.map((p) => (
         <ProposalCard key={p.id} proposal={p} changes={changes.get(p.id)} view={view} actions={{ ...actions, canSend: true }} busy={busy} />

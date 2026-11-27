@@ -8,7 +8,7 @@ import { applyChanges, proposalRecordSchema, type ChatChange } from "../../chat/
 import { describeChange } from "../../chat/describe"
 import { editKey, type RowResult } from "../../convert/convert"
 import type { KojiFieldId } from "../../spec/koji-keireki"
-import { locationItems, outcomeChanges } from "../changes"
+import { outcomeChanges } from "../changes"
 import { checkFound, jaSchema, placeIndex } from "../check"
 import { estimateUsd, ESTIMATE_USD, locationTargets, MAX_SITES_PER_RUN, runSitesOf, siteKeyOf, siteOfRow, type Found, type Outcome } from "../sites"
 
@@ -69,10 +69,9 @@ describe("調べる現場を集める", () => {
     expect(sites.map((s) => s.rowKeys)).toEqual([["s!2"], ["s!6"], ["s!8"]])
   })
 
-  test("費用の目安は覚えた結果と調べない現場を除き、変換で推定していない現場には知識の分を足す", () => {
+  test("費用の目安は調べない現場を除き、変換で推定していない現場には知識の分を足す", () => {
     const sites = locationTargets(deriveTable(tableOf(rows(), { manual: new Map([["s!7", false]]) })))
-    expect(estimateUsd(sites, new Set())).toBeCloseTo(ESTIMATE_USD.knowledge + 3 * ESTIMATE_USD.search)
-    expect(estimateUsd(sites, new Set([sites[0]!.key]))).toBeCloseTo(2 * ESTIMATE_USD.search)
+    expect(estimateUsd(sites)).toBeCloseTo(ESTIMATE_USD.knowledge + 3 * ESTIMATE_USD.search)
   })
 })
 
@@ -213,15 +212,6 @@ describe("レビューで見つかった穴", () => {
     expect(sites).toHaveLength(MAX_SITES_PER_RUN)
     expect(over).toBe(5)
   })
-})
-
-test("承認する工事場所の項目は変更案の記録から選び、工事場所でない項目が混ざれば断る", () => {
-  const sites = locationTargets(deriveTable(tableOf([kojiRow({ ...base, client: "株式会社テスト", workName: "テストビル改修工事" }, 1), kojiRow({ ...base, client: "市役所", workName: "体育館工事" }, 2)])))
-  const changes = outcomeChanges(sites, new Map<string, Outcome>([[sites[0]!.key, { kind: "found", ...found() }], [sites[1]!.key, { kind: "notFound", note: "" }]]))
-  const record = { proposal: { id: "p", origin: { kind: "location" as const, runId: "p" }, question: null, state: "open" as const, count: 2, applied: [], rejected: [] }, changes }
-  expect(locationItems(record, [0, 0])).toMatchObject([{ site: { workName: "テストビル改修工事" }, found: { prefecture: "東京都" } }])
-  expect(locationItems(record, [0, 1])).toBeUndefined()
-  expect(locationItems(record, [5])).toBeUndefined()
 })
 
 test("長い工事名・注文者の現場でも、変更案の記録は書いた形のまま読める（現場の上限は1つの定義）", () => {

@@ -8,7 +8,7 @@ import { PLACE_LIST, placeIssue, tidyPlace } from "../spec/place"
 
 /**
  * 工事場所を調べる（P5）。CSV に載せる行のうち、都道府県が空か、場所が AI の推定で自信の無い行の現場を、工事名と注文者でまとめて調べる。
- * 調べ方は 覚えた結果（顧客ごとの D1）→ AI の知識 → Web 検索 の順（server/location.ts）。ここは画面とサーバーの両方が使う決まった処理
+ * 調べ方は AI の知識 → Web 検索 の順（server/location.ts）。ここは画面とサーバーの両方が使う決まった処理
  */
 
 /** 1回の一括調査で調べる現場の数の上限（費用と時間の上限。超えた分は次の回に回す） */
@@ -113,11 +113,11 @@ export function siteOfRow(view: Pick<TableView, "shown" | "output">, rowKey: str
   return { ...site, rowKeys: [rowKey, ...(same?.rowKeys ?? []).filter((k) => k !== rowKey)], knowledgeTried: site.knowledgeTried && (same?.knowledgeTried ?? true) }
 }
 
-/** 費用の目安。memorized は覚えた結果がある現場の数（調べない） */
-export function estimateUsd(sites: readonly Site[], memorized: ReadonlySet<string>) {
+/** 費用の目安（調べない現場は数えない） */
+export function estimateUsd(sites: readonly Site[]) {
   let usd = 0
   for (const s of sites) {
-    if (s.skip || memorized.has(s.key)) continue
+    if (s.skip) continue
     usd += (s.knowledgeTried ? 0 : ESTIMATE_USD.knowledge) + ESTIMATE_USD.search
   }
   return usd
@@ -125,9 +125,9 @@ export function estimateUsd(sites: readonly Site[], memorized: ReadonlySet<strin
 
 // ---- 調べた結果 ----
 
-export const LOCATION_SOURCES = ["memory", "knowledge", "search"] as const
+export const LOCATION_SOURCES = ["knowledge", "search"] as const
 export type LocationSource = (typeof LOCATION_SOURCES)[number]
-export const SOURCE_LABELS: Record<LocationSource, string> = { memory: "前の年度に承認した結果", knowledge: "AI の知識で推定", search: "Web 検索で推定" }
+export const SOURCE_LABELS: Record<LocationSource, string> = { knowledge: "AI の知識で推定", search: "Web 検索で推定" }
 
 /** 見つかった場所。confident は AI が自信ありと答えたか（無ければ顧客に確かめる）。urls は根拠のページ（検索の引用） */
 export type Found = { prefecture: string; place: string; urls: string[]; source: LocationSource; confident: boolean; note: string }
@@ -158,7 +158,7 @@ export const outcomeSchema: z.ZodType<Outcome> = z.discriminatedUnion("kind", [
 /**
  * 結果を保存・変更案にできる形にそろえる（D1 に書く前・チャットの変更案にする前に1か所で）。AI の文（note）は切り、根拠の URL は形と数をそろえる。
  * 都道府県・場所名が長すぎる答えは切ると誤った場所になるので使わず、その現場だけ「調べられなかった」にする（ほかの現場は続ける）。
- * 場所名が決まり（spec/place.ts）を守らない結果（前の版で覚えた「広島市南区、三原市」など）は場所名を使わず（今の場所名を残す）、顧客に確かめる
+ * 場所名が決まり（spec/place.ts）を守らない結果（「広島市南区、三原市」など）は場所名を使わず（今の場所名を残す）、顧客に確かめる
  */
 export function normalizeOutcome(o: Outcome): Outcome {
   const note = (s: string) => s.slice(0, MAX_NOTE)

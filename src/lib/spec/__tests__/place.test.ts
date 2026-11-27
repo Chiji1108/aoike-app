@@ -138,8 +138,8 @@ describe("場所名を作る変換", () => {
 })
 
 describe("調べた結果の形", () => {
-  const found = { kind: "found" as const, prefecture: "広島県", urls: [], source: "memory" as const, confident: true, note: "" }
-  test("決まりを守らない場所名（前の版で覚えた並べた地域など）は使わず、自信なしにする", () => {
+  const found = { kind: "found" as const, prefecture: "広島県", urls: [], source: "knowledge" as const, confident: true, note: "" }
+  test("決まりを守らない場所名（並べた地域など）は使わず、自信なしにする", () => {
     expect(normalizeOutcome({ ...found, place: "広島市南区、三原市" })).toMatchObject({ kind: "found", place: "", confident: false })
     expect(normalizeOutcome({ ...found, place: "三原市" })).toMatchObject({ kind: "found", place: "三原市", confident: true })
   })

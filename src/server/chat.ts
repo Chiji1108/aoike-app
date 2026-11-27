@@ -34,8 +34,6 @@ import { signedIn, text } from "./http"
 import { finishTurn, watchStop } from "./turn-close"
 import { searchLocation } from "./location"
 import { locateOne } from "./location-run"
-import * as loc from "./location-store"
-import * as feedback from "./feedback-store"
 import { serverAddressLookup, serverPlaceIndex } from "./place-index"
 import { personalChecker } from "./location-guard"
 import { namesOfSaved, readSavedCase } from "./case-names"
@@ -172,7 +170,7 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
   // 住所データの索引と個人名の確かめは、工事場所を調べるときだけ作る
   let checker: Promise<(text: string) => boolean> | undefined
   const guard = async (sites: Site[]) => guardPersonal(sites, await (checker ??= personalChecker(db, caseId, body.table)))
-  /** ほかの顧客の名前（問い合わせのメールの下書きと要望に入れない。指示の間で1回だけ読む） */
+  /** ほかの顧客の名前（問い合わせのメールの下書きに入れない。指示の間で1回だけ読む） */
   let others: Promise<readonly string[]> | undefined
   const otherCustomers = () => (others ??= store.otherCustomerNames(db, kase.customerId))
   // 案件のファイルを AI にそのまま見せる（view_file。文字の層の無い PDF・画像）。コンテナに置いたのと同じ Files API のファイルを見せ、
@@ -204,12 +202,10 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
             index: serverPlaceIndex(),
             knowledge: (req) => batchWithClaude(anthropic(), req),
             search: (s, sp) => searchLocation(anthropic(), serverPlaceIndex(), s, sp, abort.signal),
-            memorized: (keys) => loc.memorized(db, kase.customerId, keys),
           },
           site,
           spent,
         ),
-      memorized: async (keys) => new Set((await loc.memorized(db, kase.customerId, keys)).keys()),
       guard,
     },
     body.plan,
@@ -217,13 +213,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
     // 保存した作業から分かっている個人名（道具が要るときに、指示の間で1回だけ読む）
     async () => namesOfSaved(await readSavedCase(db, caseId)),
     { customerName: customer?.name ?? "", otherCustomers },
-    {
-      list: () => feedback.openFeedbackSummaries(db),
-      add: (input) => feedback.addFeedback(db, { ...input, caseId, source: "ai" }),
-      bump: (id) => feedback.bumpFeedback(db, id),
-      names: async () => [customer?.name ?? "", ...(await otherCustomers())],
-      known: [rules.global, rules.customer],
-    },
     viewer,
     session.model,
   )
@@ -295,8 +284,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
       }
       // 一括調査を始めるボタン（検索は職員が押してから。件数と費用の目安を添える）
       if (state.locationOffer) writer.write({ type: "data-location-offer", data: state.locationOffer })
-      // 要望を残した印（止めた・失敗した回でも、残したものは残っているので出す）
-      if (state.feedbackRecorded.length) writer.write({ type: "data-feedback", data: { count: state.feedbackRecorded.length } })
       // 画面の決まった処理を始めるボタン（ダウンロードの前の確認・問い合わせの Excel）。止めた・失敗した回は出さない
       if (!failure) for (const action of state.actions) writer.write({ type: "data-action", data: { action } })
       // 置いた変更案は、後始末のほかの失敗があっても画面に出す（開き直したときと同じに見せる）

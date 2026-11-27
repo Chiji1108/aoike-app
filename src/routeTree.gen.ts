@@ -15,7 +15,6 @@ import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthedCsvRouteImport } from './routes/_authed/csv'
 import { Route as AuthedFitRouteImport } from './routes/_authed/fit'
 import { Route as AuthedCsvIndexRouteImport } from './routes/_authed/csv/index'
-import { Route as AuthedCsvFeedbackRouteImport } from './routes/_authed/csv/feedback'
 import { Route as AuthedCsvRulesRouteImport } from './routes/_authed/csv/rules'
 import { Route as AuthedFitIndexRouteImport } from './routes/_authed/fit/index'
 import { Route as AuthedFitBillingRouteImport } from './routes/_authed/fit/billing'
@@ -65,11 +64,6 @@ const AuthedFitRoute = AuthedFitRouteImport.update({
 const AuthedCsvIndexRoute = AuthedCsvIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AuthedCsvRoute,
-} as any)
-const AuthedCsvFeedbackRoute = AuthedCsvFeedbackRouteImport.update({
-  id: '/feedback',
-  path: '/feedback',
   getParentRoute: () => AuthedCsvRoute,
 } as any)
 const AuthedCsvRulesRoute = AuthedCsvRulesRouteImport.update({
@@ -185,7 +179,6 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/csv': typeof AuthedCsvRouteWithChildren
   '/fit': typeof AuthedFitRouteWithChildren
-  '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
   '/fit/billing': typeof AuthedFitBillingRoute
   '/fit/book': typeof AuthedFitBookRoute
@@ -212,7 +205,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof AuthedIndexRoute
-  '/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/csv/rules': typeof AuthedCsvRulesRoute
   '/fit/billing': typeof AuthedFitBillingRoute
   '/fit/book': typeof AuthedFitBookRoute
@@ -243,7 +235,6 @@ export interface FileRoutesById {
   '/_authed/csv': typeof AuthedCsvRouteWithChildren
   '/_authed/fit': typeof AuthedFitRouteWithChildren
   '/_authed/': typeof AuthedIndexRoute
-  '/_authed/csv/feedback': typeof AuthedCsvFeedbackRoute
   '/_authed/csv/rules': typeof AuthedCsvRulesRoute
   '/_authed/fit/billing': typeof AuthedFitBillingRoute
   '/_authed/fit/book': typeof AuthedFitBookRoute
@@ -274,7 +265,6 @@ export interface FileRouteTypes {
     | '/login'
     | '/csv'
     | '/fit'
-    | '/csv/feedback'
     | '/csv/rules'
     | '/fit/billing'
     | '/fit/book'
@@ -301,7 +291,6 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/'
-    | '/csv/feedback'
     | '/csv/rules'
     | '/fit/billing'
     | '/fit/book'
@@ -331,7 +320,6 @@ export interface FileRouteTypes {
     | '/_authed/csv'
     | '/_authed/fit'
     | '/_authed/'
-    | '/_authed/csv/feedback'
     | '/_authed/csv/rules'
     | '/_authed/fit/billing'
     | '/_authed/fit/book'
@@ -409,13 +397,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/csv/'
       preLoaderRoute: typeof AuthedCsvIndexRouteImport
-      parentRoute: typeof AuthedCsvRoute
-    }
-    '/_authed/csv/feedback': {
-      id: '/_authed/csv/feedback'
-      path: '/feedback'
-      fullPath: '/csv/feedback'
-      preLoaderRoute: typeof AuthedCsvFeedbackRouteImport
       parentRoute: typeof AuthedCsvRoute
     }
     '/_authed/csv/rules': {
@@ -569,7 +550,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthedCsvRouteChildren {
-  AuthedCsvFeedbackRoute: typeof AuthedCsvFeedbackRoute
   AuthedCsvRulesRoute: typeof AuthedCsvRulesRoute
   AuthedCsvIndexRoute: typeof AuthedCsvIndexRoute
   AuthedCsvCasesCaseIdRoute: typeof AuthedCsvCasesCaseIdRoute
@@ -577,7 +557,6 @@ interface AuthedCsvRouteChildren {
 }
 
 const AuthedCsvRouteChildren: AuthedCsvRouteChildren = {
-  AuthedCsvFeedbackRoute: AuthedCsvFeedbackRoute,
   AuthedCsvRulesRoute: AuthedCsvRulesRoute,
   AuthedCsvIndexRoute: AuthedCsvIndexRoute,
   AuthedCsvCasesCaseIdRoute: AuthedCsvCasesCaseIdRoute,

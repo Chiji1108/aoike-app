@@ -73,7 +73,6 @@ try {
     { lookup: fileAddressLookup },
     null,
     null,
-    null,
     localViewer(anthropic, uploads),
   )
   const result = startTurn({ apiKey, system, messages, state })

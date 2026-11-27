@@ -16,7 +16,7 @@ import { diffInquiryText, inquiryTextDiffSchema, revertInquiryText, type Inquiry
  * 承認の取り消し。変更案を承認するたびに、承認で変わった値の前と後を1件の記録にして案件の作業に残す（保存・2つのタブの食い違いは作業と同じ仕組み）。
  * 取り消すと、記録の「後」のままの値だけを「前」に戻す。承認のあとに職員や別の承認が同じ値を変えていたら、その値は戻さずに数えて知らせる
  * （新しい手直しを黙って消さない）。そのため、どの記録も（直前のものでなくても）取り消せる。
- * 外に書いたもの（全体ルール・顧客ルールへの追記、顧客の覚えた工事場所）は戻さない。記録の external に残し、画面でそう伝える
+ * 外に書いたもの（全体ルール・顧客ルールへの追記）は戻さない。記録の external に残し、画面でそう伝える
  */
 
 /** 記録に戻せる作業の部分 */
@@ -80,7 +80,7 @@ export type UndoEntry = {
    */
   exclusions?: ValueFilter[]
   /** 戻さない外への書き込み */
-  external: ("rule" | "location")[]
+  external: "rule"[]
   /** 記録が大きすぎて中身を残さなかった（取り消せない） */
   tooLarge?: true
   undone?: true
@@ -312,7 +312,7 @@ export const undoEntrySchema: z.ZodType<UndoEntry> = z.object({
   inquiryText: inquiryTextDiffSchema.optional(),
   reportAnswers: z.array(z.tuple([z.string(), z.string().max(100).nullable(), z.string().max(100).nullable()])).optional(),
   exclusions: z.array(valueFilterSchema).max(20).optional(),
-  external: z.array(z.enum(["rule", "location"])),
+  external: z.array(z.literal("rule")),
   tooLarge: z.literal(true).optional(),
   undone: z.literal(true).optional(),
 })

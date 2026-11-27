@@ -2,14 +2,14 @@ import { newProposal, type ProposalRecord } from "@/lib/chat/proposals"
 import type { AnonymizeCaller } from "@/lib/chat/turn"
 import { outcomeChanges } from "@/lib/location/changes"
 import type { PlaceIndex } from "@/lib/location/check"
-import { normalizeOutcome, type Found, type Outcome, type Site } from "@/lib/location/sites"
+import { normalizeOutcome, type Outcome, type Site } from "@/lib/location/sites"
 import type { Db } from "./case-store"
 import { KNOWLEDGE_CHUNK, knowLocations, searchFailure, type Spent } from "./location"
 import * as loc from "./location-store"
 
 /**
  * 一括調査の手順（Cloudflare Workflows の run から呼ぶ。テストは決まった応答と、その場で実行する step で回す）。
- * 1. 覚えた結果と、調べない現場（個人名・空）を書く  2. AI の知識（変換で推定していない現場だけ）  3. 残りを Web 検索（現場ごとの step、失敗は自動でやり直す）
+ * 1. 調べない現場（個人名・空）を書く  2. AI の知識（変換で推定していない現場だけ）  3. 残りを Web 検索（現場ごとの step、失敗は自動でやり直す）
  * 4. 結果を変更案にして R2 に置き、回を終える。各 step は D1 の印（止める・削除中）を見てから AI を呼ぶ。結果は書いていない現場にだけ書く（やり直しで上書きしない）
  */
 
@@ -35,19 +35,14 @@ const DB_STEP = { retries: { limit: 3, delay: "5 seconds", backoff: "exponential
 export async function runLocationSearch(deps: RunDeps, step: StepLike, { runId, caseId }: { runId: string; caseId: string }) {
   const { db } = deps
 
-  await step.do("memory", DB_STEP, async () => {
+  // 外に送らない現場（個人名・工事名も注文者も無い）は調べずに「調べない」にする
+  await step.do("skip", DB_STEP, async () => {
     if ((await loc.shouldContinue(db, runId)) === "gone") return
-    const run = await loc.getRun(db, runId)
     const pending = (await loc.runSites(db, runId)).filter((s) => s.outcome === null)
-    const memory = run ? await loc.memorized(db, run.customerId, pending.filter((s) => loc.searchable(s.site)).map((s) => s.site.key)) : new Map<string, Found>()
     await loc.recordOutcomes(
       db,
       runId,
-      pending.flatMap((s): { idx: number; outcome: Outcome }[] => {
-        if (!loc.searchable(s.site)) return [{ idx: s.idx, outcome: { kind: "skipped", skip: s.site.skip ?? "empty" } }]
-        const found = memory.get(s.site.key)
-        return found ? [{ idx: s.idx, outcome: { kind: "found", ...found } }] : []
-      }),
+      pending.flatMap((s): { idx: number; outcome: Outcome }[] => (loc.searchable(s.site) ? [] : [{ idx: s.idx, outcome: { kind: "skipped", skip: s.site.skip ?? "empty" } }])),
     )
   })
 
@@ -140,10 +135,10 @@ async function searchOne(deps: RunDeps, step: StepLike, runId: string, caseId: s
 }
 
 /**
- * チャットの「この現場ってどこ？」の1件: 覚えた結果 → AI の知識（変換で推定していなければ）→ Web 検索。費用は spent に足す（呼び出し側が案件に足す）
+ * チャットの「この現場ってどこ？」の1件: AI の知識（変換で推定していなければ）→ Web 検索。費用は spent に足す（呼び出し側が案件に足す）
  */
 export async function locateOne(
-  deps: Pick<RunDeps, "index" | "knowledge" | "search"> & { memorized: (keys: string[]) => Promise<ReadonlyMap<string, Found>> },
+  deps: Pick<RunDeps, "index" | "knowledge" | "search">,
   site: Site,
   spent: Spent,
 ): Promise<Outcome> {
@@ -153,8 +148,6 @@ export async function locateOne(
 
 async function locate(deps: Parameters<typeof locateOne>[0], site: Site, spent: Spent): Promise<Outcome> {
   if (!loc.searchable(site)) return { kind: "skipped", skip: site.skip ?? "empty" }
-  const memory = (await deps.memorized([site.key])).get(site.key)
-  if (memory) return { kind: "found", ...memory }
   if (!site.knowledgeTried) {
     const known = await knowLocations(
       async (req) => {

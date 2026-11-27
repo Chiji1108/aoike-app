@@ -15,7 +15,7 @@ export function getKintaiDb() {
   return drizzle(env.KINTAI_DB, { schema: kintaiSchema })
 }
 
-/** 工事経歴書 CSV の D1（顧客・案件・ルール・要望など） */
+/** 工事経歴書 CSV の D1（顧客・案件・ルールなど） */
 export function getCsvDb() {
   return drizzle(env.CSV_DB, { schema: casesSchema })
 }

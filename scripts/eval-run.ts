@@ -1,5 +1,5 @@
 /**
- * 案件定義の variants を順に流す（1回分）。同じ条件で回を重ねるときは、回ごとに新しい EVAL_OUT にする（工事場所の覚えた結果も回ごとに初めから）。
+ * 案件定義の variants を順に流す（1回分）。同じ条件で回を重ねるときは、回ごとに新しい EVAL_OUT にする。
  *
  *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<この回のフォルダ> pnpm exec tsx scripts/eval-run.ts [<case>...]
  *
