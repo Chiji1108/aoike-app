@@ -4,7 +4,6 @@ import { layoutOf } from "@/lib/cases/layout"
 import { selectionAdvice } from "@/lib/cases/selection-advice"
 import { activeView, type WorkView } from "@/lib/cases/steps"
 import { caseTodo, reportQuestionStates } from "@/lib/cases/todo"
-import { onlyNonSheetSources } from "@/lib/cases/types"
 import { editKey, type RowResult } from "@/lib/convert/convert"
 import { manualIncludedCount, summarizeKoji } from "@/lib/convert/koji-selection"
 import { askKey, type PlanAsk, type PlanAskKind } from "@/lib/convert/plan"
@@ -132,8 +131,8 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     // 載せる工事を聞くかは去年で決まっているかだけで決まる（行や額が変わっても、聞き返しが出たり消えたりしない。変わるのはすすめる側だけ）
     const advice = selectionAdviceOf(t.shown, t.inclusion, summary)
     const questionStates = questionStatesOf(t.hasTable, w.selectionAnswered, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
-    /** 変換の元の表が無く（PDF だけ）、AI に一から表を作らせる案件か */
-    const noSheetSource = !w.sourceFileId && onlyNonSheetSources(rt.files)
+    /** 届いたファイルはあるが変換の元を選んでいない（PDF だけ・元にしなかった）案件か。AI に一から表を作らせる。元は作業の sourceFileId だけで決める */
+    const noSheetSource = !w.sourceFileId && !rt.loading && rt.files.some((f) => f.kind === "source")
     const out: CaseView = {
       rowFixes,
       inquiries,

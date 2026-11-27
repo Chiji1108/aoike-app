@@ -20,6 +20,7 @@ import { ASK_KINDS } from "../case-view"
 import { setUi, setWork } from "../create-case-store"
 import type { CaseEnv } from "../env"
 import { commit, undoGroup, type Committed } from "./proposals"
+import { changeStatus } from "./case"
 import { supersedeConversion } from "./source"
 
 const SPEC = KOJI_KEIREKI
@@ -180,11 +181,19 @@ export function dismissRemaining(env: CaseEnv) {
  */
 export function markInquirySent(env: CaseEnv) {
   const id = `${SENT_UNDO}${crypto.randomUUID()}`
+  const status = env.store.getState().runtime.status
   const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
     const keys = env.view(s).inquiries.map(inquiryKey).filter((k) => !s.work.dismissed.has(k))
     return { ...s.work, inquirySent: { at: Date.now(), keys } }
   })
-  notifyCommitted(env, "問い合わせを送ったことにしました（返事待ち）", committed, id, "「送った」")
+  // 案件の状態も問い合わせ中にする（案件の一覧に出す）。取り消すと記録と一緒に前の状態に戻す
+  if (status !== "inquiring") void changeStatus(env, "inquiring")
+  const undoSent = () => {
+    undoWithNotice(env, id, "「送った」")
+    if (status !== "inquiring" && env.store.getState().runtime.status === "inquiring") void changeStatus(env, status)
+  }
+  if (committed === "tooLarge") toast.warning("問い合わせを送ったことにしました（取り消しの記録に残せないので、取り消せません）")
+  else toast.success("問い合わせを送ったことにしました（返事待ち）", committed === "undoable" ? { action: { label: "取り消す", onClick: undoSent } } : undefined)
 }
 
 /** 問い合わせに入れる・外す（外した問い合わせはメールと件数に入れない） */

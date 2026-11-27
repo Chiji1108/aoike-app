@@ -168,9 +168,9 @@ export async function startPlanning(env: CaseEnv, src: Source, requiredSheet?: s
 /**
  * 変換の元のファイルを読む。計画がまだ無ければ（replan: 初めて選んだ・計画の途中で閉じた）計画を立てる。
  * AI が使えない（APIキーが無い）ときは計画を立てない（このツールは AI で列の対応を決める。見出しの推定で黙って進めない）。
- * 読んでいる間に別の元を読み始めたら、この結果は捨てる
+ * 読んでいる間に別の元を読み始めたら、この結果は捨てる。表として読めたら true（読めない・捨てたら false）
  */
-export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean) {
+export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean): Promise<boolean> {
   const { store, deps } = env
   const id = store.getState().runtime.gen.source + 1
   setRuntime(store, (r) => ({ gen: { ...r.gen, source: id }, loading: file.name, sourceError: null }))
@@ -178,17 +178,19 @@ export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean) 
   try {
     const { readWorkbook } = await import("@/lib/convert/workbook")
     const bytes = await deps.fetchFile(file.id)
-    if (!current()) return
+    if (!current()) return false
     const sheets = readWorkbook(file.name, bytes)
     if (!primarySheet(SPEC, KOJI_PLAN_HINTS, sheets)) throw new Error("シートが空です")
     const src: Source = { fileId: file.id, name: file.name, sheets }
     setRuntime(store, () => ({ source: src, loading: null }))
     if (replan && env.config.chatEnabled) await startPlanning(env, src)
+    return true
   } catch (e) {
     if (current()) {
       setRuntime(store, () => ({ sourceError: { file, message: errorMessage(e, "ファイルを読み込めませんでした") } }))
       chatArrived(env, "error")
     }
+    return false
   } finally {
     if (current()) setRuntime(store, () => ({ loading: null }))
   }

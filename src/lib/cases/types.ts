@@ -4,7 +4,10 @@ export const CASE_STATUSES = ["converting", "inquiring", "done"] as const
 export type CaseStatus = (typeof CASE_STATUSES)[number]
 export const CASE_STATUS_LABELS: Record<CaseStatus, string> = { converting: "変換中", inquiring: "問い合わせ中", done: "完了" }
 
-/** source: 届いたファイル（Excel・CSV・PDF・顧客の回答のファイル）。csv: 出力した CSV。final_sheet: ダウンロードした最後の Excel */
+/**
+ * source: 届いたファイル（Excel・CSV・PDF・顧客の回答のファイル。変換の元かどうかは問わない。変換の元は作業の sourceFileId だけで決める）。
+ * csv: 出力した CSV。final_sheet: ダウンロードした最後の Excel
+ */
 export const FILE_KINDS = ["source", "csv", "final_sheet"] as const
 export type FileKind = (typeof FILE_KINDS)[number]
 export const FILE_KIND_LABELS: Record<FileKind, string> = { source: "届いたファイル", csv: "CSV", final_sheet: "最後のExcel" }
@@ -81,9 +84,3 @@ export function contentTypeOf(name: string) {
 export const containerName = (i: number, fileName: string) => `file-${i + 1}${/\.[A-Za-z0-9]+$/.exec(fileName)?.[0]?.toLowerCase() ?? ""}`
 
 export const fileUrl = (fileId: string) => `/api/csv/files/${fileId}`
-
-/** 届いたファイルがあり、そのどれも表のファイル（変換の元にできるもの）でない（PDF・画像だけの案件。AI に一から表を作らせる） */
-export function onlyNonSheetSources(files: readonly CaseFile[]) {
-  const sources = files.filter((f) => f.kind === "source")
-  return sources.length > 0 && !sources.some((f) => isSheetFile(f.name))
-}

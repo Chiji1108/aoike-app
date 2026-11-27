@@ -130,6 +130,8 @@ describe("並べ方と画面の action（ui）", () => {
     expect(todo().state).toBe("todo")
     s.actions.markInquirySent()
     expect(todo()).toMatchObject({ state: "waiting", unsent: 0 })
+    // 案件の状態も問い合わせ中にする
+    expect(s.store.getState().runtime.status).toBe("inquiring")
     expect(lastUndo()).toMatchObject({ proposalId: expect.stringMatching(/^sent:/), kind: "op" })
     s.actions.undoWithNotice(lastUndo().proposalId)
     expect(todo().state).toBe("todo")
@@ -151,6 +153,31 @@ describe("並べ方と画面の action（ui）", () => {
     const a = layout(s)
     s.actions.setDragging(true)
     expect(layout(s)).toBe(a)
+  })
+
+  test("PDF だけの案件（AI が足した行あり）に Excel を付けて元にしないと答えても、チャットは使える（変換の元は作業の sourceFileId だけで決める）", async () => {
+    const pdf = { ...FILES[0]!, id: "p1", name: "合成.pdf" }
+    const s = createCaseSession({ ...page(), files: [pdf] }, fakeDeps(), noChannel)
+    s.connect()
+    const view = () => s.view(s.store.getState())
+    expect(view()).toMatchObject({ noSheetSource: true, chatReady: true })
+    s.store.setState((st) => ({ work: { ...st.work, added: [{ key: "add-1" }] } }))
+    await s.actions.attach([new File([fixture("sample-messy.xlsx") as BlobPart], "合成の返事.xlsx")])
+    const [pending] = s.store.getState().ui.dialogs.pendingSources
+    s.actions.confirmSource(pending!.id, false)
+    expect(s.store.getState().work.sourceFileId).toBeNull()
+    expect(view()).toMatchObject({ noSheetSource: true, chatReady: true })
+  })
+
+  test("読めない表を付けたら元にせず、同じ回の次の表を元に試す", async () => {
+    let n = 0
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile: async () => (n++ === 0 ? new Uint8Array(0) : fixture("sample-messy.xlsx")) }), noChannel)
+    s.connect()
+    const bytes = fixture("sample-messy.xlsx")
+    await s.actions.attach([new File([new Uint8Array(1)], "壊れた.xlsx"), new File([bytes as BlobPart], "合成.xlsx")])
+    const files = s.store.getState().runtime.files
+    await vi.waitFor(() => expect(s.store.getState().work.sourceFileId).toBe(files.find((f) => f.name === "合成.xlsx")!.id))
+    expect(s.store.getState().ui.dialogs.pendingSources).toEqual([])
   })
 
   test("変換の元があるときに表を付けると、届いたファイルとして保存するだけで元は変えない（「変換の元にしますか」を出さない）", async () => {
