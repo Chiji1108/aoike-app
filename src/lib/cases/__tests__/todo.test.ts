@@ -124,8 +124,10 @@ describe("直す・問い合わせ・タブの数", () => {
     const cells = inquiries.filter((q) => q.kind === "cell").map(inquiryKey)
     expect(caseTodo(input([], { inquiries, dismissed: new Set(cells), status: "inquiring" })).inquiry).toEqual({ active: 1, left: 0, topics: 1, state: "waiting" })
     expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)), status: "inquiring" })).inquiry).toEqual({ active: 0, left: 0, topics: 0, state: "done" })
-    // 完了した案件は、聞くことが残っていても済み（送った・返事待ちに戻さない）
-    expect(caseTodo(input([], { inquiries, status: "done" })).inquiry).toEqual({ active: 3, left: 2, topics: 1, state: "done" })
+    // 完了した案件は、聞くことが残っていても済み（数も 0。送った・返事待ちに戻さない）
+    const done = caseTodo(input([], { inquiries, status: "done" }))
+    expect(done.inquiry).toEqual({ active: 0, left: 0, topics: 0, state: "done" })
+    expect(tabBadge(done, "inquiry")).toBe(0)
   })
   test("顧客の回答の変更案で承認を待つセルは、まだ答えのない問い合わせに数えない（決めると外れる・却下すれば戻る）", () => {
     const inquiries: Inquiry[] = [
@@ -133,7 +135,9 @@ describe("直す・問い合わせ・タブの数", () => {
       { kind: "cell", rowKey: r3, field: "workName", reason: "missing", current: "" },
     ]
     const reply = proposal("a1", { kind: "chat", messageId: "m" }, [{ kind: "cell", rowKey: r0, field: "client", edit: { value: "合成の会社", by: "customer" } }])
-    expect(caseTodo(input([reply], { inquiries, status: "inquiring" })).inquiry).toMatchObject({ active: 2, left: 1 })
+    const answering = caseTodo(input([reply], { inquiries, status: "inquiring" }))
+    expect(answering.inquiry).toEqual({ active: 1, left: 1, topics: 0, state: "waiting" })
+    expect(tabBadge(answering, "inquiry")).toBe(1)
     expect(answeringCells([reply.p], new Map([[reply.p.id, reply.changes]]))).toEqual(new Set([inquiryKey(inquiries[0]!)]))
     const rejected = { p: decide(reply.p, [0], "rejected"), changes: reply.changes }
     expect(caseTodo(input([rejected], { inquiries, status: "inquiring" })).inquiry).toMatchObject({ left: 2 })

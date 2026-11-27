@@ -14,6 +14,8 @@ import { viewKindOf } from "./view-kind"
 export const MAX_VIEW_PAGES_PER_CHAT = 100
 /** 1つの会話で見せられる画像の数（1回の呼び出しで 20 枚を超えると、Claude は1枚の縦横の上限を厳しくする） */
 export const MAX_VIEW_IMAGES_PER_CHAT = 20
+/** 1回の指示で view_file を呼べる回数（ほかの道具の回数〔MAX_TOOL_CALLS〕とは別に数える。写真・ページの多い案件でも、表を直す道具まで届く） */
+export const MAX_VIEW_CALLS = 10
 /**
  * 見せられる画像の大きさ。Claude API の1枚の上限は base64 で 10MB（vision の docs の Request limits）で、元の大きさで 7.5MB。
  * Files API の file_id で渡すときの1枚の上限は docs に別に書かれていない（Files API の上限は1ファイル 500MB）ので、同じ上限にする

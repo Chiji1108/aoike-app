@@ -28,7 +28,7 @@ import { inquiryNumbers } from "../inquiry/email"
 import type { AddressLookup } from "../convert/address"
 import type { AiCache, AiCaller } from "../convert/pipeline"
 import type { Rounding } from "../convert/transforms"
-import { MAX_VIEW_PAGES_PER_CHAT, newViewState, viewFile, viewStepFinished, viewFileInputSchema, viewResultOutput, type FileViewer, type ViewFileInput, type ViewResult, type ViewState } from "./view-file"
+import { MAX_VIEW_CALLS, MAX_VIEW_PAGES_PER_CHAT, newViewState, viewFile, viewStepFinished, viewFileInputSchema, viewResultOutput, type FileViewer, type ViewFileInput, type ViewResult, type ViewState } from "./view-file"
 
 /**
  * チャットの1回の指示。AI はコード実行（Anthropic のコンテナ）で元のファイルと今の表を読み、表の変更はコードから呼ぶ道具
@@ -103,7 +103,7 @@ ${fileLines || "（なし）"}
 - 工事場所（都道府県・場所名）を調べるときは find_location を直接呼ぶ（コードからは呼ばない）。「この現場ってどこ？」のように1件なら key を渡す。「場所が空いている行を調べて」のようにまとめてなら key を省き、返った件数と費用の目安を職員に伝える（一括の検索は職員が画面のボタンで始める）。自分で Web の知識から場所を書き込まない。
 - CSV は書かない（CSV の形式・7割の計算・字数・個人名の検査は決まった処理がやる）。
 - 最後に、何を何件変えたか、残った問題、職員に確かめたいことを短い日本語で返す。コードや JSON は返事に貼らない。
-- 道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで（コード実行は数えない）。表は get_table でまとめて読み、変更はまとめて送る。
+- 道具を呼べるのは1回の指示で${MAX_TOOL_CALLS}回まで（コード実行と view_file は数えない。view_file は別に${MAX_VIEW_CALLS}回まで）。表は get_table でまとめて読み、変更はまとめて送る。
 
 ## 14列
 ${fieldsDoc()}
@@ -174,6 +174,8 @@ export type TurnState = {
   inquiry: InquiryDeps | null
   /** 案件のファイルを AI に見せる状態（view_file。見せた数・範囲・上げたファイル）。無ければ道具は使えない */
   view: ViewState | null
+  /** view_file を呼んだ回数（ほかの道具の toolCalls とは別に数える。写真の多い案件でも表を直す道具まで届く） */
+  viewCalls: number
 }
 
 
@@ -220,6 +222,7 @@ export function newTurnState(
     knownNames,
     inquiry,
     view: viewer ? newViewState(viewer, history) : null,
+    viewCalls: 0,
   }
 }
 
@@ -352,12 +355,17 @@ export function chatTools(state: TurnState) {
   const startView = () => (started ??= deriveTable(state.start))
   /** 回数の上限を数える。超えたら道具を動かさず、ここまでで返すよう伝える */
   const limited =
-    <A, R>(refuse: (error: string) => R, run: (args: A, options: { abortSignal?: AbortSignal }) => R | Promise<R>) =>
+    <A, R>(key: "toolCalls" | "viewCalls", max: number, refuse: (error: string) => R, run: (args: A, options: { abortSignal?: AbortSignal }) => R | Promise<R>) =>
     async (args: A, options: { abortSignal?: AbortSignal } = {}): Promise<R> => {
-      if (++state.toolCalls > MAX_TOOL_CALLS) return refuse(`この指示で道具を呼べる回数（${MAX_TOOL_CALLS}回）を使い切りました。ここまでの変更案と残りを職員に返してください。`)
+      if (++state[key] > max)
+        return refuse(
+          key === "viewCalls"
+            ? `この指示でファイルを見られる回数（${max}回）を使い切りました。見られなかったファイル・ページを職員に伝え、ここまでの変更案を返してください。`
+            : `この指示で道具を呼べる回数（${max}回）を使い切りました。ここまでの変更案と残りを職員に返してください。`,
+        )
       return run(args, options)
     }
-  const counted = <A,>(run: (args: A) => string | Promise<string>) => limited<A, string>((error) => json({ ok: false, error }), run)
+  const counted = <A,>(run: (args: A) => string | Promise<string>) => limited<A, string>("toolCalls", MAX_TOOL_CALLS, (error) => json({ ok: false, error }), run)
   /** ルールの案・メールの下書きの個人名（表の人と、分かっている個人名。指示の間で1回だけ作る。集められなければ道具は理由を返す） */
   // 名前は確かめるときの表（この指示で AI が入れた手直しも）から集める。分かっている個人名は指示の間で1回だけ読む
   let knownNames: Promise<Iterable<string>> | null = null
@@ -403,7 +411,7 @@ export function chatTools(state: TurnState) {
         `pages は PDF のページ（1 から。例「1-5」。省くと全部。1つの会話で${MAX_VIEW_PAGES_PER_CHAT}ページまで）。` +
         "見せたファイルは以後の往復でも読み直すので、要るページだけを見る。{ok, file, pages?:{from, to, total}} とファイルを返す（見られなければ ok:false と error）。",
       inputSchema: viewFileInputSchema,
-      execute: limited<ViewFileInput, ViewResult>((error) => ({ ok: false, error }), async (input, { abortSignal }) => {
+      execute: limited<ViewFileInput, ViewResult>("viewCalls", MAX_VIEW_CALLS, (error) => ({ ok: false, error }), async (input, { abortSignal }) => {
         if (!state.view) return { ok: false, error: "ファイルを見る道具は今使えません" }
         const result = await viewFile(state.view, input, abortSignal)
         const pages = result.ok && result.pages ? ` ${result.pages.from}-${result.pages.to}/${result.pages.total}ページ` : ""
