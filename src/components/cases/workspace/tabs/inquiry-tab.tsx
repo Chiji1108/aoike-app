@@ -5,17 +5,17 @@ import { Button } from "@/components/ui/button"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
 
 /**
- * 問い合わせのタブ: 顧客に聞くセルと、メールの件名・前置き・本文。送ったあと（返事待ち）にまだ答えのない問い合わせが残れば、
- * 上に件数と「残りは聞かない」「もう一度メールの下書きを作る」を出す（聞くことが無くなれば済み）
+ * 問い合わせのタブ: 顧客に聞くセルと、メールの件名・前置き・本文・「送った」。送ったあと（返事待ち）にまだ答えのない問い合わせが残れば、
+ * 上に件数と「残りは聞かない」「もう一度メールの下書きを作る」を出す（聞くことが無くなれば済み）。送ったあとに増えた問い合わせは、送り直すよう案内する
  */
 export function InquiryTab() {
   const actions = useCaseActions()
   const { config } = useCaseSession()
   const shown = useTable((t) => t.shown)
-  const { inquiries, waiting, active, chatCanSend } = useCaseView(
-    useShallow((v) => ({ inquiries: v.inquiries, waiting: v.todo.inquiry.state === "waiting", active: v.todo.inquiry.active, chatCanSend: v.chatCanSend })),
+  const { inquiries, waiting, active, unsent, chatCanSend } = useCaseView(
+    useShallow((v) => ({ inquiries: v.inquiries, waiting: v.todo.inquiry.state === "waiting", active: v.todo.inquiry.active, unsent: v.todo.inquiry.unsent, chatCanSend: v.chatCanSend })),
   )
-  const { dismissed, text } = useCase(useShallow((s) => ({ dismissed: s.work.dismissed, text: s.work.inquiryText })))
+  const { dismissed, text, sent } = useCase(useShallow((s) => ({ dismissed: s.work.dismissed, text: s.work.inquiryText, sent: s.work.inquirySent })))
   if (!shown) return null
   return (
     <>
@@ -34,7 +34,21 @@ export function InquiryTab() {
           )}
         </div>
       )}
-      <InquiryPanel inquiries={inquiries} allRows={shown} dismissed={dismissed} text={text} onText={actions.setInquiryText} onToggle={actions.toggleInquiry} />
+      {unsent > 0 && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="inquiry-unsent">
+          送ったあとに増えた、まだ送っていない問い合わせが <strong className="num">{unsent}</strong> 件あります。メールを送り直して「送った」を押してください。
+        </p>
+      )}
+      <InquiryPanel
+        inquiries={inquiries}
+        allRows={shown}
+        dismissed={dismissed}
+        text={text}
+        onText={actions.setInquiryText}
+        onToggle={actions.toggleInquiry}
+        sent={sent}
+        onSent={actions.markInquirySent}
+      />
     </>
   )
 }

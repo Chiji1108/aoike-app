@@ -75,7 +75,7 @@ export type ChatPanelProps = {
   tail?: React.ReactNode
 }
 
-/** チャットの案内。once は会話に同じ指示があればもう出さないもの */
+/** チャットの案内（押すと prompt を送る。会話に同じ指示があれば出さない） */
 export type Suggestion = { text: string; label: string; prompt: string }
 
 /**

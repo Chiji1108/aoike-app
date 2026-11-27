@@ -4,6 +4,7 @@ import type { Inclusion, TaxMode } from "@/lib/convert/koji-selection"
 import type { TaxBy } from "@/lib/cases/tax"
 import { decisionOf, pendingOf, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
+import type { InquirySent } from "@/lib/inquiry/text"
 import { codeLabel } from "@/lib/spec/code-sets"
 import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 
@@ -52,7 +53,10 @@ export type AnswerItem =
   | { kind: "question"; id: string }
   | { kind: "proposal"; proposalId: string; origin: ProposalOrigin["kind"]; waiting: number; question: boolean }
 
-/** 問い合わせの段: todo まだ送っていない、waiting 送った・返事待ち、done 済み（聞くことが無い・返事を取り込んで決め終えた） */
+/**
+ * 問い合わせの段: todo まだ送っていない（送ったあとに増えた問い合わせがあるときも）、waiting 送った・返事待ち、done 済み（聞くことが無い）。
+ * 送ったかは作業の「送った」の記録（inquirySent）だけで決める
+ */
 export type InquiryState = "todo" | "waiting" | "done"
 
 export type CaseTodo = {
@@ -64,8 +68,11 @@ export type CaseTodo = {
   fix: FixCounts
   /** 直す行のうち、まとめて頼める直し方 */
   fixActions: FixActionGroup[]
-  /** 問い合わせ。active は外していない問い合わせ（セル・案件全体）、left は外していないセルの問い合わせ */
-  inquiry: { active: number; left: number; state: InquiryState }
+  /**
+   * 問い合わせ。active は外していない問い合わせ（セル・案件全体）、left は外していないセルの問い合わせ、
+   * unsent は「送った」を押したあとに増えた（まだ送っていない）問い合わせ（送っていなければ 0）
+   */
+  inquiry: { active: number; left: number; unsent: number; state: InquiryState }
   /** 工事場所の開いている変更案 */
   location: { open: number }
   /** CSV に載せる件数 */
@@ -112,8 +119,8 @@ export type TodoInput = {
   questions: readonly { id: string; answered: boolean }[]
   inquiries: readonly Inquiry[]
   dismissed: ReadonlySet<string>
-  /** 問い合わせを送ったか（案件が問い合わせ中・メールの下書きを出した） */
-  inquirySent: boolean
+  /** 問い合わせのメールを送った記録（問い合わせの段の「送った」） */
+  inquirySent: InquirySent | null
 }
 
 export function caseTodo(input: TodoInput): CaseTodo {
@@ -137,7 +144,9 @@ export function caseTodo(input: TodoInput): CaseTodo {
 
   const active = input.inquiries.filter((q) => !input.dismissed.has(inquiryKey(q)))
   const left = active.filter((q) => q.kind === "cell").length
-  const state: InquiryState = active.length === 0 ? "done" : input.inquirySent ? "waiting" : "todo"
+  const sentKeys = input.inquirySent && new Set(input.inquirySent.keys)
+  const unsent = sentKeys ? active.filter((q) => !sentKeys.has(inquiryKey(q))).length : 0
+  const state: InquiryState = active.length === 0 ? "done" : sentKeys && unsent === 0 ? "waiting" : "todo"
   const locationOpen = proposals.filter((p) => p.origin.kind === "location" && p.state === "open").length
 
   return {
@@ -145,7 +154,7 @@ export function caseTodo(input: TodoInput): CaseTodo {
     gyoshu: { rows, pending },
     fix: countFixes(shown, inclusion, rowFixes),
     fixActions: fixActionGroups(shown, inclusion, rowFixes),
-    inquiry: { active: active.length, left, state },
+    inquiry: { active: active.length, left, unsent, state },
     location: { open: locationOpen },
     exportRows: input.exportRows,
     badges: { gyoshu: rows.length, inquiry: active.length, location: locationOpen },

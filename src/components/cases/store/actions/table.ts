@@ -5,7 +5,7 @@ import { needsConfirm } from "@/lib/cases/ask-impact"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
 import { pendingGyoshuItems } from "@/lib/cases/todo"
-import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
+import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO, SENT_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
 import { selectionSettled, setSelection } from "@/lib/cases/selection"
@@ -156,18 +156,35 @@ export function changeSelection(env: CaseEnv, mode: SelectionMode) {
 }
 
 /**
- * 「残りは聞かない」: まだ答えのない問い合わせをまとめて外す（顧客が分からないと答えた残りなど）。1回の操作を1つの取り消しの記録に。
- * 外すものはその時点の問い合わせから読む
+ * 「残りは聞かない」: まだ答えのないセルの問い合わせをまとめて外す（顧客が分からないと答えた残りなど。税込・税抜は外さない）。
+ * 1回の操作を1つの取り消しの記録に。外すものはその時点の問い合わせから読む
  */
 export function dismissRemaining(env: CaseEnv) {
   const id = `${DISMISS_UNDO}${crypto.randomUUID()}`
   let n = 0
   const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
-    const keys = env.view(s).inquiries.map(inquiryKey).filter((k) => !s.work.dismissed.has(k))
+    const keys = env
+      .view(s)
+      .inquiries.filter((q) => q.kind === "cell")
+      .map(inquiryKey)
+      .filter((k) => !s.work.dismissed.has(k))
     n = keys.length
     return n ? { ...s.work, dismissed: new Set([...s.work.dismissed, ...keys]) } : s.work
   })
   if (n) notifyCommitted(env, `残りの問い合わせ ${n} 件を聞かないことにしました`, committed, id, "問い合わせを外したこと")
+}
+
+/**
+ * 問い合わせのメールを「送った」: 押した時刻と、そのとき聞いていた問い合わせを作業に1つだけ記録する（前の記録は置き換える。返事待ちはこれで決める）。
+ * 取り消しの記録に残し、通知から戻せる
+ */
+export function markInquirySent(env: CaseEnv) {
+  const id = `${SENT_UNDO}${crypto.randomUUID()}`
+  const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
+    const keys = env.view(s).inquiries.map(inquiryKey).filter((k) => !s.work.dismissed.has(k))
+    return { ...s.work, inquirySent: { at: Date.now(), keys } }
+  })
+  notifyCommitted(env, "問い合わせを送ったことにしました（返事待ち）", committed, id, "「送った」")
 }
 
 /** 問い合わせに入れる・外す（外した問い合わせはメールと件数に入れない） */

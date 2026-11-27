@@ -109,7 +109,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       questions: ReturnType<typeof questionStatesOf>,
       inquiries: ReturnType<typeof inquiriesOf>,
       dismissed: CaseState["work"]["dismissed"],
-      inquirySent: boolean,
+      inquirySent: CaseState["work"]["inquirySent"],
     ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, questions, inquiries, dismissed, inquirySent }),
   )
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
@@ -132,8 +132,6 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     // 載せる工事を聞くかは去年で決まっているかだけで決まる（行や額が変わっても、聞き返しが出たり消えたりしない。変わるのはすすめる側だけ）
     const advice = selectionAdviceOf(t.shown, t.inclusion, summary)
     const questionStates = questionStatesOf(t.hasTable, w.selectionAnswered, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
-    /** 問い合わせを送ったか（案件が問い合わせ中か、メールの下書き〔件名〕を出した） */
-    const inquirySent = rt.status === "inquiring" || w.inquiryText.subject !== null
     /** 変換の元の表が無く（PDF だけ）、AI に一から表を作らせる案件か */
     const noSheetSource = !w.sourceFileId && onlyNonSheetSources(rt.files)
     const out: CaseView = {
@@ -145,7 +143,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       askEffects: askEffectsOf(askRows, t.edited, t.shown, t.selected, summary, planAsks, w.manual, w.tax, w.basis, w.rule7Tax, w.selection),
       questionStates,
       selectionAdvice: advice,
-      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, inquirySent),
+      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, w.inquirySent),
       manualIncluded: manualIncludedOf(t.inclusion),
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）

@@ -15,6 +15,10 @@ export type InquiryText = { subject: string | null; intro: string | null }
 
 export const EMPTY_INQUIRY_TEXT: InquiryText = { subject: null, intro: null }
 
+/** 問い合わせのメールを送った記録（at は「送った」を押した時刻、keys はそのとき聞いていた問い合わせの inquiryKey） */
+export type InquirySent = { at: number; keys: string[] }
+export const inquirySentSchema: z.ZodType<InquirySent> = z.object({ at: z.number(), keys: z.array(z.string().max(200)).max(50_000) })
+
 /** チャットの「AI でメールの下書きを作る」で送る指示 */
 export const INQUIRY_TEXT_PROMPT = "今の問い合わせを、顧客へのメールの件名と前置きの下書きにして"
 

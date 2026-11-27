@@ -8,7 +8,7 @@ import type { Rounding } from "../convert/transforms"
 import type { MappingPlan } from "../convert/plan"
 import { savedPlanSchema } from "../convert/plan-schema"
 import { proposalSchema, type Proposal } from "../chat/proposals"
-import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inquiry/text"
+import { EMPTY_INQUIRY_TEXT, inquirySentSchema, inquiryTextSchema, type InquirySent, type InquiryText } from "../inquiry/text"
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
@@ -54,6 +54,8 @@ export type CaseWork = {
   reportAnswers: Record<string, string>
   /** 問い合わせのメールの件名・前置き（承認した AI の文・職員が直した文。lib/inquiry/text.ts）。前の作業には無いので、読むときは空。前の作業の質問の文は読み捨てる */
   inquiryText: InquiryText
+  /** 問い合わせのメールを送った記録（問い合わせの段の「送った」。押した時刻と、そのとき聞いていた問い合わせの inquiryKey）。返事待ちかはこれで決める（lib/cases/todo.ts） */
+  inquirySent: InquirySent | null
   /** 表の上の「全件にしますか？」（7割ルールのまま手で載せた行が多いとき）を閉じた。前の作業には無いので、読むときは false */
   allHintClosed: boolean
 }
@@ -82,6 +84,7 @@ export const newWork = (sourceFileId: string | null = null, rule7Tax: Rule7Tax =
   undo: [],
   reportAnswers: {},
   inquiryText: EMPTY_INQUIRY_TEXT,
+  inquirySent: null,
   allHintClosed: false,
 })
 
@@ -117,6 +120,7 @@ export const savedWorkSchema = z
   undo: z.array(undoEntrySchema).default([]),
   reportAnswers: z.record(z.string(), z.string().max(100)).default({}),
   inquiryText: inquiryTextSchema.default(EMPTY_INQUIRY_TEXT),
+  inquirySent: inquirySentSchema.nullable().default(null),
   allHintClosed: z.boolean().default(false),
 })
 export type SavedWork = z.infer<typeof savedWorkSchema>

@@ -10,7 +10,7 @@ import { selectionSettingSchema, setSelection, type SelectionSource } from "./se
 import type { AddedRow } from "./added"
 import { addedRowSchema } from "./added"
 import type { SavedPlan } from "./state"
-import { diffInquiryText, inquiryTextDiffSchema, revertInquiryText, type InquiryText, type InquiryTextDiff } from "../inquiry/text"
+import { diffInquiryText, inquirySentSchema, inquiryTextDiffSchema, revertInquiryText, type InquirySent, type InquiryText, type InquiryTextDiff } from "../inquiry/text"
 
 /**
  * 承認の取り消し。変更案を承認するたびに、承認で変わった値の前と後を1件の記録にして案件の作業に残す（保存・2つのタブの食い違いは作業と同じ仕組み）。
@@ -35,6 +35,8 @@ export type Undoable = {
   rounding: Rounding
   plan: SavedPlan | null
   inquiryText: InquiryText
+  /** 問い合わせのメールを送った記録 */
+  inquirySent: InquirySent | null
   /** 変換の報告の聞き返しへの答え（答えを取り消すと聞き返しを開き直す） */
   reportAnswers: Record<string, string>
 }
@@ -70,6 +72,8 @@ export type UndoEntry = {
   /** 千円未満の扱い（この項目より前の記録には無い） */
   rounding?: Pair<Rounding>
   plan?: Pair<SavedPlan | null>
+  /** 問い合わせのメールを送った記録（変えたときだけ） */
+  inquirySent?: Pair<InquirySent | null>
   /** 問い合わせのメールの件名と前置き（この項目より前の記録には無い） */
   inquiryText?: InquiryTextDiff
   /** 変換の報告の聞き返しへの答え（この項目より前の記録には無い） */
@@ -102,7 +106,8 @@ export const RANGE_UNDO = "include:"
 export const GYOSHU_UNDO = "gyoshu:"
 export const CONFIRM_UNDO = "confirm:"
 export const DISMISS_UNDO = "dismiss:"
-const OP_MARKS = [SELECTION_UNDO, RANGE_UNDO, GYOSHU_UNDO, CONFIRM_UNDO, DISMISS_UNDO]
+export const SENT_UNDO = "sent:"
+const OP_MARKS = [SELECTION_UNDO, RANGE_UNDO, GYOSHU_UNDO, CONFIRM_UNDO, DISMISS_UNDO, SENT_UNDO]
 
 /** 記録の枠（kind の無い前の記録は、操作の印で始まるものを op、ほかを approval とみなす） */
 export const kindOf = (e: Pick<UndoEntry, "kind" | "proposalId">): UndoKind => e.kind ?? (OP_MARKS.some((m) => e.proposalId.startsWith(m)) ? "op" : "approval")
@@ -147,10 +152,11 @@ export function undoEntry(
     ...(!same(before.basis, after.basis) ? { basis: [before.basis, after.basis] as Pair<Basis> } : {}),
     ...(before.rounding !== after.rounding ? { rounding: [before.rounding, after.rounding] as Pair<Rounding> } : {}),
     ...(before.plan !== after.plan && !same(before.plan, after.plan) ? { plan: [before.plan, after.plan] as Pair<SavedPlan | null> } : {}),
+    ...(before.inquirySent !== after.inquirySent ? { inquirySent: [before.inquirySent, after.inquirySent] as Pair<InquirySent | null> } : {}),
     ...(text ? { inquiryText: text } : {}),
     ...(answers.length ? { reportAnswers: answers } : {}),
   }
-  const changed = edits.length || manual.length || dismissed.length || added.length || entry.tax || entry.selection || entry.basis || entry.rounding || entry.plan || entry.inquiryText || entry.reportAnswers || entry.exclusions
+  const changed = edits.length || manual.length || dismissed.length || added.length || entry.tax || entry.selection || entry.basis || entry.rounding || entry.plan || entry.inquirySent || entry.inquiryText || entry.reportAnswers || entry.exclusions
   if (!changed && !entry.external.length) return null
   return entry
 }
@@ -181,7 +187,7 @@ export function pushUndo(list: readonly UndoEntry[], entry: UndoEntry): UndoEntr
 
 /** 取り消せる記録か（取り消した・中身が無い・戻す値が無いものは取り消せない） */
 export const canUndo = (e: UndoEntry) =>
-  !e.undone && !e.tooLarge && (e.edits.length > 0 || e.manual.length > 0 || !!e.dismissed?.length || e.added.length > 0 || !!e.tax || !!e.selection || !!e.basis || !!e.rounding || !!e.plan || !!e.inquiryText || !!e.reportAnswers?.length || !!e.exclusions?.length)
+  !e.undone && !e.tooLarge && (e.edits.length > 0 || e.manual.length > 0 || !!e.dismissed?.length || e.added.length > 0 || !!e.tax || !!e.selection || !!e.basis || !!e.rounding || !!e.plan || !!e.inquirySent || !!e.inquiryText || !!e.reportAnswers?.length || !!e.exclusions?.length)
 
 /** 変換の報告の聞き返しの答えの記録の印（聞き返しの鍵ごと。税は tax、載せる工事は selection、計画の聞き返しは askKey） */
 export const reportUndoId = (key: string) => `report:${key}`
@@ -282,6 +288,7 @@ export function undo<W extends Undoable & { undo: readonly UndoEntry[] }>(work: 
     basis: revert(entry.basis, work.basis),
     rounding: revert(entry.rounding, work.rounding),
     plan,
+    inquirySent: revert(entry.inquirySent, work.inquirySent),
     inquiryText: text.text,
     reportAnswers: answersAfter,
     undo: work.undo.map((e) => (e.id === entryId ? { ...e, undone: true as const } : e)),
@@ -309,6 +316,7 @@ export const undoEntrySchema: z.ZodType<UndoEntry> = z.object({
   basis: pair(basisSchema).optional(),
   rounding: pair(roundingSchema).optional(),
   plan: pair(savedPlanSchema.nullable()).optional(),
+  inquirySent: pair(inquirySentSchema.nullable()).optional(),
   inquiryText: inquiryTextDiffSchema.optional(),
   reportAnswers: z.array(z.tuple([z.string(), z.string().max(100).nullable(), z.string().max(100).nullable()])).optional(),
   exclusions: z.array(valueFilterSchema).max(20).optional(),

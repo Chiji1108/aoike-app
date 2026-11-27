@@ -123,17 +123,27 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.store.getState().runtime.inquiryHint).toBe("sent")
   })
 
-  test("「残りは聞かない」はまだ答えのない問い合わせをまとめて外し（問い合わせの段は済み）、1つの取り消しの記録で戻せる", async () => {
+  test("「送った」で返事待ちにし（取り消せる）、「残りは聞かない」はセルの問い合わせだけをまとめて外す（1つの取り消しの記録）", async () => {
     const s = await converted(true)
     const todo = () => s.view(s.store.getState()).todo.inquiry
-    const before = todo().active
-    expect(before).toBeGreaterThan(0)
+    const lastUndo = () => s.store.getState().work.undo.at(-1)!
+    expect(todo().state).toBe("todo")
+    s.actions.markInquirySent()
+    expect(todo()).toMatchObject({ state: "waiting", unsent: 0 })
+    expect(lastUndo()).toMatchObject({ proposalId: expect.stringMatching(/^sent:/), kind: "op" })
+    s.actions.undoWithNotice(lastUndo().proposalId)
+    expect(todo().state).toBe("todo")
+    expect(s.store.getState().work.inquirySent).toBeNull()
+    // 税込・税抜（案件全体の問い合わせ）は外さない
+    s.store.setState((st) => ({ work: { ...st.work, tax: "unknown", taxBy: null } }))
+    const before = todo()
+    expect(before.active - before.left).toBe(1)
+    expect(before.left).toBeGreaterThan(0)
     s.actions.dismissRemaining()
-    expect(todo()).toMatchObject({ active: 0, state: "done" })
-    const entry = s.store.getState().work.undo.at(-1)!
-    expect(entry).toMatchObject({ proposalId: expect.stringMatching(/^dismiss:/), kind: "op" })
-    s.actions.undoWithNotice(entry.proposalId)
-    expect(todo().active).toBe(before)
+    expect(todo()).toMatchObject({ left: 0, active: before.active - before.left })
+    expect(lastUndo()).toMatchObject({ proposalId: expect.stringMatching(/^dismiss:/), kind: "op" })
+    s.actions.undoWithNotice(lastUndo().proposalId)
+    expect(todo()).toMatchObject({ left: before.left, active: before.active })
   })
 
   test("並べ方は同じ状態なら同じもの（selector が描画ごとに新しいものを返さない）", async () => {

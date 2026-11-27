@@ -185,7 +185,7 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
     }
   })
 
-  await test.step("問い合わせを押すとその段に移り、案件の状態を「問い合わせ中」にすると「送った・返事待ち」になる", async () => {
+  await test.step("問い合わせを押すとその段に移り、「送った」を押すと「送った・返事待ち」になる", async () => {
     // 金額の税込・税抜を「分からない」にすると（ダウンロードの段の7割と金額）、顧客に聞くことが1つ以上になる
     await openTab(page, "selection")
     await page.getByTestId("selection-section").getByTestId("tax-unknown").click()
@@ -193,9 +193,11 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
     await expect(step).toHaveAttribute("data-state", "todo")
     await step.click()
     await expect(view(page)).toHaveAttribute("data-view", "inquiry")
-    await page.getByTestId("case-status-inquiring").click()
+    await page.getByTestId("inquiry-sent").click()
     await expect(step).toHaveAttribute("data-state", "waiting")
     await expect(step).toContainText("返事待ち")
+    await expect(page.getByTestId("inquiry-sent-at")).toContainText("に送りました")
+    await expect(page.getByTestId("inquiry-remaining")).toBeVisible()
     await expect(page.getByTestId("next-step-export")).toHaveAttribute("title", /問い合わせ \d+件（送った・返事待ち）/)
   })
 

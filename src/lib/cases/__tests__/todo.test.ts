@@ -39,7 +39,7 @@ function input(proposals: { p: Proposal; changes: ChatChange[] }[], over: Partia
     questions: [],
     inquiries: [],
     dismissed: new Set(),
-    inquirySent: false,
+    inquirySent: null,
     ...over,
   }
 }
@@ -116,11 +116,14 @@ describe("直す・問い合わせ・タブの数", () => {
       { kind: "cell", rowKey: r3, field: "workName", reason: "missing", current: "" },
     ]
     const todo = caseTodo(input([], { inquiries, dismissed: new Set([inquiryKey(inquiries[2]!)]) }))
-    expect(todo.inquiry).toEqual({ active: 2, left: 1, state: "todo" })
+    expect(todo.inquiry).toEqual({ active: 2, left: 1, unsent: 0, state: "todo" })
     expect(tabBadge(todo, "inquiry")).toBe(2)
     expect(tabBadge(todo, "table")).toBe(0)
-    expect(caseTodo(input([], { inquiries, inquirySent: true })).inquiry.state).toBe("waiting")
-    expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)) })).inquiry).toEqual({ active: 0, left: 0, state: "done" })
+    // 「送った」の記録で返事待ち。送ったあとに増えた問い合わせがあれば、まだ送っていないものとして数えて送るまで todo
+    const sent = { at: 0, keys: inquiries.map(inquiryKey) }
+    expect(caseTodo(input([], { inquiries, inquirySent: sent })).inquiry).toEqual({ active: 3, left: 2, unsent: 0, state: "waiting" })
+    expect(caseTodo(input([], { inquiries, inquirySent: { at: 0, keys: [inquiryKey(inquiries[0]!)] } })).inquiry).toEqual({ active: 3, left: 2, unsent: 2, state: "todo" })
+    expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)), inquirySent: sent })).inquiry).toEqual({ active: 0, left: 0, unsent: 0, state: "done" })
   })
 })
 
