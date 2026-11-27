@@ -169,9 +169,9 @@ export const fixText = (f: { field: string; kind: FixKind }) => (f.kind === "emp
  */
 export type FixActionId = "decideGyoshu" | "findLocation" | "askCustomer"
 export const FIX_ACTIONS: Record<FixActionId, { label: string; title: string }> = {
-  decideGyoshu: { label: "業種を決める", title: "業種のタブを開きます。7割の選び直しで載る行も一緒に決めます" },
-  findLocation: { label: "AI で案を出す", title: "工事場所のタブを開きます。費用の目安を見てから調べ始めます" },
-  askCustomer: { label: "顧客に聞く", title: "問い合わせのタブを開きます（外した問い合わせを戻すと顧客に聞きます）" },
+  decideGyoshu: { label: "業種を決める", title: "業種を決めるの段を開きます。7割の選び直しで載る行も一緒に決めます" },
+  findLocation: { label: "AI で案を出す", title: "「その他」の工事場所を開きます。費用の目安を見てから調べ始めます" },
+  askCustomer: { label: "顧客に聞く", title: "問い合わせの段を開きます（外した問い合わせを戻すと顧客に聞きます）" },
 }
 
 const ACTION_OF_FIELD: Partial<Record<KojiFieldId, FixActionId>> = {

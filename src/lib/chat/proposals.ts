@@ -29,7 +29,7 @@ export type ChatChange =
    * rowKey は足す行の key（変更案を作るときに決める。承認すると cases/added.ts の AddedRow になり、値は手直しとして重ねる）
    */
   | { kind: "add"; rowKey: string; by: AddedRow["by"]; cells: Partial<Record<KojiFieldId, CellEdit>> }
-  /** 7割と金額の設定（作業の画面の「7割と金額」のタブ）。rounding は金額の千円未満の扱い（承認すると変換し直す。前の変更案には無い） */
+  /** 7割と金額の設定（作業の画面のダウンロードの段の「7割と金額」）。rounding は金額の千円未満の扱い（承認すると変換し直す。前の変更案には無い） */
   | { kind: "settings"; tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }
   /** 全体ルール・顧客ルールへの追記（承認すると保存する）。source は足した項目の由来（chat: 職員が頼んだ追記、review: 案件を終えるときの振り返り） */
   | { kind: "rule"; scope: RuleScope; text: string; source: ProposedRuleSource }

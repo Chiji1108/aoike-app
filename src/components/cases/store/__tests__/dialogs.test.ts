@@ -38,7 +38,9 @@ describe("計画の聞き返しの答えは並び順ではなく聞き返しの�
     s.actions.answerReport("plan-ask-0", "keep")
     expect(s.store.getState().work.reportAnswers).toEqual({ [askKey(ASK_B)]: "keep" })
     setAsks(s, [ASK_C, ASK_B])
+    // 載せる工事（去年の案件が無いので聞く）は最初
     expect(questions(s)).toEqual([
+      { id: "selection", answered: false },
       { id: "tax", answered: false },
       { id: "plan-ask-0", answered: false },
       { id: "plan-ask-1", answered: true },

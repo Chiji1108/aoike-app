@@ -8,7 +8,6 @@ import { toast } from "sonner"
 import { Markdown } from "@/components/chat/markdown"
 import { ProposalCard, type ProposalActions } from "@/components/chat/proposal-card"
 import { LocationSearchStatus, type LocationSearch } from "@/components/convert/location-panel"
-import type { ReportChat } from "@/components/cases/case-report"
 import { useCase, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
 import { useCarryover, useChatSuggestions, useProposalActions } from "@/components/cases/workspace/hooks"
 import { useFx, useLocationTool } from "@/components/cases/workspace/tools"
@@ -76,8 +75,8 @@ const TOOL_LABELS: Record<string, string> = {
 }
 
 export type ChatPanelProps = {
-  /** 会話の最初に出す変換の報告（案件の作業から作る。保存しない）。chat で報告から決まった質問を送れる（聞き返しの「AI に聞く」） */
-  report: (chat: ReportChat) => React.ReactNode
+  /** 会話の最初に出す変換の報告（案件の作業から作る。保存しない） */
+  report: React.ReactNode
   /** 会話の最後に出すもの（表の「直す」から頼んだ AI の案。案件の作業から作る） */
   tail?: React.ReactNode
 }
@@ -228,6 +227,16 @@ export function ChatPanel(props: ChatPanelProps) {
     await sendMessage({ text }, options.carryover ? { body: { carryover: true } } : undefined)
     return !failed.current
   }
+  /**
+   * 作業の画面から頼まれた決まった指示（「答える」の段の「AI に聞く」。ui.chatSend）を、送れるようになったら1回だけ送る。
+   * 受け取ったら頼みを外す（送れなかったら、職員がもう一度押す）
+   */
+  const chatSend = useCase((s) => s.ui.chatSend)
+  useEffect(() => {
+    if (!chatSend || !canSend) return
+    actions.takeChatSend()
+    void send(chatSend.text, { keepInput: true })
+  }, [chatSend, canSend])
   /** 会話にもう送った指示（once の案内を出さない） */
   const sentTexts = new Set(messages.flatMap((m) => (m.role === "user" ? [m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")] : [])))
 
@@ -296,7 +305,7 @@ export function ChatPanel(props: ChatPanelProps) {
         <MessageScroller className="flex-1">
           <MessageScrollerViewport>
             <MessageScrollerContent className="gap-4 px-4 py-3" data-testid="chat-messages">
-              {props.report({ send: (text) => void send(text, { keepInput: true }), canSend })}
+              {props.report}
               {carryover && history === "loaded" && !carried && (
                 <div className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-carryover">
                   <span className="text-muted-foreground">

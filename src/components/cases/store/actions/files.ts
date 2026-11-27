@@ -224,7 +224,7 @@ export async function importAnswers(env: CaseEnv, f: File, kind: "marked" | "ans
     if ("error" in read) return fail(read.error)
     const forAi = env.config.chatEnabled ? read.forAi : null
     const text = [
-      read.proposed ? `顧客の回答 ${read.proposed} 件を変更案にしました（チャット欄で承認すると表に入ります）` : "表に入れる顧客の回答はありませんでした（結果は「問い合わせ」のタブ）",
+      read.proposed ? `顧客の回答 ${read.proposed} 件を変更案にしました（チャット欄で承認すると表に入ります）` : "表に入れる顧客の回答はありませんでした（結果は「問い合わせ」の段）",
       read.outside ? `色付きの欄の外の記入が ${read.outside} 件あります（入れていません）` : "",
       forAi ? "チャットの「AI で読む」で読めます" : "",
     ]

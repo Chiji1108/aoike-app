@@ -14,7 +14,7 @@ export function chatTarget({ target, button }: ChatTarget) {
 /**
  * DOM を動かすのはここだけ（ストアは DOM を触らない）:
  * - 作業の画面を重ねて開いたら作業の画面へ、閉じたら開く前の場所へフォーカスを戻す
- * - action の頼み（ui.focus）を、描いたあとの次の frame で動かす（チャットの欄の移り先・業種の一覧の行・職員が開いた／たたんだチャットの窓）。
+ * - action の頼み（ui.focus）を、描いたあとの次の frame で動かす（チャットの欄の移り先・業種の一覧の行・職員が開いた／たたんだチャットの窓・「次は」で開いた段）。
  *   同じ描画で閉じた作業の画面・ダイアログがフォーカスを戻したあとに動くので、頼んだ先が勝つ
  */
 export function FocusEffects() {
@@ -43,6 +43,8 @@ export function FocusEffects() {
         return
       }
       if (focus.kind === "chatLauncher") return document.querySelector<HTMLElement>('[data-testid="chat-launcher"]')?.focus()
+      // 「済みました。次は ◯◯ →」で開いた段の中身へ（段の並びの横スクロールは step-bar.tsx が合わせる）
+      if (focus.kind === "step") return document.querySelector<HTMLElement>(`[data-testid="work-panel"] [data-step-panel="${focus.id}"]`)?.focus({ preventScroll: true })
       // 業種の一覧のその行の選ぶ欄へ
       const row = document.querySelector<HTMLElement>(`[data-testid="gyoshu-list"] li[data-key="${CSS.escape(focus.key)}"]`)
       row?.scrollIntoView({ block: "nearest" })

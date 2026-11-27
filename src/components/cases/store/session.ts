@@ -1,6 +1,6 @@
 import type { UploadNote } from "@/components/cases/case-report"
 import type { WorkTab } from "@/components/cases/work-tabs"
-import type { StepId } from "@/components/cases/next-steps"
+import type { StepId } from "@/lib/cases/steps"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
@@ -106,11 +106,12 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     viewAsk: (askId: string) => ui.viewAsk(env, askId),
     goChat: (to: ChatTarget) => ui.goChat(env, to),
     goStep: (id: StepId) => ui.goStep(env, id),
+    goNextStep: (from: StepId) => ui.goNextStep(env, from),
+    askChat: (text: string) => ui.askChat(env, text),
+    takeChatSend: () => ui.takeChatSend(env),
     runFixAction: (action: FixActionId, keys: readonly string[]) => ui.runFixAction(env, action, keys),
     chatAction: (a: ChatAction) => ui.chatAction(env, a),
     openExport: () => ui.openExport(env),
-    closeExport: () => ui.closeExport(env),
-    exportToChat: (to: ChatTarget) => ui.exportToChat(env, to),
     setDeleteOpen: (open: boolean) => ui.setDeleteOpen(env, open),
     setDownloadsOpen: (open: boolean) => ui.setDownloadsOpen(env, open),
     setDragging: (dragging: boolean) => ui.setDragging(env, dragging),
@@ -248,8 +249,13 @@ function watch(env: CaseEnv): () => void {
         if (watching) ui.saveChatPrefs(env, { hintShown: true })
       })
     }
+    // 表ができたら、開いているものを今の段に決める（そのあとは段が済んでも勝手に移らない）
+    if (s.ui.tab === null && t.hasTable && t.output && t.shown && !t.reconverting)
+      queueMicrotask(() => {
+        if (watching) ui.pinCurrentStep(env)
+      })
     // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
-    if (s.runtime.hints.inquiry === "hidden" && s.ui.tab === "inquiry" && env.view(s).layout.workShown)
+    if (s.runtime.hints.inquiry === "hidden" && env.view(s).view === "inquiry" && env.view(s).layout.workShown)
       queueMicrotask(() => {
         if (watching && store.getState().runtime.hints.inquiry === "hidden") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
       })

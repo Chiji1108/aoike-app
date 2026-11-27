@@ -27,8 +27,9 @@ async function convert(page: Page) {
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
   await page.getByTestId("chat-file-input").setInputFiles(LARGE)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
+  await openTab(page, "table")
 }
 
 const header = (page: Page) => page.getByTestId("include-all")
@@ -172,7 +173,7 @@ test("見出しのチェックで全件と7割ルールを切り替え（7割と
     await expect(page.getByTestId("all-hint")).toHaveCount(0)
     await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await showAllRows(page)
     await expect(header(page)).toHaveAttribute("data-selection", "rule7")
     await expect(page.getByTestId("all-hint")).toHaveCount(0)

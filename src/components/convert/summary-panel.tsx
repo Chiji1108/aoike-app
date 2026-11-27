@@ -258,7 +258,7 @@ export function BasisSection({
   )
 }
 
-/** 7割と金額のタブの表: 基準が何かの1行・決算書の額の入力（押したときだけ）・業種ごとの割合 */
+/** 7割と金額（ダウンロードの段）の表: 基準が何かの1行・決算書の額の入力（押したときだけ）・業種ごとの割合 */
 export function GyoshuSummaryTable({
   summary,
   basis,

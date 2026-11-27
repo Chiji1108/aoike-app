@@ -5,7 +5,7 @@ import type { Inclusion } from "@/lib/convert/koji-selection"
 import { answer, decide, discard, newProposal, type ChatChange, type Proposal, type ProposalOrigin } from "@/lib/chat/proposals"
 import { inquiryKey, type Inquiry } from "@/lib/inquiry/inquiry"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
-import { awaitsAnswer, caseTodo, reportQuestionStates, tabBadge, type TodoInput } from "../todo"
+import { awaitsAnswer, caseTodo, reportAsks, reportQuestionStates, tabBadge, type TodoInput } from "../todo"
 
 // 4行: r0・r1 は業種が空（r0 は載せる、r1 は7割の選び直しで載りうる）、r2 は業種を職員が決めた（一覧の外）、r3 は工事名がエラーで載せる
 const shown = [0, 1, 2, 3].map((i) => kojiRow({ workName: `工事${i}`, amount: String((i + 1) * 100) }, i))
@@ -87,6 +87,8 @@ describe("答える", () => {
       { kind: "proposal", proposalId: "c1", origin: "chat", waiting: 1, question: true },
       { kind: "proposal", proposalId: "e1", origin: "excel", waiting: 2, question: false },
     ])
+    // チャットの報告の1行「聞き返しが N件あります」は報告の聞き返しだけ（変更案はチャットの流れにある）
+    expect(reportAsks(todo)).toBe(1)
     expect(todo.location.open).toBe(1)
     expect(todo.badges.location).toBe(1)
     expect(awaitsAnswer(todo, "l1")).toBe(false)
@@ -138,12 +140,15 @@ test("表がまだ無くても、答える（変更案）とチャットの答�
 })
 
 test("報告の聞き返し: 表ができてから。税は誰も決めていなければ聞き、決まるか「分からない」で答えた。計画の聞き返しは exclude・keep だけを答えと見なす", () => {
-  const base = { hasTable: true, tax: "unknown" as const, taxBy: null, reportAnswers: {}, asks: [{ id: "plan-ask-0", key: "ask:doubtful:1:k" }] }
+  const base = { hasTable: true, askSelection: false, tax: "unknown" as const, taxBy: null, reportAnswers: {}, asks: [{ id: "plan-ask-0", key: "ask:doubtful:1:k" }] }
   expect(reportQuestionStates({ ...base, hasTable: false })).toEqual([])
   expect(reportQuestionStates(base)).toEqual([
     { id: "tax", answered: false },
     { id: "plan-ask-0", answered: false },
   ])
+  // 載せる工事は聞くときだけ、最初に聞く
+  expect(reportQuestionStates({ ...base, askSelection: true })[0]).toEqual({ id: "selection", answered: false })
+  expect(reportQuestionStates({ ...base, askSelection: true, reportAnswers: { selection: "all" } })[0]).toEqual({ id: "selection", answered: true })
   // 計画が決めた税は聞かない
   expect(reportQuestionStates({ ...base, tax: "included", taxBy: "plan" }).map((q) => q.id)).toEqual(["plan-ask-0"])
   expect(reportQuestionStates({ ...base, tax: "excluded", taxBy: "staff", reportAnswers: { tax: "excluded", "ask:doubtful:1:k": "keep" } })).toEqual([

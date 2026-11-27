@@ -11,8 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ArrowDown, ArrowUp, ArrowUpDown, Check, Columns3, ListChecks, MapPin, MessageCircleQuestion, RefreshCw, Search, Undo2, X } from "lucide-react"
-import { Segmented } from "@/components/segmented"
+import { ArrowDown, ArrowRight, ArrowUp, ArrowUpDown, Check, Columns3, ListChecks, MapPin, MessageCircleQuestion, RefreshCw, Search, Undo2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -71,8 +70,11 @@ const columnHelper = createColumnHelper<typeof features, Row>()
  * 列の幅（px）。表に出す行だけで列の幅が決まると、スクロールで幅が揺れるので固定する。
  * 「載せる」と「元の行」の列もここで持つ
  */
-const WIDTH: Record<KojiFieldId | "include" | "origin", number> = {
-  include: 156,
+const WIDTH: Record<KojiFieldId | "include" | "reasons" | "origin", number> = {
+  // 載せるはチェックだけ（7割ルール・全件の別はツールチップ。手で入れ外しした行・除外の行だけ小さな印）
+  include: 40,
+  // 直す理由と直し方（直すの段の表だけ）
+  reasons: 240,
   origin: 84,
   // 「コード 名前」が折り返さない幅（いちばん長い業種「10 タイル・れんが・ブロック」で決める）
   gyoshu: 184,
@@ -154,6 +156,7 @@ export function PreviewTable({
   onFixAction,
   onConfirm,
   confirmUndo,
+  onGoFix,
 }: {
   spec: CsvSpec<KojiFieldId>
   rows: Row[]
@@ -165,12 +168,12 @@ export function PreviewTable({
   onToggle: (rowKey: string, included: boolean) => void
   /** Shift＋クリックの範囲の入れ外し（1回の操作。keys は手動にする行、skippedExcluded は載せる向きで入れなかった除外の行の数） */
   onToggleRange: (keys: readonly string[], included: boolean, skippedExcluded: number) => void
-  /** 載せる工事の選び方（見出しのチェック。7割と金額のタブの「載せる工事」と同じ設定） */
+  /** 載せる工事の選び方（見出しのチェック。ダウンロードの段の7割と金額の「載せる工事」と同じ設定） */
   selection: SelectionMode
   onSelection: (m: SelectionMode) => void
   /** 7割ルールのまま手で載せた行が多いときの「全件にしますか？」（出さないときは null） */
   allHint: { count: number; onAll: () => void; onClose: () => void } | null
-  /** 絞り込み（案件の画面が持つ。次にやること・報告の聞き返しの「表で見る」を押しても変わる） */
+  /** 絞り込み（案件の画面が持つ。直すの段は直す行・表はすべての行。聞き返しの「表で見る」を押しても変わる） */
   filter: TableFilter
   onFilterChange: (f: TableFilter) => void
   /** 行の片付けること（rowFix）と、直す行の数（countFixes）。案件の画面が1回だけ数えて渡す */
@@ -186,6 +189,10 @@ export function PreviewTable({
   onConfirm: (rowKey: string, field: KojiFieldId) => void
   /** 直前の「これでよい」を取り消す（取り消せるときだけ） */
   confirmUndo: (() => void) | null
+  /**
+   * 直すの段を開く（すべての行の表だけ。表ではセルの色・凡例・ツールチップで直すセルは分かるが、行の理由と直し方〔業種を決める・これでよいなど〕は直すの段の列にだけ出すので、そこへの道）
+   */
+  onGoFix?: () => void
 }) {
   const [editing, setEditing] = useState<Editing | null>(null)
   const setFilter = onFilterChange
@@ -205,17 +212,20 @@ export function PreviewTable({
     setPinned(null)
   }
 
+  /** 直す理由と直し方の列は、直す行の絞り込み（直すの段）だけに出す（表では出さない） */
+  const reasonsColumn = filter.kind === "fix"
   const columns = useMemo(
     () =>
       columnHelper.columns([
         columnHelper.display({ id: "include", header: "載せる", enableHiding: false }),
+        ...(reasonsColumn ? [columnHelper.display({ id: "reasons", header: "直す理由と直し方", enableHiding: false })] : []),
         columnHelper.accessor(originText, { id: "origin", header: "元の行", sortFn: "alphanumeric" }),
         ...spec.fields.map((f) =>
           // CSV の列（A〜N）との対応は見出しのツールチップに出す
           columnHelper.accessor((r) => r.cells[f.id].value, { id: f.id, header: f.label, sortFn: "alphanumeric" }),
         ),
       ]),
-    [spec],
+    [spec, reasonsColumn],
   )
   const store = useRef<ActiveStore | null>(null)
   store.current ??= activeStore()
@@ -313,6 +323,9 @@ export function PreviewTable({
     overscan: 12,
     getItemKey: (i) => shown[i]!.key,
   })
+  // 作業の画面で表を隠す（ほかの段を開く）と、行の高さは 0 と測られる。表に戻って測り直したとき、高さ 0 の行は
+  // 「見えている所より上の行」と見なされてスクロールが下へずれていく（既定の判定）ので、高さのある行が上に並ぶときだけ合わせる
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => item.size > 0 && item.end <= (instance.scrollOffset ?? 0) && instance.scrollDirection !== "backward"
   const items = virtualizer.getVirtualItems()
   const padTop = items[0]?.start ?? 0
   const padBottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0)
@@ -320,18 +333,34 @@ export function PreviewTable({
   function renderCell(r: Row, columnId: string) {
     if (columnId === "include") {
       const inc = inclusion.get(r.key)
+      // 印は手で入れ外しした行と除外の行だけ（7割ルール・全件の別はツールチップ）
+      const mark = inc?.reason === "manual" ? "手" : inc?.reason === "excluded" ? "除外" : null
+      const tip = [inc && INCLUSION_LABELS[inc.reason] ? `${inc.included ? "載せる" : "載せない"}（${INCLUSION_LABELS[inc.reason]}）` : "載せない", r.excluded, "Shift を押しながら押すと、前に押した行からここまでをまとめて入れ外しします"]
+        .filter(Boolean)
+        .join("\n")
       return (
-        <TableCell key={columnId} className="sticky left-0 z-10 border-b bg-card px-2 py-1.5">
-          <label className="flex items-center gap-1.5 whitespace-nowrap" title={r.excluded ?? "Shift を押しながら押すと、前に押した行からここまでをまとめて入れ外しします"}>
+        <TableCell key={columnId} className="sticky left-0 z-10 border-b bg-card px-0 py-1.5 text-center">
+          <label className="flex flex-col items-center gap-0.5" title={tip} data-reason={inc?.reason}>
             <Checkbox aria-label="CSVに載せる" checked={inc?.included ?? false} onCheckedChange={(checked, details) => toggleRow(r.key, checked, details.event)} />
-            <span className="text-[11px] text-muted-foreground">{inc ? INCLUSION_LABELS[inc.reason] : ""}</span>
+            {mark && (
+              <span className="text-[10px] leading-none text-muted-foreground" data-testid="include-mark">
+                {mark}
+              </span>
+            )}
           </label>
-          {inc?.included && <RowReasons fix={fixes.get(r.key) ?? NO_FIX} onOpenInquiry={onOpenInquiry} onFixAction={(a) => onFixAction(a, [r.key])} onConfirm={(f) => onConfirm(r.key, f)} />}
           {!liveKeys.has(r.key) && (
-            <span className="mt-0.5 block text-[11px] text-amber-700" data-testid="row-unmatched" title="手直しで、今の絞り込み・検索に合わなくなりました。「更新」で表から外れます">
-              条件に合いません
+            <span className="mt-0.5 block text-[10px] leading-none text-amber-700" data-testid="row-unmatched" title="手直しで、今の絞り込み・検索に合わなくなりました。「更新」で表から外れます">
+              !
             </span>
           )}
+        </TableCell>
+      )
+    }
+    if (columnId === "reasons") {
+      const inc = inclusion.get(r.key)
+      return (
+        <TableCell key={columnId} className="border-b border-l px-2 py-1 align-top" data-testid="reasons-cell">
+          {inc?.included && <RowReasons fix={fixes.get(r.key) ?? NO_FIX} onOpenInquiry={onOpenInquiry} onFixAction={(a) => onFixAction(a, [r.key])} onConfirm={(f) => onConfirm(r.key, f)} />}
         </TableCell>
       )
     }
@@ -404,13 +433,6 @@ export function PreviewTable({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented
-          label="表の絞り込み"
-          value={filter.kind}
-          options={(["fix", "all"] as const).map((f) => ({ value: f, label: `${ROW_FILTERS[f].label} ${f === "fix" ? counts.rows : counts.all}` }))}
-          onChange={(kind) => setFilter({ kind })}
-          testId="row-filters"
-        />
         {activeAsk ? (
           <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 py-0.5 pr-1 pl-2.5 text-xs text-amber-900" data-testid="ask-filter" data-ask={activeAsk.id}>
             {activeAsk.label}（{activeAsk.keys.size}行）
@@ -436,6 +458,11 @@ export function PreviewTable({
               ))}
             </div>
           )
+        )}
+        {filter.kind === "all" && !activeAsk && onGoFix && counts.rows > 0 && (
+          <Button size="xs" variant="outline" onClick={onGoFix} title="直す行だけを、理由と直し方の列つきで出します" data-testid="table-go-fix">
+            直す <span className="num">{counts.rows}</span>行の理由と直し方 <ArrowRight />
+          </Button>
         )}
         <div className="relative w-44 sm:w-56">
           <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -551,7 +578,7 @@ export function PreviewTable({
                       aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}
                       className={cn(
                         "h-auto border-b bg-muted px-2 py-2 align-bottom text-xs whitespace-normal text-muted-foreground",
-                        h.column.id === "include" && "sticky left-0 z-30",
+                        h.column.id === "include" && "sticky left-0 z-30 px-0",
                       )}
                     >
                       {h.column.id === "include" ? (
@@ -611,7 +638,7 @@ export function PreviewTable({
 }
 
 /**
- * 「載せる」の見出しのチェック。行がみな付いているかではなく、載せる工事の選び方（7割と金額のタブの「載せる工事」）を出して切り替える。
+ * 「載せる」の見出しのチェック。行がみな付いているかではなく、載せる工事の選び方（ダウンロードの段の7割と金額の「載せる工事」）を出して切り替える。
  * 全件＝チェック、7割ルール＝一部（−）。全件でも手で外した行・除外の行は載せないが、見出しはチェックのまま「外す N」を添える
  * （一部の印を使うと7割ルールと見分けられず、押して何が起きるかが分からなくなる）
  */
@@ -619,9 +646,9 @@ function IncludeHeader({ selection, onSelection, off }: { selection: SelectionMo
   const all = selection === "all"
   const title = all
     ? `今は全件。押すと7割ルールで選び直します（手で入れ外しした行はそのまま）${off ? `。手で外した行・除外の行 ${off} 行は今も載せていません` : ""}`
-    : "今は7割ルール。押すと全件を載せます（7割と金額のタブの「全件」と同じ。手で外した行・除外の行は載せません）"
+    : "今は7割ルール。押すと全件を載せます（ダウンロードの段の7割と金額の「全件」と同じ。手で外した行・除外の行は載せません）"
   return (
-    <label className="flex items-center gap-1.5 font-medium whitespace-nowrap" title={title}>
+    <label className="flex justify-center" title={`載せる: ${title}`}>
       <Checkbox
         aria-label={all ? "7割ルールに戻す（今は全件を載せる）" : "全件を載せる（今は7割ルール）"}
         checked={all}
@@ -630,10 +657,9 @@ function IncludeHeader({ selection, onSelection, off }: { selection: SelectionMo
         data-testid="include-all"
         data-selection={selection}
       />
-      載せる
-      <span className="text-[11px] font-normal">
-        {SELECTION_LABELS[selection]}
-        {all && off > 0 && <span data-testid="include-all-off">・外す {off}</span>}
+      <span className="sr-only">
+        載せる（{SELECTION_LABELS[selection]}
+        {all && off > 0 && <span data-testid="include-all-off">・外す {off}</span>}）
       </span>
     </label>
   )
@@ -651,7 +677,7 @@ function RowReasons({ fix, onOpenInquiry, onFixAction, onConfirm }: { fix: RowFi
   const actions = [...new Set(fix.fixes.flatMap((f) => f.action ?? []))]
   const link = "inline-flex items-center gap-0.5 underline-offset-2 hover:underline [&_svg]:size-3"
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-4 whitespace-normal" data-testid="row-reasons">
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-4 whitespace-normal" data-testid="row-reasons">
       {/* 業種は直すに数えず、業種のタブでまとめて決める（決めるたびに7割で載せる行が入れ替わる） */}
       {fix.gyoshu && (
         <span className="inline-flex flex-wrap items-center gap-x-1">
@@ -689,7 +715,7 @@ function RowReasons({ fix, onOpenInquiry, onFixAction, onConfirm }: { fix: RowFi
         </button>
       ))}
       {fix.ask.length > 0 && (
-        <button type="button" className={cn(link, "text-muted-foreground")} title="顧客への問い合わせに入っています（直さなくてよい）。問い合わせのタブを開きます" onClick={onOpenInquiry} data-testid="row-ask">
+        <button type="button" className={cn(link, "text-muted-foreground")} title="顧客への問い合わせに入っています（直さなくてよい）。問い合わせの段を開きます" onClick={onOpenInquiry} data-testid="row-ask">
           <MessageCircleQuestion />
           {askText(fix.ask)}
         </button>
@@ -713,7 +739,7 @@ function CellValue({ value, named, code }: { value: string; named: string | unde
 
 function columnLabel(spec: CsvSpec<KojiFieldId>, id: string) {
   const f = spec.fields.find((f) => f.id === id)
-  return f ? f.label : "元の行"
+  return f ? f.label : id === "reasons" ? "直す理由と直し方" : "元の行"
 }
 
 function columnTip(spec: CsvSpec<KojiFieldId>, id: string) {

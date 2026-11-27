@@ -143,13 +143,14 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
 }
 
 /**
- * 載せる工事の選び方を変える（7割と金額のタブの「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。
- * 取り消しの記録に残し、通知の「取り消す」で戻せる
+ * 載せる工事の選び方を変える（ダウンロードの段の7割と金額の「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。
+ * 取り消しの記録に残し、通知の「取り消す」で戻せる。職員が選んだので「答える」の載せる工事にも答えたことにする
  */
 export function changeSelection(env: CaseEnv, mode: SelectionMode) {
   if (env.store.getState().work.selection === mode) return
   const id = `${SELECTION_UNDO}${crypto.randomUUID()}`
-  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode }))
+  // 職員が選んだので「答える」の載せる工事の聞き返しにも答えたことにする（取り消すと一緒に戻る）
+  const committed = commit(env.store, { group: id, kind: "op" }, ({ work: w }) => ({ ...w, selection: mode, reportAnswers: { ...w.reportAnswers, selection: mode } }))
   notifyCommitted(env, `載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, id, "載せる工事の切り替え")
 }
 
@@ -191,6 +192,12 @@ export function answerProposal(env: CaseEnv, id: string, a: "yes" | "no") {
  */
 export function answerReport(env: CaseEnv, id: string, value: string) {
   const { store } = env
+  if (id === "selection") {
+    // 載せる工事（7割ルール／全件）。答えたあとも表の見出しのチェック・ダウンロードの段の7割と金額で変えられる
+    if (value !== "rule7" && value !== "all") return
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...w, selection: value, reportAnswers: { ...w.reportAnswers, selection: value } }))
+    return
+  }
   if (id === "tax") {
     // 「分からない（顧客に聞く）」も職員が決めた値（計画のし直しで上書きしない）
     const next = value === "included" || value === "excluded" ? value : "unknown"

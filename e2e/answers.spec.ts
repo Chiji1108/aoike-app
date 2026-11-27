@@ -63,7 +63,7 @@ test("記入用Excelの色付きの欄の外に書いた答えは、チャット
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
   await page.getByTestId("chat-file-input").setInputFiles(XLS)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
 
   /** 返す記入用Excel（色付きの欄は空のまま、右に足した「備考」の列に答えを書く）と、答えた行・項目 */

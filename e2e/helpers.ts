@@ -42,19 +42,22 @@ export async function openNewCase(page: Page, year = "2026") {
   return { customer, caseUrl: page.url() }
 }
 
-/** 案件の画面のチャットの📎で Excel（パスか中身）をアップロードし、AI が列の対応を考えて自動で変換し、変換の報告と作業の画面の表が出るまで待つ */
-export async function attachAndConvert(page: Page, file: Parameters<Locator["setInputFiles"]>[0]) {
+/**
+ * 案件の画面のチャットの📎で Excel（パスか中身）をアップロードし、AI が列の対応を考えて自動で変換し、変換の報告が出るまで待つ。
+ * 広い画面では作業の画面が開き、今の段（たいていは「答える」。新しい顧客は載せる工事を聞く）が選ばれる。table なら、そのあと「表」を開く
+ */
+export async function attachAndConvert(page: Page, file: Parameters<Locator["setInputFiles"]>[0], { table = true }: { table?: boolean } = {}) {
   await page.getByTestId("chat-file-input").setInputFiles(file)
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
   // 広い画面では作業の画面がチャットの右に開く（狭い画面ではチャットの「表を開く」で開く）
-  if ((page.viewportSize()?.width ?? 0) >= 1280) await expect(page.getByTestId("preview-table")).toBeVisible()
+  if ((page.viewportSize()?.width ?? 0) < 1280) return
+  await expect(page.getByTestId("next-steps")).toBeVisible()
+  if (table) await openTab(page, "table")
 }
 
-/** 作業の画面の表のタブで、絞り込みを「すべて」にする（はじめは直す行だけ） */
+/** 作業の画面の「表」（すべての行）を開く */
 export async function showAllRows(page: Page) {
   await openTab(page, "table")
-  await page.getByTestId("row-filters-all").click()
-  await expect(page.getByTestId("row-filters-all")).toHaveAttribute("aria-pressed", "true")
 }
 
 /** 見出しの「…」を開いて、案件の AI の費用の文を読む（閉じて返す） */
@@ -77,25 +80,52 @@ export async function openCaseDelete(page: Page) {
   await page.getByTestId("delete-button").click()
 }
 
-/** 作業の画面のタブを開く */
-export async function openTab(page: Page, tab: "table" | "gyoshu" | "selection" | "inquiry" | "location" | "replace") {
-  await page.getByTestId(`tab-${tab}`).click()
-  await expect(page.getByTestId(`tab-${tab}`)).toHaveAttribute("aria-selected", "true")
+/** 作業の画面に開くもの: 段（答える・業種・直す・問い合わせ・ダウンロード）・表・道具（その他の工事場所・一括置換）。selection は7割と金額（ダウンロードの段の中） */
+export type WorkView = "answer" | "gyoshu" | "fix" | "inquiry" | "export" | "table" | "selection" | "location" | "replace"
+
+/** 開いたときに選ばれている印を見るもの（段・表はタブ、道具は「その他」のボタン） */
+export function viewTrigger(page: Page, view: WorkView) {
+  if (view === "table") return page.getByTestId("tab-table")
+  if (view === "location" || view === "replace") return page.getByTestId("more-tools")
+  return page.getByTestId(`next-step-${view === "selection" ? "export" : view}`)
 }
 
-/** ダウンロードのボタンの件数（CSV に載せる行） */
-export const csvCount = async (page: Page) => Number(/（(\d+)件/.exec((await page.getByTestId("export-button").textContent()) ?? "")![1])
+/** 作業の画面のそれを開いているか */
+export async function expectView(page: Page, view: WorkView) {
+  if (view === "location" || view === "replace") await expect(page.getByTestId("more-tools")).toHaveAttribute("data-active", view)
+  else await expect(viewTrigger(page, view)).toHaveAttribute("aria-selected", "true")
+}
 
-/** ダウンロードの前の確認を開いて CSV（控え）をダウンロードし、中身（CP932）を返す。確認は閉じる */
+/** 作業の画面の段・表・道具を開く（道具は「その他」から。作業の画面を閉じていれば開く） */
+export async function openTab(page: Page, view: WorkView) {
+  // 作業の画面を閉じていれば（狭い画面・チャットへ移ったあと）、チャットの「表を開く」で開く
+  if (!(await page.getByTestId("next-steps").isVisible()) && (await page.getByTestId("work-open").isVisible())) await page.getByTestId("work-open").click()
+  if (view === "location" || view === "replace") {
+    await page.getByTestId("more-tools").click()
+    await page.getByTestId(`more-tool-${view}`).click()
+  } else await viewTrigger(page, view).click()
+  await expectView(page, view)
+}
+
+/** ダウンロードの段を開く */
+export async function openExport(page: Page) {
+  await openTab(page, "export")
+  const panel = page.getByTestId("export-dialog")
+  await expect(panel).toBeVisible()
+  return panel
+}
+
+/** CSV に載せる件数（段の並びのダウンロードの数） */
+export const csvCount = async (page: Page) => Number(/(\d+)件/.exec((await page.getByTestId("next-step-export").textContent()) ?? "")![1])
+
+/** ダウンロードの段を開いて CSV（控え）をダウンロードし、中身（CP932）を返す。開いていたものに戻す */
 export async function downloadCsv(page: Page) {
-  await page.getByTestId("export-button").click()
-  const dialog = page.getByTestId("export-dialog")
-  await expect(dialog).toBeVisible()
+  const back = (await page.getByTestId("work-panel").getAttribute("data-view")) as WorkView | null
+  const panel = await openExport(page)
   const downloading = page.waitForEvent("download")
-  await dialog.getByTestId("download-button").click()
+  await panel.getByTestId("download-button").click()
   const path = (await (await downloading).path())!
-  await page.keyboard.press("Escape")
-  await expect(dialog).toBeHidden()
+  if (back && back !== "export") await openTab(page, back)
   return new TextDecoder("shift_jis").decode(readFileSync(path))
 }
 

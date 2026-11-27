@@ -103,7 +103,7 @@ test("承認のあとに載せる工事を15回切り替えても承認を取り
     await showAllRows(page)
     await expect(workName()).toHaveText(before!)
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await showAllRows(page)
     await expect(workName()).toHaveText(before!)
     // 載せる工事は最後に切り替えたまま（取り消したのは承認だけ）
@@ -156,6 +156,7 @@ test("中身（サーバーの記録）の無い開いた変更案は、開く�
     await reload(page)
     await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 60_000 })
     await expect(page.getByTestId("closed-missing")).toHaveCount(0)
-    await expect.poll(() => answers(page)).toBe(before - 1)
+    // 閉じた変更案のほか、載せる工事も「全件」を選んだので答えたことになる
+    await expect.poll(() => answers(page)).toBe(before - 2)
   })
 })

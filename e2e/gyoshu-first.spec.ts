@@ -80,7 +80,8 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
   await fakeAi(page)
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
-  await expect(page.getByTestId("preview-table")).toBeVisible()
+  // 載せる工事は7割ルールと答える（答えるの段が済む）
+  await page.locator('[data-testid="answer-section"] [data-question="selection"] [data-value="rule7"]').click()
   // 7割ルールでは一部の行だけが載る（業種が空の行がみな同じ組になる）
   const loaded = await csvCount(page)
   expect(loaded).toBeLessThan(7)
@@ -90,9 +91,10 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
     await expect(page.getByTestId("next-steps")).toHaveAttribute("data-current", "gyoshu")
     // 業種は直すに数えない（「業種を決める」と二重にしない）
     await expect(page.getByTestId("next-step-fix")).not.toHaveAttribute("title", /業種/)
-    await page.getByTestId("row-filters-all").click()
+    // 行の理由と直し方は直すの段の列（業種は直すに数えないが、載せる行の理由には出る）
+    await openTab(page, "fix")
     await page.locator('[data-testid="row-fix-action"][data-action="decideGyoshu"]').first().click()
-    await expect(page.getByTestId("tab-gyoshu")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-gyoshu")).toHaveAttribute("aria-selected", "true")
     // 載せる行だけでなく、7割の選び直しで載りうる行も一覧に出る
     expect(await count(page)).toBe(7)
     await expect(page.getByTestId("gyoshu-panel")).toContainText(`載せる ${loaded} 行と、7割の選び直しで載りうる ${7 - loaded} 行`)
@@ -138,11 +140,9 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
     await expect(page.getByTestId("next-step-gyoshu")).toHaveAttribute("data-done", "1")
     // チャットの AI の案の変更案は、一覧で決めたので閉じる
     await expect(page.getByTestId("fix-suggestion").getByTestId("proposal-apply-all")).toHaveCount(0)
+    await openTab(page, "fix")
+    await expect(gyoshuFixes(page)).toHaveCount(0)
     await openTab(page, "table")
-    await page.getByTestId("row-filters-fix").click()
-    await expect(gyoshuFixes(page)).toHaveCount(0)
-    await page.getByTestId("row-filters-all").click()
-    await expect(gyoshuFixes(page)).toHaveCount(0)
     await expect(page.locator('td[data-field="gyoshu"] [data-code="8"]')).toHaveCount(1)
   })
 
@@ -157,8 +157,7 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
   })
 
   await test.step("行の「これでよい」で要確認・AI の推定がそのまま片付き、取り消せる", async () => {
-    await openTab(page, "table")
-    await page.getByTestId("row-filters-fix").click()
+    await openTab(page, "fix")
     // 「これでよい」のある最初の行（「これでよい」のある行は1行とは限らない）
     const tr = page.locator("tr[data-row-key]").filter({ has: page.getByTestId("row-confirm") }).first()
     const confirm = tr.getByTestId("row-confirm").first()
@@ -168,16 +167,15 @@ test("業種を一覧で先に決めると、7割で載せる行が入れ替わ�
     const fixOf = page.locator(`tr[data-row-key="${key}"] [data-testid="row-fix"][data-field="${field}"]`)
     await confirm.click()
     await expect(fixOf).toHaveCount(0)
-    await page.getByTestId("row-filters-all").click()
+    await openTab(page, "table")
     await expect(page.locator(`tr[data-row-key="${key}"] td[data-field="${field}"]`)).toHaveAttribute("data-status", "changed")
-    await page.getByTestId("row-filters-fix").click()
+    await openTab(page, "fix")
     await page.getByTestId("confirm-undo").click()
-    await page.getByTestId("row-filters-all").click()
     await expect(page.locator(`tr[data-row-key="${key}"] [data-testid="row-fix"][data-field="${field}"]`)).toHaveCount(1)
   })
 
   await test.step("顧客に聞く印は、どの欄を聞くのかを書く", async () => {
-    await page.getByTestId("row-filters-all").click()
+    await openTab(page, "fix")
     await expect(page.getByTestId("row-ask").first()).toHaveText("配置技術者は顧客に聞く")
   })
 })

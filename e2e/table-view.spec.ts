@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs"
 import { expect, test, type Page } from "@playwright/test"
 import * as XLSX from "xlsx"
 import { GYOSHU } from "../src/lib/spec/code-sets"
-import { attachAndConvert, convertFixture, deleteCustomer, openNewCase, showAllRows } from "./helpers"
+import { attachAndConvert, convertFixture, deleteCustomer, openNewCase, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
@@ -16,7 +16,7 @@ test("色の凡例は表にある色だけを出し、黄色の意味を添え�
   const legend = page.getByTestId("color-legend")
   await expect(legend).toBeVisible()
   // 凡例は全行で数えるので、全行が描かれている（仮想化で外れていない）ことを確かめてから表のセルと比べる
-  const all = Number(/(\d+)\s*$/.exec((await page.getByTestId("row-filters-all").textContent()) ?? "")![1])
+  const all = Number(/(\d+)/.exec((await page.getByTestId("tab-table").textContent()) ?? "")![1])
   await expect(page.locator('[data-testid="preview-table"] tbody tr[data-row-key]')).toHaveCount(all)
   const tones = await tableTones(page)
   const shown = await legend.locator("li").evaluateAll((lis) => lis.map((li) => (li as HTMLElement).dataset.tone!))
@@ -25,7 +25,7 @@ test("色の凡例は表にある色だけを出し、黄色の意味を添え�
   expect(shown.length).toBeGreaterThan(0)
   if (shown.includes("warning")) await expect(legend.locator('li[data-tone="warning"]')).toHaveAttribute("title", /AI が補った値/)
   // 絞り込みを変えても凡例は動かない（全行で数える）
-  await page.getByTestId("row-filters-fix").click()
+  await openTab(page, "fix")
   await expect(legend.locator("li")).toHaveCount(shown.length)
   await deleteCustomer(page, customer)
 })

@@ -13,6 +13,13 @@ const change: ChatChange = { kind: "inquiryMail", subject: "確認のお願い",
 const store = () => createCaseStore(initialCaseState({ kase: { status: "converting", costUsd: 0 }, files: [], previousUnsaved: false, state: null, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" } }))
 
 describe("案件のストア", () => {
+  test("新しい案件の載せる工事は、去年の案件で決めた選び方（無ければ7割ルール）。保存した作業があればそちら", () => {
+    const base = { kase: { status: "converting" as const, costUsd: 0 }, files: [], previousUnsaved: false, proposals: [], unreadableProposals: [], closedMissing: 0, settings: { rule7Tax: "excluded" as const } }
+    expect(initialCaseState({ ...base, state: null, previous: { selection: "all" } }).work.selection).toBe("all")
+    expect(initialCaseState({ ...base, state: null, previous: { selection: null } }).work.selection).toBe("rule7")
+    expect(initialCaseState({ ...base, state: null }).work.selection).toBe("rule7")
+  })
+
   test("変更案は中身と一緒に1回で入り、派生は同じ状態なら同じ参照を返す", () => {
     const s = store()
     const p = newProposal("p1", { kind: "excel", fileId: "f" }, [change], null)

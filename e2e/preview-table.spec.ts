@@ -1,14 +1,15 @@
 import { readFileSync } from "node:fs"
 import { expect, test, type Locator, type Page } from "@playwright/test"
-import { convertFixture, csvCount, deleteCustomer, open, showAllRows } from "./helpers"
+import { convertFixture, csvCount, deleteCustomer, open, openExport, openTab, showAllRows } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 const LARGE = new URL("../fixtures/sample-large.xlsx", import.meta.url).pathname
 const ROWS = '[data-testid="preview-table"] tbody tr[data-row-key]'
 
-const filterButton = (page: Page, f: "fix" | "all") => page.getByTestId(`row-filters-${f}`)
+/** 直すの段（直す行だけ）か表（すべての行）。数は段の並びの「直す」と「表」 */
+const filterButton = (page: Page, f: "fix" | "all") => ({ click: () => openTab(page, f === "fix" ? "fix" : "table") , el: page.getByTestId(f === "fix" ? "next-step-fix" : "tab-table") })
 /** 絞り込みの件数（直すは CSV に載せる行だけ。すべては表の全行） */
-const filterCount = async (page: Page, f: "fix" | "all") => Number(/(\d+)\s*$/.exec((await filterButton(page, f).textContent()) ?? "")![1])
+const filterCount = async (page: Page, f: "fix" | "all") => Number(/(\d+)/.exec((await filterButton(page, f).el.textContent()) ?? "")?.[1] ?? 0)
 /** 選んだセルの注意書き（表の上の1行） */
 const cellNote = (page: Page) => page.getByTestId("cell-note")
 const cellText = (td: Locator) => td.locator("button > span").first().textContent()
@@ -53,8 +54,8 @@ test.afterEach(async ({ page }) => {
 
 test("プレビューの表で絞り込み・並べ替え・列の表示・手直し・行の入れ外しをして CSV をダウンロードする", async ({ page }) => {
   created.push((await convertFixture(page, FIXTURE)).customer)
-  await test.step("はじめは直す（CSV に載せる行のうち、職員が直すセル: 必須が空・エラー・要確認・AI の推定のある行）だけを出し、行に理由を出す。載せない行は出さない", async () => {
-    await expect(filterButton(page, "fix")).toHaveAttribute("aria-pressed", "true")
+  await test.step("直すの段は直す行（CSV に載せる行のうち、職員が直すセル: 必須が空・エラー・要確認・AI の推定のある行）だけを出し、行に理由を出す。載せない行は出さない", async () => {
+    await filterButton(page, "fix").click()
     const check = await filterCount(page, "fix")
     expect(check).toBeGreaterThan(0)
     await expect(page.locator(ROWS)).toHaveCount(check)
@@ -178,19 +179,17 @@ test("プレビューの表で絞り込み・並べ替え・列の表示・手�
     expect(await countOf()).toBe(before - 1)
     await box.click()
     await expect(page.locator(`tr[data-row-key="${otherKey}"]`)).toHaveAttribute("data-included", "1")
-    await expect(page.locator(`tr[data-row-key="${otherKey}"] td`).first()).toContainText("手動")
+    await expect(page.locator(`tr[data-row-key="${otherKey}"]`).getByTestId("include-mark")).toHaveText("手")
     expect(await countOf()).toBe(before)
   })
 
   await test.step("CSV（控え）: ダウンロードの前の確認にエラーの残りが出て、止めずに書ける。CP932・CRLF・14列で、手直しが入っている", async () => {
-    await page.getByTestId("export-button").click()
-    const dialog = page.getByTestId("export-dialog")
+    const dialog = await openExport(page)
     await expect(dialog.getByTestId("export-rows")).toHaveText(String(before))
     await expect(dialog.getByTestId("export-errors")).toHaveAttribute("data-ok", "0")
     const downloading = page.waitForEvent("download")
     await dialog.getByTestId("download-button").click()
     const file = await (await downloading).path()
-    await page.keyboard.press("Escape")
     const bytes = readFileSync(file)
     const text = new TextDecoder("shift_jis", { fatal: true }).decode(bytes)
     expect(text.endsWith("\r\n")).toBe(true)

@@ -68,6 +68,12 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await expect(diff).toContainText("足された列: L列「担当部署」")
   })
 
+  await test.step("載せる工事は去年（2025年度）に変換した選び方を使い、答えるの段で聞かずに知らせだけ出す", async () => {
+    await openTab(page, "answer")
+    await expect(page.getByTestId("selection-carried")).toContainText("去年と同じ: 7割ルール")
+    await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveCount(0)
+  })
+
   await test.step("全件を載せる切り替えで、載る件数が変わり、戻すと元の件数", async () => {
     const rule7 = await csvCount(page)
     await openTab(page, "selection")
@@ -132,7 +138,7 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await open(page, "/csv")
     await page.locator(`[data-customer="${customer}"]`).getByRole("link").first().click()
     await page.getByRole("link", { name: /2025年度/ }).click()
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId("format-diff")).toHaveCount(0)
   })
 })

@@ -57,7 +57,7 @@ test("元の Excel に印を付けてダウンロードし、記入して返す�
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
   await page.getByTestId("chat-file-input").setInputFiles(FIXTURE)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 180_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 180_000 })
   await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done")
 
   await test.step("チャットの変更案で着工年月を顧客に確かめることにする（推定のメモが付く）", async () => {

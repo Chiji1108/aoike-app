@@ -3,7 +3,7 @@ import { expect, test, type Page, type Route } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatMetadata } from "../src/lib/chat/messages"
 import type { ChatChange, Proposal } from "../src/lib/chat/proposals"
-import { callsServerFn, caseCostText, caseCostUsd, convertFixture, csvCount, deleteCustomer, downloadCsv, open, openNewCase, reload, showAllRows } from "./helpers"
+import { callsServerFn, caseCostText, caseCostUsd, convertFixture, csvCount, deleteCustomer, downloadCsv, open, openNewCase, openTab, reload, showAllRows } from "./helpers"
 import { syntheticPdf } from "./pdf"
 import { NO_SOURCE_CONTEXT } from "../src/lib/chat/context"
 import { AI_ADDED_NOTE, IMAGE_READ_NOTE } from "../src/lib/chat/turn"
@@ -162,7 +162,7 @@ test("チャットの変更案を一覧で確かめて承認すると、表と C
 
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved")
   await reload(page)
-  await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
   await showAllRows(page)
   await expect(page.locator(`tr[data-row-key="${target.key}"]`)).toContainText(target.to)
 })
@@ -178,19 +178,20 @@ test("最初はチャットだけ。📎でアップロードすると作業の�
     await expect(page.getByTestId("chat-attach")).toHaveText("アップロード")
   })
 
-  await test.step("📎で選ぶと変換し、作業の画面が表のタブで開く", async () => {
+  await test.step("📎で選ぶと変換し、作業の画面が今の段（答える）で開く", async () => {
     const choosing = page.waitForEvent("filechooser")
     await page.getByTestId("chat-attach").click()
     await (await choosing).setFiles(FIXTURE)
     await expect(page.getByTestId("case-report")).toHaveAttribute("data-phase", "done", { timeout: 300_000 })
     await expect(page.getByTestId("work-panel")).toBeVisible()
-    await expect(page.getByTestId("tab-table")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-answer")).toHaveAttribute("aria-selected", "true")
+    await openTab(page, "table")
     await expect(page.getByTestId("preview-table")).toBeVisible()
     // 📎は小さくなる（入口は同じ）
     await expect(page.getByTestId("chat-attach")).toHaveAccessibleName("ファイルをアップロード")
   })
 
-  await test.step("閉じるとチャットだけになり、「表を開く」で開き直せる（表の検索は残る）。タブはキーボードでも選べる", async () => {
+  await test.step("閉じるとチャットだけになり、「表を開く」で開き直せる（表の検索は残る）。段はキーボードでも選べる", async () => {
     await page.getByPlaceholder("表の中を検索").fill("株式会社")
     await page.getByTestId("work-close").click()
     await expect(page.getByTestId("work-panel")).toBeHidden()
@@ -198,12 +199,11 @@ test("最初はチャットだけ。📎でアップロードすると作業の�
     await expect(page.getByTestId("preview-table")).toBeVisible()
     await expect(page.getByPlaceholder("表の中を検索")).toHaveValue("株式会社")
     await page.getByPlaceholder("表の中を検索").fill("")
-    await page.getByTestId("tab-table").focus()
-    // 表 → 業種 → 7割と金額
-    await page.keyboard.press("ArrowRight")
-    await page.keyboard.press("ArrowRight")
+    await page.getByTestId("next-step-answer").focus()
+    // 答える → 業種 → 直す → 問い合わせ → ダウンロード（7割と金額はダウンロードの段の中）
+    for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowRight")
     await page.keyboard.press("Enter")
-    await expect(page.getByTestId("tab-selection")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-export")).toHaveAttribute("aria-selected", "true")
     await expect(page.getByTestId("tax-included")).toBeVisible()
     await page.getByTestId("tab-table").click()
   })
@@ -216,29 +216,30 @@ test("最初はチャットだけ。📎でアップロードすると作業の�
     ])
     await send(page, "問い合わせの Excel を作って")
     await page.getByTestId("chat-action").click()
-    await expect(page.getByTestId("tab-inquiry")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("aria-selected", "true")
     await page.getByTestId("tab-table").click()
     await send(page, "7割の設定を見て")
     await expect(page.getByTestId("chat-messages")).toContainText("7割の設定を見ました。")
-    await expect(page.getByTestId("tab-selection")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-export")).toHaveAttribute("aria-selected", "true")
     // 道具の行からも開ける
     await page.getByTestId("tab-table").click()
     await page.getByTestId("chat-open-tab").click()
-    await expect(page.getByTestId("tab-selection")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-export")).toHaveAttribute("aria-selected", "true")
     // 職員が閉じた作業の画面は、道具の結果で開き直さない（タブだけ切り替える）
     await page.getByTestId("work-close").click()
     await send(page, "配置技術者を顧客に聞いて")
     await expect(page.getByTestId("chat-messages")).toContainText("問い合わせに回しました。")
     await expect(page.getByTestId("work-panel")).toBeHidden()
     await page.getByTestId("work-open").click()
-    await expect(page.getByTestId("tab-inquiry")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("aria-selected", "true")
   })
 
-  await test.step("開き直すと（保存済みの案件）作業の画面は表のタブで開き、前の道具の結果ではタブを動かさない", async () => {
+  await test.step("開き直すと（保存済みの案件）作業の画面は今の段で開き、前の道具の結果では動かさない", async () => {
     await page.unrouteAll({ behavior: "ignoreErrors" })
     await reload(page)
-    await expect(page.getByTestId("preview-table")).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByTestId("tab-table")).toHaveAttribute("aria-selected", "true")
+    await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
+    const current = (await page.getByTestId("next-steps").getAttribute("data-current"))!
+    await expect(page.getByTestId("work-panel")).toHaveAttribute("data-view", current)
   })
 })
 
@@ -252,6 +253,7 @@ test("狭い画面: チャットが画面いっぱいで、作業の画面は「
   await test.step("「表を開く」で上に重ねて開く。セルを直す欄の Escape は欄だけを閉じ、作業の画面は閉じない", async () => {
     await page.getByTestId("work-open").click()
     await expect(page.getByRole("dialog", { name: "作業の画面" })).toBeVisible()
+    await openTab(page, "table")
     await expect(page.getByTestId("preview-table")).toBeVisible()
     await page.locator('[data-testid="preview-table"] tbody tr[data-row-key] td[data-field="place"] button').first().click()
     await expect(page.getByLabel("セルの値")).toBeVisible()
@@ -272,16 +274,18 @@ test("狭い画面: チャットが画面いっぱいで、作業の画面は「
     await expect(page.getByTestId("work-panel")).toBeHidden()
   })
 
-  await test.step("道具の結果ではチャットを覆わずタブだけ切り替える。重ねて開いている間は、次にやることの「答える」に承認待ちが出て、押すとチャットへ移る", async () => {
+  await test.step("道具の結果ではチャットを覆わずタブだけ切り替える。「答える」の段に承認待ちが出て、「チャットで確かめる」でチャットへ移る", async () => {
     await fakeChat(page, [({ table }) => ({ text: "1行を外す案です。", changes: [{ kind: "include", rowKey: companyRow(table.rows).key, include: false }], tool: "ask_customer" })])
     await send(page, "注文者が株式会社の最初の行を外して")
     await expect(page.getByTestId("proposal")).toContainText("未決 1 件")
     await expect(page.getByTestId("work-panel")).toBeHidden()
     await page.getByTestId("work-open").click()
-    await expect(page.getByTestId("tab-inquiry")).toHaveAttribute("aria-selected", "true")
-    // 次にやることの「答える」に承認待ちの数が出て、押すと作業の画面を閉じてチャットの変更案へ移る
-    await expect(page.getByTestId("next-step-answer")).toContainText("1")
-    await page.getByTestId("next-step-answer").click()
+    await expect(page.getByTestId("next-step-inquiry")).toHaveAttribute("aria-selected", "true")
+    // 「答える」の段に承認待ちが出て、「チャットで確かめる」で作業の画面を閉じてチャットの変更案へ移る
+    await openTab(page, "answer")
+    const item = page.locator('[data-testid="answer-section"] [data-testid="report-question"][data-question^="proposal:"]')
+    await expect(item).toContainText("承認待ち 1 件")
+    await item.getByTestId("report-question-ask").click()
     await expect(page.getByTestId("work-panel")).toBeHidden()
     await expect(page.getByTestId("proposal")).toBeInViewport()
     await expect(page.getByTestId("chat-messages")).toContainText("注文者が株式会社の最初の行を外して")
