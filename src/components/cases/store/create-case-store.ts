@@ -1,6 +1,7 @@
 import { createStore } from "zustand"
 import type { UploadNote } from "@/components/cases/case-report"
 import type { TableFilter } from "@/components/convert/status"
+import { EMPTY_GRID, type TableGrid } from "@/components/convert/column-filter"
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
 import type { CaseFile, CaseStatus } from "@/lib/cases/types"
@@ -105,6 +106,11 @@ export type CaseState = {
     /** 表の絞り込みの理由・聞き返し（kind は開いているもので決まる: 直すの段は直す行、表はすべて。null は選んでいない） */
     filter: TableFilter | null
     /**
+     * 表の見え方（検索・並べ替え・列の表示・列のフィルター）。直すの段と表で同じもの（同じ表）。保存しない（開き直すと外れる。Excel と同じ）。
+     * 聞き返しの「表で見る」は列のフィルターを外す（その行をすべて見せる）
+     */
+    grid: TableGrid
+    /**
      * ダイアログ: delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）
      */
     dialogs: { delete: boolean; downloads: boolean; pendingSources: CaseFile[] }
@@ -198,6 +204,7 @@ export function initialCaseState(page: {
       tool: null,
       workChoice: null,
       filter: null,
+      grid: EMPTY_GRID,
       dialogs: { delete: false, downloads: false, pendingSources: [] },
       dragging: false,
       focus: null,

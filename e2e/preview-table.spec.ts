@@ -14,6 +14,13 @@ const filterCount = async (page: Page, f: "fix" | "all") => Number(/(\d+)/.exec(
 const cellNote = (page: Page) => page.getByTestId("cell-note")
 const cellText = (td: Locator) => td.locator("button > span").first().textContent()
 const rowKeys = (page: Page) => page.locator(ROWS).evaluateAll((trs) => trs.map((tr) => (tr as HTMLElement).dataset.rowKey!))
+/** 見出しの ▼ を開いて並べ替える（もう一度同じ向きを押すと元の並び）。閉じて戻る */
+async function sortBy(page: Page, column: string, dir: "asc" | "desc") {
+  await page.locator(`[data-testid="column-menu"][data-column="${column}"]`).click()
+  await page.getByTestId("column-panel").getByTestId(`sort-${dir}`).click()
+  await page.keyboard.press("Escape")
+  await expect(page.getByTestId("column-panel")).toBeHidden()
+}
 const scrollTable = (page: Page, to: "top" | "bottom" | number) =>
   page.getByTestId("preview-table").evaluate((table, to) => {
     const box = table.parentElement!
@@ -92,16 +99,16 @@ test("プレビューの表で絞り込み・並べ替え・列の表示・手�
     const header = page.locator("th").filter({ hasText: "請負代金" })
     const amounts = async () =>
       (await Promise.all((await page.locator('td[data-field="amount"]').all()).map(cellText))).map(Number).filter((n) => !Number.isNaN(n))
-    await header.getByRole("button").click()
+    await sortBy(page, "amount", "asc")
     await expect(header).toHaveAttribute("aria-sort", "ascending")
     const asc = await amounts()
     expect(asc.length).toBeGreaterThan(1)
     expect(asc).toEqual([...asc].sort((a, b) => a - b))
-    await header.getByRole("button").click()
+    await sortBy(page, "amount", "desc")
     await expect(header).toHaveAttribute("aria-sort", "descending")
     const desc = await amounts()
     expect(desc).toEqual([...desc].sort((a, b) => b - a))
-    await header.getByRole("button").click()
+    await sortBy(page, "amount", "desc")
     await expect(header).not.toHaveAttribute("aria-sort", /./)
     expect(await rowKeys(page)).toEqual(original)
   })
@@ -265,8 +272,7 @@ test("行の多い表: 仮想スクロールの先でも絞り込み・検索・
 
   await test.step("並べ替え: 請負代金の降順は、スクロールした先まで降順", async () => {
     const header = page.locator("th").filter({ hasText: "請負代金" })
-    await header.getByRole("button").click()
-    await header.getByRole("button").click()
+    await sortBy(page, "amount", "desc")
     await expect(header).toHaveAttribute("aria-sort", "descending")
     const amounts = async () =>
       (await page.locator('td[data-field="amount"] > button > span:first-child').evaluateAll((spans) => spans.map((s) => Number(s.textContent)))).filter(
@@ -280,7 +286,7 @@ test("行の多い表: 仮想スクロールの先でも絞り込み・検索・
     const all = [...top, ...bottom]
     expect(bottom.length).toBeGreaterThan(1)
     expect(all).toEqual([...all].sort((a, b) => b - a))
-    await header.getByRole("button").click()
+    await sortBy(page, "amount", "desc")
     await expect(header).not.toHaveAttribute("aria-sort", /./)
     await scrollTable(page, "top")
   })

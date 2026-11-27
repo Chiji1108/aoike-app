@@ -3,6 +3,7 @@ import type { WorkTab } from "@/components/cases/work-tabs"
 import type { StepId } from "@/lib/cases/steps"
 import { listedGyoshuPlans } from "@/lib/cases/todo"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
+import type { ColumnFilterValue, TableGrid } from "@/components/convert/column-filter"
 import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
 import type { ChatAction } from "@/lib/chat/messages"
@@ -109,6 +110,11 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps) {
     openTab: (t: WorkTab, how: "auto" | "click") => ui.openTab(env, t, how),
     setFilter: (f: TableFilter) => ui.setFilter(env, f),
     viewAsk: (askId: string) => ui.viewAsk(env, askId),
+    setTableQuery: (query: string) => ui.setTableQuery(env, query),
+    setTableSorting: (sorting: TableGrid["sorting"]) => ui.setTableSorting(env, sorting),
+    setColumnVisibility: (v: TableGrid["columnVisibility"]) => ui.setColumnVisibility(env, v),
+    setColumnFilter: (id: string, value: ColumnFilterValue | null) => ui.setColumnFilter(env, id, value),
+    clearColumnFilters: () => ui.clearColumnFilters(env),
     goChat: (to: ChatTarget) => ui.goChat(env, to),
     goStep: (id: StepId) => ui.goStep(env, id),
     closeTool: () => ui.closeTool(env),
