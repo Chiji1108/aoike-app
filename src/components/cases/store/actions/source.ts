@@ -135,8 +135,7 @@ export async function startPlanning(env: CaseEnv, src: Source, requiredSheet?: s
   const fallback = fallbackFor(g)
   const id = store.getState().runtime.gen.case + 1
   supersedeConversion(env)
-  // 返ってきた Excel の案内は前の元の行の問い合わせへのもの
-  setRuntime(store, (r) => ({ gen: { ...r.gen, case: id }, convertError: null, planDraft: { plan: fallback, source: "rule" }, hints: { ...r.hints, answer: [] } }))
+  setRuntime(store, (r) => ({ gen: { ...r.gen, case: id }, convertError: null, planDraft: { plan: fallback, source: "rule" } }))
   setWork(store, (w) => replanWork(w, src.fileId))
   const current = () => store.getState().runtime.gen.case === id
   let next: SavedPlan
@@ -169,27 +168,34 @@ export async function startPlanning(env: CaseEnv, src: Source, requiredSheet?: s
 /**
  * 変換の元のファイルを読む。計画がまだ無ければ（replan: 初めて選んだ・計画の途中で閉じた）計画を立てる。
  * AI が使えない（APIキーが無い）ときは計画を立てない（このツールは AI で列の対応を決める。見出しの推定で黙って進めない）。
- * 読んでいる間に別の元を読み始めたら、この結果は捨てる
+ * 読んでいる間に別の元を読み始めたら、この結果は捨てる。結果は opened（表として読めた）・unreadable（読めない）・superseded（ほかの開く操作に追い越された）。
+ * read はもう読んだシート（付けたときに読めるか確かめたもの。あればファイルを取り直さない）
  */
-export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean) {
+export async function openSource(env: CaseEnv, file: CaseFile, replan: boolean, read?: SheetGrid[]): Promise<"opened" | "unreadable" | "superseded"> {
   const { store, deps } = env
   const id = store.getState().runtime.gen.source + 1
   setRuntime(store, (r) => ({ gen: { ...r.gen, source: id }, loading: file.name, sourceError: null }))
   const current = () => store.getState().runtime.gen.source === id
   try {
-    const [{ readWorkbook }, { markability }] = await Promise.all([import("@/lib/convert/workbook"), import("@/lib/inquiry/markable")])
-    const bytes = await deps.fetchFile(file.id)
-    if (!current()) return
-    const sheets = readWorkbook(file.name, bytes)
+    let sheets = read
+    if (!sheets) {
+      const { readWorkbook } = await import("@/lib/convert/workbook")
+      const bytes = await deps.fetchFile(file.id)
+      if (!current()) return "superseded"
+      sheets = readWorkbook(file.name, bytes)
+    }
     if (!primarySheet(SPEC, KOJI_PLAN_HINTS, sheets)) throw new Error("シートが空です")
-    const src: Source = { fileId: file.id, name: file.name, bytes, sheets, markable: markability(file.name, bytes) }
+    const src: Source = { fileId: file.id, name: file.name, sheets }
     setRuntime(store, () => ({ source: src, loading: null }))
     if (replan && env.config.chatEnabled) await startPlanning(env, src)
+    return "opened"
   } catch (e) {
     if (current()) {
       setRuntime(store, () => ({ sourceError: { file, message: errorMessage(e, "ファイルを読み込めませんでした") } }))
       chatArrived(env, "error")
+      return "unreadable"
     }
+    return "superseded"
   } finally {
     if (current()) setRuntime(store, () => ({ loading: null }))
   }

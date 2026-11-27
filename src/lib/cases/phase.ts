@@ -5,6 +5,8 @@
 export type ReportPhase =
   | { kind: "empty" }
   | { kind: "noSheet" }
+  /** 届いた表のファイルはあるが、変換の元を選んでいない（選ぶファイル） */
+  | { kind: "chooseSource"; files: readonly { id: string; name: string }[] }
   /** AI が使えない（APIキーが無い）。このツールは AI で列の対応を決めるので、推定の計画で進めずに止める */
   | { kind: "noAi" }
   | { kind: "reading"; name: string }
@@ -27,6 +29,8 @@ export type PhaseInput = {
   converting: boolean
   hasTable: boolean
   noSheetSource: boolean
+  /** 元を選んでもらう届いた表のファイル（case-view.ts の sourceChoices） */
+  sourceChoices: readonly { id: string; name: string }[]
   /** 変換の元のファイルの名前（無ければ null） */
   sourceName: string | null
 }
@@ -41,6 +45,7 @@ export function reportPhase(i: PhaseInput): ReportPhase {
   if (i.converting) return { kind: "converting", name: i.sourceName ?? "" }
   if (i.hasTable) return { kind: "done" }
   if (i.noSheetSource) return { kind: "noSheet" }
+  if (i.sourceChoices.length) return { kind: "chooseSource", files: i.sourceChoices }
   if (i.sourceName !== null) return { kind: "reading", name: i.sourceName }
   return { kind: "empty" }
 }

@@ -39,8 +39,7 @@ function input(proposals: { p: Proposal; changes: ChatChange[] }[], over: Partia
     questions: [],
     inquiries: [],
     dismissed: new Set(),
-    answersRead: false,
-    inquirySent: false,
+    inquiring: false,
     ...over,
   }
 }
@@ -69,13 +68,13 @@ describe("業種の AI の案（fix）", () => {
 })
 
 describe("答える", () => {
-  test("報告の聞き返し（答えていないもの）→ chat・excel・answer の開いた変更案の順。location・閉じたものは数えない", () => {
+  test("報告の聞き返し（答えていないもの）→ chat の開いた変更案の順。location・閉じたものは数えない", () => {
     const chat = proposal("c1", { kind: "chat", messageId: "m" }, [cellChange(r3)], "これでよいですか")
-    const excel = proposal("e1", { kind: "excel", fileId: "f" }, [cellChange(r3), cellChange(r0)])
-    const closed = proposal("a1", { kind: "answer", fileId: "f" }, [cellChange(r3)])
+    const other = proposal("e1", { kind: "chat", messageId: "m2" }, [cellChange(r3), cellChange(r0)])
+    const closed = proposal("a1", { kind: "chat", messageId: "m3" }, [cellChange(r3)])
     const location = proposal("l1", { kind: "location", runId: "r" }, [cellChange(r3)])
     const todo = caseTodo(
-      input([chat, excel, { ...closed, p: discard(closed.p) }, location], {
+      input([chat, other, { ...closed, p: discard(closed.p) }, location], {
         questions: [
           { id: "tax", answered: false },
           { id: "plan-ask-0", answered: true },
@@ -85,7 +84,7 @@ describe("答える", () => {
     expect(todo.answer).toEqual([
       { kind: "question", id: "tax" },
       { kind: "proposal", proposalId: "c1", origin: "chat", waiting: 1, question: true },
-      { kind: "proposal", proposalId: "e1", origin: "excel", waiting: 2, question: false },
+      { kind: "proposal", proposalId: "e1", origin: "chat", waiting: 2, question: false },
     ])
     // チャットの報告の1行「聞き返しが N件あります」は報告の聞き返しだけ（変更案はチャットの流れにある）
     expect(reportAsks(todo)).toBe(1)
@@ -120,12 +119,11 @@ describe("直す・問い合わせ・タブの数", () => {
     expect(todo.inquiry).toEqual({ active: 2, left: 1, state: "todo" })
     expect(tabBadge(todo, "inquiry")).toBe(2)
     expect(tabBadge(todo, "table")).toBe(0)
-    expect(caseTodo(input([], { inquiries, inquirySent: true })).inquiry.state).toBe("waiting")
-    // 返ってきた Excel を読んでも、顧客の回答の変更案を決め終えるまでは済みにしない
-    const ans = proposal("a1", { kind: "answer", fileId: "f" }, [cellChange(r3)])
-    expect(caseTodo(input([ans], { inquiries, inquirySent: true, answersRead: true })).inquiry.state).toBe("waiting")
-    expect(caseTodo(input([{ ...ans, p: discard(ans.p) }], { inquiries, answersRead: true })).inquiry.state).toBe("done")
-    expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)) })).inquiry).toEqual({ active: 0, left: 0, state: "done" })
+    // 問い合わせ中で、答えのない問い合わせが残っていれば返事待ち（税込・税抜だけが残っても顧客に聞いているので返事待ち）
+    expect(caseTodo(input([], { inquiries, inquiring: true })).inquiry).toEqual({ active: 3, left: 2, state: "waiting" })
+    const cells = inquiries.filter((q) => q.kind === "cell").map(inquiryKey)
+    expect(caseTodo(input([], { inquiries, dismissed: new Set(cells), inquiring: true })).inquiry).toEqual({ active: 1, left: 0, state: "waiting" })
+    expect(caseTodo(input([], { inquiries, dismissed: new Set(inquiries.map(inquiryKey)), inquiring: true })).inquiry).toEqual({ active: 0, left: 0, state: "done" })
   })
 })
 

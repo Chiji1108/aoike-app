@@ -5,7 +5,7 @@ import { needsConfirm } from "@/lib/cases/ask-impact"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
 import { pendingGyoshuItems } from "@/lib/cases/todo"
-import { CONFIRM_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
+import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
 import { selectionSettled, setSelection } from "@/lib/cases/selection"
@@ -13,6 +13,7 @@ import { SELECTION_LABELS, type Rule7Tax, type SelectionMode, type TaxMode } fro
 import { askKey, hasExclusion, type ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
 import type { Rounding } from "@/lib/convert/transforms"
+import { inquiryKey } from "@/lib/inquiry/inquiry"
 import type { InquiryText } from "@/lib/inquiry/text"
 import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { ASK_KINDS } from "../case-view"
@@ -154,7 +155,26 @@ export function changeSelection(env: CaseEnv, mode: SelectionMode) {
   notifyCommitted(env, `載せる工事を${SELECTION_LABELS[mode]}にしました`, committed, id, "載せる工事の切り替え")
 }
 
-/** 問い合わせに入れる・外す（外した問い合わせは添付・件数に入れない） */
+/**
+ * 「残りは聞かない」: まだ答えのないセルの問い合わせをまとめて外す（顧客が分からないと答えた残りなど。税込・税抜は外さない）。
+ * 1回の操作を1つの取り消しの記録に。外すものはその時点の問い合わせから読む
+ */
+export function dismissRemaining(env: CaseEnv) {
+  const id = `${DISMISS_UNDO}${crypto.randomUUID()}`
+  let n = 0
+  const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
+    const keys = env
+      .view(s)
+      .inquiries.filter((q) => q.kind === "cell")
+      .map(inquiryKey)
+      .filter((k) => !s.work.dismissed.has(k))
+    n = keys.length
+    return n ? { ...s.work, dismissed: new Set([...s.work.dismissed, ...keys]) } : s.work
+  })
+  if (n) notifyCommitted(env, `残りの問い合わせ ${n} 件を聞かないことにしました`, committed, id, "問い合わせを外したこと")
+}
+
+/** 問い合わせに入れる・外す（外した問い合わせはメールと件数に入れない） */
 export function toggleInquiry(env: CaseEnv, key: string, ask: boolean) {
   update(env, "dismissed", (prev) => {
     const next = new Set(prev)

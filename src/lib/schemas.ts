@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { AMOUNT_TRANSFORMS, type CellEdit, type Replacements } from "./convert/convert"
+import type { CellEdit, Replacements } from "./convert/convert"
 import { ROUNDINGS, type Rounding } from "./convert/transforms"
 import { RULE7_TAXES, SELECTION_MODES, type Basis, type Rule7Tax, type SelectionMode, type TaxMode } from "./convert/koji-selection"
 import { KOJI_KEIREKI, type KojiFieldId } from "./spec/koji-keireki"
@@ -32,14 +32,12 @@ export const basisSchema: z.ZodType<Basis> = z.record(z.string(), z.object({ tot
 
 export const cellEditSchema: z.ZodType<CellEdit> = z.object({
   value: z.string(),
-  by: z.enum(["staff", "customer", "confirmed", "chat", "excel", "location"]),
+  by: z.enum(["staff", "customer", "confirmed", "chat", "location"]),
   status: z.enum(["ai", "warning", "error"]).optional(),
   message: z.string().optional(),
   guessed: z.literal(true).optional(),
   byAi: z.literal(true).optional(),
   ask: z.literal(true).optional(),
-  // 前の手直しには無い
-  amount: z.object({ raw: z.string().max(100), transform: z.enum(AMOUNT_TRANSFORMS) }).optional(),
 })
 
 export const replacementsSchema: z.ZodType<Replacements<KojiFieldId>> = z.partialRecord(fieldIdSchema, z.record(z.string(), cellEditSchema))

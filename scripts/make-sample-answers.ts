@@ -5,7 +5,6 @@
  *
  * 元の Excel（工事経歴.xlsx）は配置技術者・完成日・工事場所が抜けた行がある内装工事の表。問い合わせはこの抜けた欄になる。
  * - synth-answers-mail: 顧客がメールの本文で答える（職員がチャットに貼る）。「倉庫の件」は2つの倉庫の工事に当てはまるので、AI は決めずに職員に聞くのが正しい
- * - synth-answers-column: 記入用Excelの色付きの欄に書かず、右に足した「備考」の列に書いて返す（照合の回に記入用Excelを作る。決まった欄は空のまま）
  * - synth-answers-partial: 一部だけ答えるメール（残りは確認中）。答えていない項目は埋めないのが正しい
  * 正しい答え（answerTruth）は工事名・項目・CSV の値。ここに無い問い合わせは答えが無い（埋めたら誤り）
  */
@@ -86,16 +85,6 @@ const partial = [
   "そのほかの件は現場に確認中のため、分かり次第ご連絡します。",
 ].join("\n")
 
-/** 記入用Excelの「備考」の列（色付きの欄は空のまま）。工事名 → 備考 */
-const column: Record<string, string> = {
-  [works[1]!.name]: "担当は山本 健太です",
-  [works[2]!.name]: "完成は2024年10月",
-  [works[3]!.name]: "神奈川県横浜市中区です",
-  [works[4]!.name]: "2024年11月完成",
-  [works[5]!.name]: "東京都世田谷区",
-  [works[6]!.name]: "技術者は山本 健太",
-}
-
 const base = {
   xlsx: "fixtures/eval/synth-answers/工事経歴.xlsx",
   staffCsv: "fixtures/eval/synth-answers/期待.csv",
@@ -118,7 +107,6 @@ writeFileSync(`${dir}/synth-answers/期待.csv`, encodeCp932(works.map(expected)
 const cases = JSON.parse(readFileSync(`${dir}/cases.json`, "utf8")) as Record<string, unknown>
 // 「倉庫の件」は2つの倉庫の工事（物流倉庫・冷凍倉庫）の技術者に当てはまるので、どちらも答えの無いものとして数える
 cases["synth-answers-mail"] = { ...base, answerInstructions: [mail], answerTruth: all.filter((t) => t.workName !== works[1]!.name) }
-cases["synth-answers-column"] = { ...base, answerSheet: column, answerTruth: all.filter((t) => t.workName in column) }
 cases["synth-answers-partial"] = { ...base, answerInstructions: [partial], answerTruth: all.filter((t) => t.workName === works[1]!.name || t.workName === works[2]!.name) }
 writeFileSync(`${dir}/cases.json`, JSON.stringify(cases, null, 1) + "\n")
 console.log(`wrote ${dir}/synth-answers`)

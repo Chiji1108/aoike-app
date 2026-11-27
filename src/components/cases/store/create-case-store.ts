@@ -1,7 +1,6 @@
 import { createStore } from "zustand"
 import type { UploadNote } from "@/components/cases/case-report"
 import type { TableFilter } from "@/components/convert/status"
-import type { FinalImport } from "@/components/convert/final-import-panel"
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
 import type { CaseFile, CaseStatus } from "@/lib/cases/types"
@@ -9,12 +8,11 @@ import type { StepId, StepView, ToolId } from "@/lib/cases/steps"
 import { NO_ADDRESSES, type AddressBook } from "@/lib/convert/address"
 import type { Rule7Tax } from "@/lib/convert/koji-selection"
 import { reviewPlanTransforms, type SheetGrid } from "@/lib/convert/plan"
-import type { Markability } from "@/lib/inquiry/markable"
 import { withRecorded, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
 import { KOJI_KEIREKI } from "@/lib/spec/koji-keireki"
 
-/** 変換の元。bytes は読んだファイル（印付きの Excel を書くのに使う。取り直さない）、markable は印付きの Excel にできるか（lib/inquiry/markable.ts） */
-export type Source = { fileId: string; name: string; bytes: Uint8Array; sheets: SheetGrid[]; markable: Markability }
+/** 変換の元（読んだファイルのシート） */
+export type Source = { fileId: string; name: string; sheets: SheetGrid[] }
 
 /**
  * 同じブラウザの別のタブ（BroadcastChannel で知らせ合う。sync.ts）: none はほかに無い、open は別のタブでも開いている、
@@ -93,13 +91,8 @@ export type CaseState = {
     busy: { rule: boolean }
     /** アップロードしたファイルをどう扱ったか（報告に出す。最後の10件） */
     notes: UploadNote[]
-    /** 最後に上げ直した最後の Excel の結果（チャット欄の報告の下に出す） */
-    finalResult: FinalImport | null
-    /**
-     * チャットの案内: answer は色付きの欄の外の記入・読めなかった記入のある返ってきた Excel（ファイルごとに AI に読ませるかを出す）、
-     * inquiry は問い合わせのメールの下書きの案内（hidden はまだ、shown は作業の画面で問い合わせのタブを見たので出す、sent は送ったのでこの画面ではもう出さない）
-     */
-    hints: { answer: { fileId: string; name: string }[]; inquiry: "hidden" | "shown" | "sent" }
+    /** チャットの「AI でメールの下書きを作る」の案内（hidden はまだ、shown は作業の画面で問い合わせの段を見たので出す、sent は送ったのでこの画面ではもう出さない） */
+    inquiryHint: "hidden" | "shown" | "sent"
   }
   /**
    * 画面の状態（保存しない。変えるのは actions/ui.ts などの action だけ）。作業の画面・チャットをどう並べるかは、ここから layoutOf（lib/cases/layout.ts）で決める
@@ -219,8 +212,7 @@ export function initialCaseState(page: {
       addressBook: NO_ADDRESSES,
       busy: { rule: false },
       notes: [],
-      finalResult: null,
-      hints: { answer: [], inquiry: "hidden" },
+      inquiryHint: "hidden",
     },
     ui: {
       wide: false,

@@ -4,8 +4,7 @@
  *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<結果を書くフォルダ> pnpm exec tsx scripts/eval.ts <case> <variant>
  *   variant: baseline（チャットなし）| edit（案件定義の指示を順に）| rules（edit で承認した顧客ルールを入れて「顧客ルールどおりに表を直して」の1回）
  *            | plan（列の対応を直す指示: 案件定義の planInstructions を順に。set_plan の変更案は画面と同じく今の計画に重ねて変換し直し、ほかの変更案はその上に重ねる）
- *            | answers（顧客の回答: 案件定義の answerSheet があれば記入用Excelを作って「備考」の列に答えを書き、画面と同じく決まった欄を先に読んでから
- *              「AI で読む」と同じ指示を送る。answerInstructions があればメールの本文として順に送る。聞いていたセルの答えを answerTruth と比べる）
+ *            | answers（顧客の回答: answerInstructions をメールの本文として順に送る。聞いていたセルの答えを answerTruth と比べる）
  *            | inquiry（問い合わせの文面: 変換の結果に画面の「AI で文面を作る」と同じ指示を送り、質問の文とメールの下書きの案を全部承認したものとして、
  *              問い合わせのうち AI の文で聞く数・まとめた質問の数・決まった言葉や個人名・工事名・ほかの案件の顧客名が文に入っていないかを数える）
  *            | location（工事場所の調査: 変換の結果から調べる現場を集め、画面の一括調査と同じ手順で調べ、変更案を全部承認して都道府県・場所名を比べる。
@@ -90,8 +89,6 @@ type CaseDef = {
   previousXlsx?: string
   /** answers: 顧客のメールの本文（チャットに貼る指示として順に送る） */
   answerInstructions?: string[]
-  /** answers: 記入用Excelの右に足す「備考」の列に書く答え（工事名 → 備考）。色付きの欄は空のまま返す */
-  answerSheet?: Record<string, string>
   /** answers: 正しい答え（工事名・項目・CSV の値）。聞いたセルのうちここに無いものは、顧客が答えていない（埋めたら誤り） */
   answerTruth?: { workName: string; field: KojiFieldId; value: string }[]
 }
@@ -549,8 +546,7 @@ async function locationEval() {
  * 聞き返し（ask_staff）があれば変更案もそのまま重ねる（職員が「はい」と答えたものとして。決められない答えは変更案に入れないのが正しい）
  */
 async function answersEval() {
-  const { collectInquiries, inquirySheet, mergeAnswers, outsideCells, readAnswers, aiAnswerPrompt } = await import("../src/lib/inquiry/inquiry")
-  const XLSX = await import("xlsx")
+  const { collectInquiries } = await import("../src/lib/inquiry/inquiry")
   const truth = def!.answerTruth
   if (!truth) throw new Error("answers には案件定義の answerTruth が要る")
   let table: CaseTable = { ...tableOf(base), selection: "all" }
@@ -560,11 +556,10 @@ async function answersEval() {
   console.log(`問い合わせ ${asked.length} セル: ${asked.map((q) => `${nameOf.get(q.rowKey)}/${q.field}`).join(" | ")}`)
   const t00 = Date.now()
   let total = 0
-  const uploads: { id: string; name: string; original: string; mediaType: string; isSource: boolean; answer?: true }[] = []
+  const uploads: { id: string; name: string; original: string; mediaType: string; isSource: boolean }[] = []
   const generated = new Set<string>()
-  const turns: string[] = [...(def!.answerInstructions ?? [])]
+  const turns = def!.answerInstructions ?? []
   const log: unknown[] = []
-  let deterministic: unknown = null
   const anonymize = async (req: Parameters<typeof batchWithClaude>[1]) => {
     const r = await batchWithClaude(anthropic, req)
     spend("anonymize", r.usd)
@@ -577,33 +572,7 @@ async function answersEval() {
       const up = await anthropic.files.upload({ file: await toFile(readFileSync(path(p)), containerName(i, original), { type: contentTypeOf(original) }) })
       uploads.push({ id: up.id, name: containerName(i, original), original, mediaType: contentTypeOf(original), isSource: i === 0 })
     }
-    if (def!.answerSheet) {
-      // 画面の記入用Excelと同じ中身（見出し・照合用の列）に「備考」の列を足し、答えはそこにだけ書く
-      const sheet = inquirySheet(start.output, asked)
-      const notes = def!.answerSheet
-      const header = [...sheet.columns.map((c) => c.header), "備考"]
-      const workCol = sheet.columns.findIndex((c) => c.header === "工事名")
-      const aoa = [["工事経歴書の確認のお願い"], [], header, ...sheet.rows.map((r) => [...r.cells.map((c) => c.value), notes[r.cells[workCol]!.value] ?? ""])]
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "ご記入のお願い")
-      const original = "回答.xlsx"
-      const bytes = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer
-      writeFileSync(join(OUT!, `${caseId}-answers.xlsx`), bytes)
-      // 画面と同じく、決まった欄を先に読む（AI は呼ばない記入だけ。色付きの欄は空なので答えは入らない）
-      const sheets = readWorkbook(original, new Uint8Array(bytes))
-      const report = await readAnswers(sheets, start.shown, { ctx: { rounding: "floor" }, lookup: fileAddressLookup, cache: new Map(), fields: base.plan.fields })
-      if ("error" in report) throw new Error(report.error)
-      const merged = mergeAnswers(report, start.shown, { rows: base.rows, replacements: table.replacements, edits: table.edits })
-      table = { ...table, edits: merged.edits }
-      const outside = outsideCells(sheets, start.shown)
-      deterministic = { applied: report.applied.length, unanswered: report.unanswered.length, invalid: report.invalid.length, outside }
-      console.log(`決まった欄の取り込み: 反映 ${report.applied.length} / 空欄 ${report.unanswered.length} / 読めない ${report.invalid.length} / 欄の外の記入 ${outside}`)
-      const name = containerName(uploads.length, original)
-      const up = await anthropic.files.upload({ file: await toFile(bytes, name, { type: contentTypeOf(original) }) })
-      uploads.push({ id: up.id, name, original, mediaType: contentTypeOf(original), isSource: false, answer: true })
-      turns.push(aiAnswerPrompt(original))
-    }
-    if (!turns.length) throw new Error("answers には answerInstructions か answerSheet が要る")
+    if (!turns.length) throw new Error("answers には answerInstructions が要る")
     const messages: ModelMessage[] = []
     let containerId: string | undefined
     for (const [i, text] of turns.entries()) {
@@ -660,7 +629,7 @@ async function answersEval() {
   console.log(`\n答え ${truth.length} 件: 正しい ${outcome.correct} / 誤り ${outcome.wrong} / 抜け ${outcome.missed} / 余計 ${outcome.extra}（答えの無い ${outcome.untouched} 件はそのまま）聞き返し ${questions} 回 $${total.toFixed(3)}`)
   for (const d of details) console.log("  " + d)
   const score = compare(csvRows(table))
-  writeFileSync(join(OUT!, `${caseId}-answers.json`), JSON.stringify({ asked: asked.length, truth: truth.length, outcome, details, questions, deterministic, total, ms: Date.now() - t00, log }, null, 1))
+  writeFileSync(join(OUT!, `${caseId}-answers.json`), JSON.stringify({ asked: asked.length, truth: truth.length, outcome, details, questions, total, ms: Date.now() - t00, log }, null, 1))
   writeSummary("answers", { status: "done", score, turns: log.length, ms: Date.now() - t00, conversionUsd: base.usd, usd: total })
 }
 

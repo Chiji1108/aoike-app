@@ -1,11 +1,10 @@
 import { toast } from "sonner"
 import { MAX_ADDED_ROWS } from "@/lib/cases/added"
-import { MAX_REJECTED_EXCEL, type CaseWork } from "@/lib/cases/state"
+import type { CaseWork } from "@/lib/cases/state"
 import { canUndo, pushUndo, undo, undoEntry, type UndoEntry, type UndoKind } from "@/lib/cases/undo"
 import { addedCountAfter, applyChanges, approvedChange, decide, decisionOf, isAnswered, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
 import type { MappingPlan, ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
-import { changeSignature } from "@/lib/excel/final-import"
 import { errorMessage } from "@/lib/errors"
 import { KOJI_KEIREKI, type KojiFieldId } from "@/lib/spec/koji-keireki"
 import { setRuntime, setWork, type CaseState, type CaseStore } from "../create-case-store"
@@ -115,12 +114,7 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   const changes = contents.get(id)
   if (!p || p.state !== "open" || !changes) return
   const chosen = indices.filter((i) => decisionOf(p, i) === "pending")
-  if (decision === "rejected") {
-    // 直した Excel・顧客の回答の却下した項目は覚え、同じ Excel を上げ直しても出し直さない
-    if ((p.origin.kind === "excel" || p.origin.kind === "answer") && chosen.length)
-      setWork(store, (w) => ({ ...w, rejectedExcel: [...w.rejectedExcel, ...chosen.map((i) => changeSignature(changes[i]!))].slice(-MAX_REJECTED_EXCEL) }))
-    return updateProposal(store, id, (x) => decide(x, chosen, "rejected"))
-  }
+  if (decision === "rejected") return updateProposal(store, id, (x) => decide(x, chosen, "rejected"))
   if (!isAnswered(p)) return
   // 工事場所は、サーバーが顧客の覚えた結果に書けてから承認する（ルールの追記と同じく、承認と覚えることを食い違わせない）
   const located = chosen.filter((i) => changes[i]!.kind === "location")

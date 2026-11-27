@@ -73,10 +73,11 @@ describe("計画の聞き返しの答えは並び順ではなく聞き返しの�
 })
 
 describe("「変換の元にしますか」の待ちの列", () => {
-  test("一度に複数の表を付けると1つずつ聞き、答えた順に外す（閉じる知らせが続けて来ても次のものを飛ばさない）", async () => {
+  test("ファイルの行から続けて2つを変換の元に選ぶと1つずつ聞き、答えた順に外す（閉じる知らせが続けて来ても次のものを飛ばさない）", async () => {
     const s = await converted()
     const bytes = fixture("sample-messy.xlsx")
     await s.actions.attach([new File([bytes as BlobPart], "合成の一.xlsx"), new File([bytes as BlobPart], "合成の二.xlsx")])
+    for (const f of s.store.getState().runtime.files.filter((f) => f.name.startsWith("合成の"))) s.actions.chooseSource(f)
     const pending = s.store.getState().ui.dialogs.pendingSources
     expect(pending.map((f) => f.name)).toEqual(["合成の一.xlsx", "合成の二.xlsx"])
     // 「付けるだけ」→ ダイアログが閉じる知らせ（同じファイル）

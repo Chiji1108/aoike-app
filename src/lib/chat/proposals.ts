@@ -13,7 +13,7 @@ import { setSelection } from "../cases/selection"
 import { applyInquiryChange, introSchema, subjectSchema, type InquiryText } from "../inquiry/text"
 
 /**
- * 変更案。AI（チャット）や返ってきた Excel が出した変更は、すぐには表に入れず、職員が項目ごとかまとめて承認したものだけを
+ * 変更案。AI（チャット・工事場所の調査・「AI で案を出す」）が出した変更は、すぐには表に入れず、職員が項目ごとかまとめて承認したものだけを
  * 手直し（edits）・手動の入れ外し（manual）・7割の設定に重ねる。検証・7割・問い合わせ・CSV は今の仕組みのまま。
  */
 
@@ -26,10 +26,10 @@ export type ChatChange =
   | { kind: "ask"; rowKey: string; field: KojiFieldId; reason: string }
   | { kind: "include"; rowKey: string; include: boolean }
   /**
-   * 元のファイルに無い工事を足す（返ってきた Excel の管理番号の無い行、PDF から AI が作った行）。cells の値は個人名を印にしたもの。
+   * 元のファイルに無い工事を足す（チャットの AI が足す行。PDF から作った行も）。cells の値は個人名を印にしたもの。
    * rowKey は足す行の key（変更案を作るときに決める。承認すると cases/added.ts の AddedRow になり、値は手直しとして重ねる）
    */
-  | { kind: "add"; rowKey: string; by: AddedRow["by"]; cells: Partial<Record<KojiFieldId, CellEdit>> }
+  | { kind: "add"; rowKey: string; cells: Partial<Record<KojiFieldId, CellEdit>> }
   /** 7割と金額の設定（作業の画面のダウンロードの段の「7割と金額」）。rounding は金額の千円未満の扱い（承認すると変換し直す。前の変更案には無い） */
   | {
       kind: "settings"
@@ -58,13 +58,10 @@ export type ChatChange =
 export type Decision = "pending" | "applied" | "rejected"
 
 /**
- * 出どころ。P3b の Excel の取り込みも同じ形で変更案を出す。fix は表の「直す」から頼んだ AI の案（「AI で案を出す」。field はどの項目の案か）
+ * 出どころ。location は工事場所の一括調査、fix は表の「直す」から頼んだ AI の案（「AI で案を出す」。field はどの項目の案か）
  */
 export type ProposalOrigin =
   | { kind: "chat"; messageId: string }
-  | { kind: "excel"; fileId: string }
-  /** 返ってきた顧客の回答（印付きの Excel・記入用Excel。fileId は案件に残したファイル。中身は顧客の回答のセルだけ） */
-  | { kind: "answer"; fileId: string }
   | { kind: "location"; runId: string }
   | { kind: "fix"; runId: string; field: "gyoshu" }
 
@@ -224,7 +221,7 @@ export function applyChanges<T extends Overlay>(target: T, edited: readonly RowR
         manual.set(c.rowKey, c.include)
         break
       case "add":
-        if (!added.some((a) => a.key === c.rowKey)) added.push({ key: c.rowKey, by: c.by })
+        if (!added.some((a) => a.key === c.rowKey)) added.push({ key: c.rowKey })
         for (const [field, edit] of Object.entries(c.cells)) if (edit) edits.set(editKey(c.rowKey, field), edit)
         break
       case "settings":
@@ -270,7 +267,7 @@ export const chatChangeSchema: z.ZodType<ChatChange> = z.discriminatedUnion("kin
   z.object({ kind: z.literal("cell"), rowKey: z.string(), field: fieldIdSchema, edit: cellEditSchema }),
   z.object({ kind: z.literal("ask"), rowKey: z.string(), field: fieldIdSchema, reason: z.string() }),
   z.object({ kind: z.literal("include"), rowKey: z.string(), include: z.boolean() }),
-  z.object({ kind: z.literal("add"), rowKey: addedRowSchema.shape.key, by: addedRowSchema.shape.by, cells: z.partialRecord(fieldIdSchema, cellEditSchema) }),
+  z.object({ kind: z.literal("add"), rowKey: addedRowSchema.shape.key, cells: z.partialRecord(fieldIdSchema, cellEditSchema) }),
   // 前の形の変更案（alreadyApplied）も読む
   z
     .object({
@@ -302,8 +299,6 @@ export const proposalSchema: z.ZodType<Proposal> = (() => {
     id: z.string(),
     origin: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("chat"), messageId: z.string() }),
-      z.object({ kind: z.literal("excel"), fileId: z.string() }),
-      z.object({ kind: z.literal("answer"), fileId: z.string() }),
       z.object({ kind: z.literal("location"), runId: z.string() }),
       z.object({ kind: z.literal("fix"), runId: z.string(), field: z.literal("gyoshu") }),
     ]),

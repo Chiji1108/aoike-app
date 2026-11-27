@@ -4,7 +4,6 @@ import { useShallow } from "zustand/react/shallow"
 import { CaseReport, type ReportProps } from "@/components/cases/case-report"
 import { useCase, useCaseActions, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
 import { derive } from "@/components/cases/store/derive"
-import { AnswerImportPanel, FinalImportPanel } from "@/components/convert/final-import-panel"
 import { FixSuggestionPanel } from "@/components/convert/fix-suggestion"
 import { Button } from "@/components/ui/button"
 import { reportPhase } from "@/lib/cases/phase"
@@ -19,7 +18,7 @@ const ChatPanel = lazy(() => import("@/components/chat/chat-panel").then((m) => 
 
 
 /**
- * チャットの欄の中身: チャット（変換の報告・直した Excel と顧客の回答の変更案・業種の AI の案を流れに出す）。
+ * チャットの欄の中身: チャット（変換の報告・業種の AI の案を流れに出す）。
  * チャットが使えない（APIキーが無い）ときは、報告と📎と同じアップロードの入口をチャットの代わりに出す
  */
 export function ChatColumn() {
@@ -58,26 +57,8 @@ function NoChat() {
   )
 }
 
-/** 変換の報告（チャットの最初の返事）と、その下の直した Excel・顧客の回答の変更案 */
+/** 変換の報告（チャットの最初の返事）。進み具合・知らせ・聞き返しの数（答えるのは「答える」の段）・工事場所の調査をストアから作る */
 function ChatReport() {
-  const actions = useCaseActions()
-  const proposalActions = useProposalActions()
-  const view = useTable((t) => t.view)
-  const contents = useCase((s) => s.contents)
-  const busy = useCase((s) => s.runtime.busy.rule)
-  const finalResult = useCase((s) => s.runtime.finalResult)
-  const { excel, answer } = useCase((s) => derive(s).panels)
-  return (
-    <>
-      <ReportBody onRetry={actions.retry} />
-      <FinalImportPanel result={finalResult} view={view} proposals={excel} changes={contents} actions={proposalActions} busy={busy} />
-      <AnswerImportPanel view={view} proposals={answer} changes={contents} actions={proposalActions} busy={busy} />
-    </>
-  )
-}
-
-/** 変換の報告。進み具合・知らせ・聞き返しの数（答えるのは「答える」の段）・工事場所の調査をストアから作る */
-function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void }) {
   const { config, actions } = useCaseSession()
   const location = useLocationTool()
   const work = useCase(
@@ -106,7 +87,7 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
   const { reconverting, hasTable, sources, unmarked, shown, output } = useTable(
     useShallow((t) => ({ reconverting: t.reconverting, hasTable: t.hasTable, sources: t.sources, unmarked: t.unmarked, shown: t.shown, output: t.output })),
   )
-  const { noSheetSource, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, asks: reportAsks(v.todo) })))
+  const { noSheetSource, sourceChoices, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, sourceChoices: v.sourceChoices, asks: reportAsks(v.todo) })))
 
   const sourceFile = rt.files.find((f) => f.id === work.sourceFileId)
   const phase = reportPhase({
@@ -118,6 +99,7 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
     converting: !!work.plan && (!work.converted || reconverting),
     hasTable,
     noSheetSource,
+    sourceChoices,
     sourceName: work.sourceFileId ? (sourceFile?.name ?? "") : null,
   })
   const sourceSheets = work.plan?.plan.sheets ?? []
@@ -153,8 +135,12 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
       counts={shown && output ? { rows: shown.length, csv: output.length } : null}
       answer={{ count: asks, go: () => actions.goStep("answer") }}
       location={location.sites > 0 ? { open: () => actions.showTab("location"), sites: location.sites } : null}
-      onRetry={() => onRetry(phase.kind === "failed" && phase.retry === "source" ? "source" : "convert")}
+      onRetry={() => actions.retry(phase.kind === "failed" && phase.retry === "source" ? "source" : "convert")}
       uploads={rt.notes}
+      onChooseSource={(id) => {
+        const file = rt.files.find((f) => f.id === id)
+        if (file) actions.chooseSource(file)
+      }}
     />
   )
 }

@@ -27,7 +27,7 @@ const cellResult: z.ZodType<CellResult> = z.object({
   byAi: z.literal(true).optional(),
   stored: z.string().optional(),
   withheld: z.literal(true).optional(),
-  by: z.enum(["staff", "customer", "confirmed", "chat", "excel", "location"]).optional(),
+  by: z.enum(["staff", "customer", "confirmed", "chat", "location"]).optional(),
   ask: z.literal(true).optional(),
 })
 

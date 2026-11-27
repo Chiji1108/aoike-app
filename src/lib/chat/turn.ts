@@ -25,6 +25,7 @@ import { FEEDBACK_KIND_LABELS, feedbackInputSchema, feedbackNameCheck, feedbackT
 import { askReason, estimateUsd, MAX_SITES_PER_RUN, runSitesOf, siteOfRow, SOURCE_LABELS, type Outcome, type Site } from "../location/sites"
 import { ANSWER_FIELDS, collectInquiries, inquiryKey, readAiAnswers, REASONS, type AiAnswerReport } from "../inquiry/inquiry"
 import { introSchema, otherCustomerTest, subjectSchema } from "../inquiry/text"
+import { inquiryNumbers } from "../inquiry/email"
 import type { AddressLookup } from "../convert/address"
 import type { AiCache, AiCaller } from "../convert/pipeline"
 import type { Rounding } from "../convert/transforms"
@@ -52,8 +53,8 @@ const FROM_CODE = { anthropic: { allowedCallers: ["code_execution_20260120" as c
 
 /** global・customer は箇条書きにしたルールの文章（lib/chat/rules.ts の rulesText）、rule7Tax は事務所の7割の計算（税抜・税込） */
 export type ChatRules = { global: string; customerName: string; customer: string; rule7Tax: Rule7Tax }
-/** コンテナに置いたファイル（name はコンテナの中の名前）。answer は返ってきた顧客の回答の Excel（印付きの Excel・記入用Excel） */
-export type ContainerFile = { name: string; original: string; isSource: boolean; answer?: true }
+/** コンテナに置いたファイル（name はコンテナの中の名前） */
+export type ContainerFile = { name: string; original: string; isSource: boolean }
 
 function fieldsDoc() {
   return KOJI_KEIREKI.fields
@@ -68,7 +69,7 @@ function fieldsDoc() {
 /** caseRule7Tax はこの案件の7割の計算（事務所の設定と違えば「この案件」に書く） */
 export function systemPrompt(rules: ChatRules, caseContext: string, files: readonly ContainerFile[], caseRule7Tax: Rule7Tax = rules.rule7Tax) {
   const caseRule7 = caseRule7Tax === rules.rule7Tax ? "" : `- この案件の7割の計算は${RULE7_TAX_LABELS[caseRule7Tax]}（決算書の完成工事高＝基準額も${RULE7_TAX_LABELS[caseRule7Tax]}）。\n`
-  const fileLines = files.map((f) => `- $INPUT_DIR/${f.name}: ${f.original}${f.isSource ? "（変換の元）" : f.answer ? "（返ってきた顧客の回答の Excel: 印付きの Excel か記入用Excel）" : ""}`).join("\n")
+  const fileLines = files.map((f) => `- $INPUT_DIR/${f.name}: ${f.original}${f.isSource ? "（変換の元）" : ""}`).join("\n")
   return `あなたは行政書士事務所の職員と一緒に、顧客から受け取った工事経歴の Excel を、建設業.NET に取り込む工事経歴書CSV（14列）にする。
 職員はチャットで指示する。表は画面に常に見えていて、あなたの変更は変更案として職員に見せ、職員が承認したものだけが表に入る。
 
@@ -85,19 +86,18 @@ ${fileLines || "（なし）"}
 - 注文者・工事名に書いた値は、事務所の変換と同じ匿名化で確かめる（個人名は記号にする）。確かめられない値は受け取られない。
 - 7割と金額の設定（税込/税抜・基準額・載せる工事の選び方＝7割ルールか全件か・金額の千円未満の切り捨て/四捨五入）は set_selection を直接呼ぶ。千円未満の扱いは承認すると変換し直す（この指示の get_table の金額は変わらない）。
 - 列の対応（どの列からどの項目を作るか・見出しの行・データの開始・飛ばす行・金額の単位）を変えるときは set_plan を直接呼ぶ（例:「金額は税込の列で」「工事名は B 列と C 列をつなげて」）。全行に同じ直しをセルの変更で当てるより、列の対応で直せるものは set_plan にする。承認すると変換し直す（この指示の get_table の表は変わらない）。使うシートは変えられないので、変えたいときは職員に作業の画面の上のシートの欄で選び直してもらう。職員にどの列を使っているか聞かれたら「この案件」の列の対応で答える。
-- 職員が CSV・Excel を出したい、問い合わせの Excel が欲しい、Excel で直したいと言ったら offer_action でボタンを出す（Excel で直すときも export。ダウンロードした Excel を直してアップロードし直すと表に戻る。ダウンロードの前の確認は画面が出す。あなたはファイルを作らない）。
+- 職員が CSV・Excel を出したいと言ったら offer_action でボタンを出す（ダウンロードの前の確認は画面が出す。あなたはファイルを作らない）。
 - 直したら await check_table({}) で決まった検査（エラー・警告・字数の上限・個人名らしい値・7割）を確かめ、直せるものは直す。
 - 業種コードを決める・直すときの決まり（工事名の業種の言葉は、業種が決まった行にコードが付けるので書き足さない）: ${GYOSHU_GUESS_RULE} ほかの工事の傾向はコードで数える。業種は事務所が決めるので ask_customer にしない（推し量ったときは、返事で根拠を伝える）。
 - 業種が決まっていない行（空・要確認・AI の推定）が数件より多いときは、業種を決めるたびに7割で載せる行が入れ替わるので、職員に1行ずつ業種を指定させる返事や、入れ替わりの説明を長く書かない。作業の画面の「業種」のタブ（7割で載りうる行もまとめて決める一覧）へ短く案内する。
 - 分からないこと・データに無いこと（配置技術者・分からない工事場所など）は推測で埋めず、ask_customer で顧客への問い合わせに回す。住所の分割・工事名を整えること・調べられる工事場所は問い合わせに回さず事務所でやる。
 - 指示があいまいで、どちらにも取れるときや、決める前に職員の答えが要るときは、ask_staff で聞き返す（答えるまで変更案は反映されない）。
 - 職員が計画の聞き返し（「この案件」の計画の聞き返し）がどういうことかを聞いたら、元の Excel で対象の行と聞き返しの列の注記を読む（注記がほかの工事を指すなら、その工事の行があるかも見る）。注記ごとの意味の読み方、重複・対象外のおそれ、答え（載せない・載せる）で何が変わるか、迷うときに確かめること（表で見る・顧客に聞く）を、短い箇条書き（10行ほどまで）で返す。決めるのは事務所なので、どちらがよいかの勧めと変更案は、頼まれるまで出さない。
-- 顧客の回答（職員がチャットに貼ったメールの本文、返ってきた印付きの Excel・記入用Excel・別の Excel・PDF などのファイル）は、まず await get_inquiries({}) で今顧客に聞いていることを読み、答えごとにどの工事（key）のどの項目への答えかを決めて await record_answers({"items":[{"key","field","answer"}]}) で送る（set_cells は使わない）。
+- 顧客の回答（職員がチャットに貼ったメールの本文、届いた Excel・PDF などのファイル）は、まず await get_inquiries({}) で今顧客に聞いていることを読み、答えごとにどの工事（key）のどの項目への答えかを決めて（顧客はメールの工事の番号〔get_inquiries の no〕を添えて答えるので、まず番号で key を決める）await record_answers({"items":[{"key","field","answer"}]}) で送る（set_cells は使わない）。
   - answer は顧客の答えを項目の値として読める形で書く: 年月は「2024年4月」、工事場所は field を place にして都道府県から市区町村まで（例「東京都千代田区」）、注文者・工事名・配置技術者は顧客の書いたまま（個人名も記号にせずそのまま。匿名化・字数などの検査は道具が変換と同じ決まりでやる）。今の値（推定）のとおりという答えは {"key","field","confirm":true}。
-  - 聞いていない項目でも、顧客がはっきり訂正していれば送ってよい。答えの無い項目は送らない（推測で埋めない）。どの工事への答えか決めきれない答え（工事名が似ている・番号が無い・2つの工事に当てはまる）は送らず、ask_staff で職員に聞く。税込・税抜の答えは set_selection の tax。
-  - 印付きの Excel は、変換の元の Excel に、聞くセルの色・推定の確かめのメモ・右端に足した「〇〇（ご記入ください）」の列・「追加の確認」のシート（元の表に無い工事）を付けて顧客に返したもの。記入用Excelはこちらの形の表（管理番号の列）。どちらも色付きのセルは画面がもう読んで顧客の回答の変更案にしている。読むのはその外（印の無いセルの書き換え・メモ・別のシート。印付きの Excel は変換の元と比べて変わったセル）と、読めなかった記入だけ。
+  - 聞いていない項目でも、顧客がはっきり訂正していれば送ってよい。答えの無い項目は送らない（推測で埋めない）。どの工事への答えか決めきれない答え（番号が無く工事名が似ている・番号と工事名が食い違う・2つの工事に当てはまる）は送らず、ask_staff で職員に聞く。税込・税抜の答えは set_selection の tax。
 - 職員が顧客への問い合わせのメールの下書きを頼んだら、await get_inquiries({}) で今の問い合わせを読み、propose_inquiry を直接呼ぶ。表は変えない。
-  - 聞くことは添付の Excel の色付きのセルとメモで顧客に伝わり、メールの本文には項目ごとの件数・記入のしかた・宛名・挨拶・結びを画面が付ける。あなたが書くのは件名（subject）と本文の前置き（intro。1〜3文）だけ。
+  - 聞くこと（番号を振った工事ごとの項目・推定の値）・記入のしかた・宛名・挨拶・結びは画面がメールの本文に付ける。あなたが書くのは件名（subject）と本文の前置き（intro。1〜3文）だけ。
   - 何についての確認か（今年度の工事経歴書の作成のため、資料で分からない点がある、など）が顧客に伝わるように書く。事務所の中の言葉（項目の id・列記号・変換・AI・CSV）は使わない。
   - 個人名・表の記号（〔Ａ〕など）・ほかの顧客の名前は書かない（入っていれば受け取らない）。
 - 職員が「顧客ルールに追加して」「全体ルールに追加して」と言ったら propose_rule で足す項目の案を出す（1つの決まりを1項目に。今のルールと同じ項目は出さない。保存は職員の承認後）。
@@ -195,7 +195,7 @@ export type { FeedbackDeps }
 /** 問い合わせのメールの下書きの確かめ。otherCustomers はほかの顧客の名前（文に入れない）、customerName はこの案件の顧客の名前（件名などに書いてよい） */
 export type InquiryDeps = { customerName: string; otherCustomers: () => Promise<readonly string[]> }
 
-/** record_answers が顧客の回答を値にするのに使うもの（返ってきた Excel の取り込みと同じ。AI は匿名化の AI を使う。千円未満の扱いは今の表の rounding） */
+/** record_answers が顧客の回答を値にするのに使うもの（AI は匿名化の AI を使う。千円未満の扱いは今の表の rounding） */
 export type AnswerDeps = { lookup: AddressLookup }
 
 
@@ -518,7 +518,7 @@ export function chatTools(state: TurnState) {
         }
         return push(
           "add_rows",
-          planned.map((r) => ({ kind: "add", rowKey: r.key, by: "chat", cells: byRow.get(r.key) ?? {} })),
+          planned.map((r) => ({ kind: "add", rowKey: r.key, cells: byRow.get(r.key) ?? {} })),
           `${rows.length}行`,
           { keys: planned.map((r) => r.key) },
         )
@@ -585,12 +585,14 @@ export function chatTools(state: TurnState) {
     }),
     get_inquiries: tool({
       description:
-        "顧客に今聞いていること（問い合わせ。CSV に載せる行のうち、書類に要る項目が空か推定に自信がないセル。職員が外したものは除く）を JSON 文字列で返す: {tax: 税込・税抜を聞いているか, cells:[{key, field, label, reason, reasonId（missing＝空・needsReview＝推定）, note?（推定の根拠などセルのメモ）, value, workName, client, amount, source}]}。顧客の回答を読む前・問い合わせのメールの下書きを作る前に呼ぶ。",
+        "顧客に今聞いていること（問い合わせ。CSV に載せる行のうち、書類に要る項目が空か推定に自信がないセル。職員が外したものは除く）を JSON 文字列で返す: {tax: 税込・税抜を聞いているか, cells:[{no（メールの工事の番号。顧客は答えにこの番号を添える）, key, field, label, reason, reasonId（missing＝空・needsReview＝推定）, note?（推定の根拠などセルのメモ）, value, workName, client, amount, source}]}。顧客の回答を読む前・問い合わせのメールの下書きを作る前に呼ぶ。",
       inputSchema: z.strictObject({}),
       execute: counted<object>(async () => {
         const v = view()
         const rowOf = new Map(v.output.map((r) => [r.key, r]))
         const qs = inquiriesOf(v)
+        // メールの本文と同じ工事の番号（元の行の順の通し番号）
+        const numbers = inquiryNumbers(state.current)
         state.log.push({ tool: "get_inquiries", summary: `${qs.length}件` })
         const text = (key: string, f: KojiFieldId) => editText(rowOf.get(key)!.cells[f], state.letters)
         // セルのメモは値と同じ記号で出し、分かっている個人名も伏せる（名前を確かめられないときはメモを出さない）
@@ -608,6 +610,7 @@ export function chatTools(state: TurnState) {
             q.kind === "cell"
               ? [
                   {
+                    no: numbers.get(q.rowKey),
                     key: q.rowKey,
                     field: q.field,
                     label: fieldLabel(q.field),
@@ -630,7 +633,7 @@ export function chatTools(state: TurnState) {
     record_answers: tool({
       description:
         "顧客の回答を表に入れる案を出す。items: [{key, field, answer} | {key, field, confirm:true}]。answer は顧客の答え（年月は「2024年4月」、工事場所は field=place で都道府県から市区町村まで、注文者・工事名・配置技術者は書いたまま）。" +
-        `${SOURCE_DOC}返ってきた Excel（印付き・記入用Excel）の取り込みと同じ決まりで値にし（注文者・工事名は匿名化する）、JSON 文字列 {ok, applied, answered（問い合わせへの答え）, confirmed, corrected（聞いていない項目の訂正。送った項目だけ変える）, same, invalid:[{key, field, answer, message}], needsCheck, report} を返す（読めない答えは入れず invalid で返す）。返事では問い合わせへの答えと訂正を分けて職員に伝える。`,
+        `${SOURCE_DOC}元データの値と同じ決まりで値にし（注文者・工事名は匿名化する）、JSON 文字列 {ok, applied, answered（問い合わせへの答え。項目は no〔メールの工事の番号。get_inquiries と同じ〕・key・field）, confirmed, corrected（聞いていない項目の訂正。送った項目だけ変える）, same, invalid:[{key, field, answer, message}], needsCheck, report} を返す（読めない答えは入れず invalid で返す）。返事では問い合わせへの答えと訂正を分けて職員に伝える。`,
       inputSchema: z.strictObject({
         read_from: valueSourceSchema,
         items: z
@@ -665,7 +668,7 @@ export function chatTools(state: TurnState) {
           // 印を付けるのは顧客が答えた値だけ（今の値のとおりという確認 confirm:true は、読んだ値ではない）
           return { kind: "cell", rowKey: key.slice(0, at), field, edit: source === "image" && !confirmed.has(key) ? imageEdit(edit) : edit }
         })
-        const result = answerResult(report)
+        const result = answerResult(report, inquiryNumbers(state.current))
         if (!changes.length) {
           state.log.push({ tool: "record_answers", summary: "0セル" })
           return json({ ok: true, applied: 0, ...result })
@@ -756,7 +759,7 @@ export function chatTools(state: TurnState) {
     }),
     offer_action: tool({
       description:
-        "返事にボタンを付ける。action: export（CSV・最後の Excel のダウンロードの前の確認を開く。Excel で直したいときもこれ）| inquiry_excel（顧客への問い合わせの Excel をダウンロードする）。ファイルは職員がボタンを押して画面が作る。",
+        "返事にボタンを付ける。action: export（CSV・最後の Excel のダウンロードの前の確認を開く）。ファイルは職員がボタンを押して画面が作る。",
       inputSchema: z.strictObject({ action: z.enum(CHAT_ACTIONS) }),
       execute: counted<{ action: ChatAction }>(({ action }) => {
         if (!state.actions.includes(action)) state.actions.push(action)
@@ -850,7 +853,7 @@ export function chatTools(state: TurnState) {
     }),
     propose_inquiry: tool({
       description:
-        "顧客への問い合わせメールの件名と前置きの案を出す（表は変えない）。subject: メールの件名、intro: 本文の前置き（1〜3文）。聞くことは添付の Excel の色付きのセルとメモで伝わり、項目ごとの件数・記入のしかた・宛名・挨拶・結びは画面が付ける。" +
+        "顧客への問い合わせメールの件名と前置きの案を出す（表は変えない）。subject: メールの件名、intro: 本文の前置き（1〜3文）。聞くこと（番号を振った工事ごとの項目）・記入のしかた・宛名・挨拶・結びは画面が本文に付ける。" +
         "個人名・表の記号・ほかの顧客の名前は書かない（入っていれば受け取らない）。JSON 文字列 {ok} を返す。職員が承認するとメールの件名と前置きに使う。",
       inputSchema: z.strictObject({ subject: subjectSchema, intro: introSchema }),
       execute: counted<{ subject: string; intro: string }>(({ subject, intro }) =>
@@ -892,8 +895,9 @@ const textName = (i: number) => (i === 0 ? "subject" : "intro")
  * record_answers の結果（AI に返す）。answered は問い合わせへの答え、corrected は聞いていない項目の訂正（職員にも分けて伝える）。
  * 顧客の答えはそのまま返さず、読めなかった答えだけを返す（AI が送ったもの）
  */
-function answerResult(r: AiAnswerReport) {
-  const at = (q: { rowKey: string; field: KojiFieldId }) => ({ key: q.rowKey, field: q.field })
+/** record_answers の結果（no はメールの工事の番号。get_inquiries と同じ） */
+function answerResult(r: AiAnswerReport, numbers: ReadonlyMap<string, number>) {
+  const at = (q: { rowKey: string; field: KojiFieldId }) => ({ no: numbers.get(q.rowKey), key: q.rowKey, field: q.field })
   return {
     answered: r.applied.map(at),
     confirmed: r.confirmed.map(at),

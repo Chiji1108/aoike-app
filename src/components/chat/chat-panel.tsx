@@ -9,7 +9,7 @@ import { Markdown } from "@/components/chat/markdown"
 import { ProposalCard, type ProposalActions } from "@/components/chat/proposal-card"
 import { LocationSearchStatus, type LocationSearch } from "@/components/convert/location-panel"
 import { useCase, useCaseSession, useCaseView, useTable } from "@/components/cases/store/context"
-import { useChatSuggestions, useProposalActions } from "@/components/cases/workspace/hooks"
+import { useInquirySuggestion, useProposalActions } from "@/components/cases/workspace/hooks"
 import { useFx, useLocationTool } from "@/components/cases/workspace/tools"
 import { TOOL_TABS, workTabLabel, type WorkTab } from "@/components/cases/work-tabs"
 import { Bubble, BubbleContent } from "@/components/ui/bubble"
@@ -20,7 +20,7 @@ import { Message, MessageContent, MessageFooter } from "@/components/ui/message"
 import { MessageScroller, MessageScrollerButton, MessageScrollerContent, MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport } from "@/components/ui/message-scroller"
 import { Trace, TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger, TraceIcon, TraceLine, TraceTitle } from "@/components/ui/trace"
 import type { TableView } from "@/lib/cases/view"
-import { chatDataSchemas, chatMetadataSchema, currentAction, type ChatAction, type ChatMessage, type ChatRequest, type SavedChatAction } from "@/lib/chat/messages"
+import { chatDataSchemas, chatMetadataSchema, type ChatAction, type ChatMessage, type ChatRequest } from "@/lib/chat/messages"
 import type { MappingPlan } from "@/lib/convert/plan"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import type { ChatChange, Proposal } from "@/lib/chat/proposals"
@@ -75,8 +75,8 @@ export type ChatPanelProps = {
   tail?: React.ReactNode
 }
 
-/** チャットの案内。once は会話に同じ指示があればもう出さないもの */
-export type Suggestion = { id: string; fileName?: string; text: string; label: string; prompt: string; once?: true }
+/** チャットの案内（押すと prompt を送る。会話に同じ指示があれば出さない） */
+export type Suggestion = { text: string; label: string; prompt: string }
 
 /**
  * 案件の画面のチャット（画面の主。表などの作業の画面はチャットの右か、狭い画面では上に重ねて開く）。AI の変更は変更案として返事に付け、職員が承認したものだけを表に入れる。
@@ -104,11 +104,8 @@ export function ChatPanel(props: ChatPanelProps) {
   const fx = useFx()
   const location = useLocationTool()
   const proposalBase = useProposalActions()
-  /**
-   * AI に頼むとよいこと（返ってきた Excel〔印付き・記入用Excel〕の、色付きの欄で読めなかった記入〔ファイルごと。fileName はそのファイル〕と）。
-   * 押すと prompt を送り、送れたら案内を消す。会話の最後に出す
-   */
-  const suggestions = useChatSuggestions()
+  /** AI に頼むとよいこと（問い合わせのメールの下書き）。押すと prompt を送り、送れたら案内を消す。会話に同じ指示があれば出さない。会話の最後に出す */
+  const suggestion = useInquirySuggestion()
   const fileInput = useRef<HTMLInputElement>(null)
   const [input, setInput] = useState("")
   const [ending, setEnding] = useState(false)
@@ -324,22 +321,21 @@ export function ChatPanel(props: ChatPanelProps) {
                 </div>
               )}
               {props.tail}
-              {history === "loaded" &&
-                suggestions.filter((sg) => !(sg.once && sentTexts.has(sg.prompt))).map((sg) => (
-                  <div key={sg.id} className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-suggestion" data-suggestion={sg.id} data-file-name={sg.fileName}>
-                    <span className="text-muted-foreground">{sg.text}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-fit"
-                      disabled={!canSend}
-                      onClick={() => void send(sg.prompt, { keepInput: true }).then((sent) => sent && actions.suggestionSent(sg.id))}
-                      data-testid="chat-suggestion-send"
-                    >
-                      <MessageSquareText /> {sg.label}
-                    </Button>
-                  </div>
-                ))}
+              {history === "loaded" && suggestion && !sentTexts.has(suggestion.prompt) && (
+                <div className="grid gap-2 rounded-lg border bg-violet-50/60 px-3 py-2 text-xs dark:bg-violet-950/30" data-testid="chat-suggestion">
+                  <span className="text-muted-foreground">{suggestion.text}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-fit"
+                    disabled={!canSend}
+                    onClick={() => void send(suggestion.prompt, { keepInput: true }).then((sent) => sent && actions.inquirySuggestionSent())}
+                    data-testid="chat-suggestion-send"
+                  >
+                    <MessageSquareText /> {suggestion.label}
+                  </Button>
+                </div>
+              )}
             </MessageScrollerContent>
           </MessageScrollerViewport>
           <MessageScrollerButton />
@@ -523,12 +519,9 @@ function ChatMessageView({
 
 const ACTION_BUTTONS = {
   export: { label: "ダウンロードの前の確認を開く", icon: <Download /> },
-  inquiry_excel: { label: "顧客への問い合わせを開く", icon: <MessageSquareText /> },
 } satisfies Record<ChatAction, { label: string; icon: React.ReactNode }>
 
-/** 保存した会話の前のボタン（edit_excel）は、今の同じ処理のボタンにする */
-function ActionButton({ action: saved, onAction }: { action: SavedChatAction; onAction: (a: ChatAction) => void }) {
-  const action = currentAction(saved)
+function ActionButton({ action, onAction }: { action: ChatAction; onAction: (a: ChatAction) => void }) {
   const b = ACTION_BUTTONS[action]
   return (
     <Button size="sm" variant="outline" className="w-fit" onClick={() => onAction(action)} data-testid="chat-action" data-action={action}>

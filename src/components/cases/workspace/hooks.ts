@@ -5,13 +5,11 @@ import { useCase, useCaseActions, useCaseSession, useCaseView, useTable } from "
 import { ASK_KINDS } from "@/components/cases/store/case-view"
 import { derive } from "@/components/cases/store/derive"
 import { reportUndoId } from "@/components/cases/store/actions/table"
-import { INQUIRY_SUGGESTION } from "@/components/cases/store/actions/ui"
 import type { ProposalActions } from "@/components/chat/proposal-card"
 import type { Suggestion } from "@/components/chat/chat-panel"
 import { awaitsAnswer } from "@/lib/cases/todo"
 import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
 import { SELECTION_LABELS, TAX_LABELS } from "@/lib/convert/koji-selection"
-import { aiAnswerPrompt } from "@/lib/inquiry/inquiry"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
 import { useGyoshuTool } from "./tools"
 
@@ -118,43 +116,30 @@ export function useReportQuestions(): ReportQuestion[] {
   }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, reportAnswers, undoStates])
 }
 
-/** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き）。押すと決まった指示を送る */
-export function useChatSuggestions(): readonly Suggestion[] {
-  const answerHints = useCase((s) => s.runtime.hints.answer)
-  const inquiryHint = useCase((s) => s.runtime.hints.inquiry === "shown")
+/**
+ * チャットの案内「AI でメールの下書きを作る」（作業の画面で問い合わせの段を見たら出す。メールの下書きの案が未決・件名を決めた・送ったら出さない）。
+ * 押すと決まった指示を送る
+ */
+export function useInquirySuggestion(): Suggestion | null {
+  const hinted = useCase((s) => s.runtime.inquiryHint === "shown")
   const subjectSet = useCase((s) => s.work.inquiryText.subject !== null)
   const pendingInquiryText = useCase((s) => derive(s).pendingInquiryText)
-  const { left, active } = useCaseView(useShallow((v) => ({ left: v.todo.inquiry.left, active: v.todo.inquiry.active })))
+  const active = useCaseView((v) => v.todo.inquiry.active)
   return useMemo(
-    () => [
-      ...(left > 0
-        ? answerHints.map((h) => ({
-            id: h.fileId,
-            fileName: h.name,
-            text: `返ってきた Excel「${h.name}」に、色付きの欄の外（印の無いセル・別の列・メモ・別のシート）の記入や読めなかった記入があり、まだ答えの無い問い合わせが ${left} 件あります。`,
-            label: "AI で読む",
-            prompt: aiAnswerPrompt(h.name),
-          }))
-        : []),
-      ...(inquiryHint && active > 0 && !pendingInquiryText && !subjectSet
-        ? [
-            {
-              id: INQUIRY_SUGGESTION,
-              text: `問い合わせ ${active} 件の、顧客へのメールの件名と前置きを AI が下書きできます。承認した文をメールに使います。`,
-              label: "AI でメールの下書きを作る",
-              prompt: INQUIRY_TEXT_PROMPT,
-              // 会話にもう送っていれば出さない（開き直しても）
-              once: true as const,
-            },
-          ]
-        : []),
-    ],
-    [answerHints, left, inquiryHint, active, pendingInquiryText, subjectSet],
+    () =>
+      hinted && active > 0 && !pendingInquiryText && !subjectSet
+        ? {
+            text: `問い合わせ ${active} 件の、顧客へのメールの件名と前置きを AI が下書きできます。承認した文をメールに使います。`,
+            label: "AI でメールの下書きを作る",
+            prompt: INQUIRY_TEXT_PROMPT,
+          }
+        : null,
+    [hinted, active, pendingInquiryText, subjectSet],
   )
 }
 
 /** 変更案の出どころの名前（「答える」の段） */
-const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", excel: "Excel で直した分", answer: "顧客の回答", location: "工事場所", fix: "業種の AI の案" }
+const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", location: "工事場所", fix: "業種の AI の案" }
 const ANSWER_LABELS = { yes: "はい", no: "いいえ" } as const
 /** 「答える」の段で答える変更案の印（報告の聞き返しの id と分ける） */
 export const PROPOSAL_QUESTION = "proposal:"

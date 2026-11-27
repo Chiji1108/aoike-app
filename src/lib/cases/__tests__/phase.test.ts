@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { reportPhase, type PhaseInput } from "../phase"
 
-const base: PhaseInput = { aiEnabled: true, loading: null, sourceError: null, planning: false, convertError: null, converting: false, hasTable: false, noSheetSource: false, sourceName: null }
+const base: PhaseInput = { aiEnabled: true, loading: null, sourceError: null, planning: false, convertError: null, converting: false, hasTable: false, noSheetSource: false, sourceChoices: [], sourceName: null }
 
 describe("変換の報告の段階", () => {
   test("AI が使えないときは、推定の計画で進めずに止める（ファイルがあっても）。変換済みの表は見せる", () => {
@@ -19,6 +19,7 @@ describe("変換の報告の段階", () => {
     expect(reportPhase({ ...base, sourceName: "a.xlsx", converting: true }).kind).toBe("converting")
     expect(reportPhase({ ...base, sourceName: "a.xlsx", hasTable: true }).kind).toBe("done")
     expect(reportPhase({ ...base, noSheetSource: true }).kind).toBe("noSheet")
+    expect(reportPhase({ ...base, sourceChoices: [{ id: "f", name: "a.xlsx" }] })).toEqual({ kind: "chooseSource", files: [{ id: "f", name: "a.xlsx" }] })
     expect(reportPhase(base).kind).toBe("empty")
   })
 })

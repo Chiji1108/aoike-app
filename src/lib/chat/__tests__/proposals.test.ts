@@ -108,7 +108,7 @@ describe("承認と聞き返し", () => {
   })
 
   test("案件の作業に保存して読み戻せる", () => {
-    const open = newProposal("p3", { kind: "excel", fileId: "f1" }, [{ kind: "cell", rowKey: "s!2", field: "client", edit: { value: yamada, by: "chat" } }], null)
+    const open = newProposal("p3", { kind: "chat", messageId: "m1" }, [{ kind: "cell", rowKey: "s!2", field: "client", edit: { value: yamada, by: "chat" } }], null)
     const work = { ...newWork(), proposals: [open, decide(open, [0], "rejected")] }
     const saved = savedWorkSchema.parse(JSON.parse(JSON.stringify(toSavedWork(work))))
     expect(fromSaved(saved, []).proposals).toEqual(work.proposals)
@@ -144,7 +144,7 @@ describe("サーバーが記録した変更案", () => {
 })
 
 describe("工事を足す変更案の記録", () => {
-  const record = (rowKey: string) => ({ proposal: newProposal("p", { kind: "excel", fileId: "f" }, [{ kind: "add", rowKey, by: "excel", cells: {} }], null), changes: [{ kind: "add", rowKey, by: "excel", cells: {} }] })
+  const record = (rowKey: string) => ({ proposal: newProposal("p", { kind: "chat", messageId: "m" }, [{ kind: "add", rowKey, cells: {} }], null), changes: [{ kind: "add", rowKey, cells: {} }] })
   test("足す行の key は add- で始まるものだけを読む（今の行の key を足す行として読まない）", () => {
     expect(proposalRecordSchema.safeParse(record("add-1")).success).toBe(true)
     expect(proposalRecordSchema.safeParse(record("s!1")).success).toBe(false)
@@ -153,8 +153,8 @@ describe("工事を足す変更案の記録", () => {
 
 describe("足した行の上限", () => {
   test("承認したあとの足した行の数（同じ key は1回）。上限を超えるかを承認の前に確かめる", () => {
-    const add = (rowKey: string): ChatChange => ({ kind: "add", rowKey, by: "excel", cells: {} })
-    expect(addedCountAfter([{ key: "add-1", by: "excel" }], [add("add-1"), add("add-2"), add("add-2")])).toBe(2)
+    const add = (rowKey: string): ChatChange => ({ kind: "add", rowKey, cells: {} })
+    expect(addedCountAfter([{ key: "add-1" }], [add("add-1"), add("add-2"), add("add-2")])).toBe(2)
     expect(MAX_ADDED_ROWS).toBe(5_000)
   })
 })

@@ -11,7 +11,7 @@ export type PreviousCase = NonNullable<CasePageData["previous"]>
 /** 案件の画面の読み込みのデータ（previousUnsaved は、離れてすぐ戻ったとき前の画面の変更を保存できなかった） */
 export type CaseLoaderData = CasePageData & { previousUnsaved: boolean }
 /** 案件の画面の1回分を作るのに使う、読み込んだページの部分 */
-export type SessionPage = Pick<CaseLoaderData, "previousUnsaved" | "files" | "state" | "proposals" | "unreadableProposals" | "closedMissing" | "settings" | "chatEnabled" | "excelKey" | "previous"> & {
+export type SessionPage = Pick<CaseLoaderData, "previousUnsaved" | "files" | "state" | "proposals" | "unreadableProposals" | "closedMissing" | "settings" | "chatEnabled" | "previous"> & {
   kase: Pick<CasePageData["kase"], "id" | "status" | "costUsd">
   customer: Pick<CasePageData["customer"], "name">
 }
@@ -20,8 +20,6 @@ export type SessionPage = Pick<CaseLoaderData, "previousUnsaved" | "files" | "st
 export type CaseConfig = {
   /** AI が使えるか（APIキーがあるか） */
   chatEnabled: boolean
-  /** 最後の Excel の照合用の鍵（サーバーが案件ごとに決めたもの） */
-  excelKey: string
   caseId: string
   /** 顧客の名前（ダウンロードするファイルの名前） */
   customerName: string

@@ -86,7 +86,7 @@ export function describeChange(c: ChatChange, view: TableView, byKey: ReadonlyMa
       return { where: rowName(c.rowKey), what: fieldLabel(c.field), from: byKey.get(c.rowKey)?.cells[c.field].value ?? "", to: `顧客に確認: ${c.reason}` }
     case "add": {
       const values = KOJI_KEIREKI.fields.flatMap((f) => (c.cells[f.id]?.value ? [`${f.label}: ${shownValue(c.cells[f.id]!.value, view.letters)}`] : []))
-      return { where: c.by === "excel" ? "Excelで追加" : "AIが追加", what: "工事を足す", from: "", to: values.join(" / ") }
+      return { where: "AIが追加", what: "工事を足す", from: "", to: values.join(" / ") }
     }
     case "include": {
       const now = view.inclusion.get(c.rowKey)

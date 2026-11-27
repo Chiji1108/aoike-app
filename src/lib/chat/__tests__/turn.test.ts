@@ -1,5 +1,6 @@
 import { EMPTY_INQUIRY_TEXT } from "../../inquiry/text"
 import { describeSettings } from "../describe"
+import { inquiryNumbers } from "../../inquiry/email"
 import { describe, expect, test } from "vitest"
 import type { ModelMessage } from "ai"
 import { kojiRow } from "../../convert/__tests__/helpers"
@@ -63,7 +64,7 @@ describe("チャットの道具（決まった入力で）", () => {
     expect(res).toMatchObject({ ok: true, applied: 2 })
     expect(res.keys).toHaveLength(2)
     const [a, b] = state.pending as Extract<ChatChange, { kind: "add" }>[]
-    expect(a).toMatchObject({ kind: "add", by: "chat", rowKey: res.keys[0] })
+    expect(a).toMatchObject({ kind: "add", rowKey: res.keys[0] })
     expect(a!.cells.client!.value).toBe(personToken("田中花子"))
     expect(Object.values(a!.cells).every((e) => e!.status === "warning" && e!.message!.startsWith(AI_ADDED_NOTE))).toBe(true)
     expect(Object.keys(b!.cells).sort()).toEqual(["client", "gyoshu"])
@@ -383,7 +384,7 @@ describe("顧客の回答を読む（get_inquiries・record_answers）", () => {
     expect(out.cells[0]).toMatchObject({ label: "配置技術者", reason: "データに無い", workName: "〔Ａ〕邸新築に伴う電気工事", client: "〔Ａ〕" })
   })
 
-  test("record_answers は記入用Excelと同じ決まりで値にして、顧客の回答の変更案に溜める（表には入れない）。読めない答えは返す", async () => {
+  test("record_answers は決まった処理で値にして、顧客の回答の変更案に溜める（表には入れない）。読めない答えは返す", async () => {
     const asked: string[] = []
     const state = newTurnState(answering, cannedAnonymize(asked), undefined, null, answers)
     const out = await call(chatTools(state), "record_answers", {
@@ -395,7 +396,7 @@ describe("顧客の回答を読む（get_inquiries・record_answers）", () => {
       ],
     })
     expect(out).toMatchObject({ ok: true, applied: 4, answered: [{ key: "s!2", field: "engineer" }, { key: "s!3", field: "prefecture" }, { key: "s!3", field: "place" }], corrected: [{ key: "s!3", field: "workName" }] })
-    expect(out.invalid).toEqual([{ key: "s!2", field: "endYm", answer: "そのうち", message: "年月として読めません（例: 2024年4月）" }])
+    expect(out.invalid).toEqual([{ no: 1, key: "s!2", field: "endYm", answer: "そのうち", message: "年月として読めません（例: 2024年4月）" }])
     expect(asked).toEqual(["鈴木一郎様邸改修工事"])
     expect(state.pending).toEqual([
       { kind: "cell", rowKey: "s!2", field: "engineer", edit: { value: "試験　次郎", by: "customer" } },
@@ -440,8 +441,10 @@ describe("問い合わせの文面（propose_inquiry）", () => {
   const mail = { subject: "工事経歴書のご確認", intro: "資料ありがとうございました。いくつか教えてください。" }
   const others = { customerName: "サンプル建設工業", otherCustomers: async () => ["株式会社サンプル建設"] }
 
-  test("get_inquiries は理由の id と推定の根拠を返す", async () => {
+  test("get_inquiries は理由の id と推定の根拠と、メールと同じ工事の番号を返す", async () => {
     const out = await call(chatTools(newTurnState(asked)), "get_inquiries", {})
+    const numbers = inquiryNumbers(asked)
+    for (const c of out.cells as { key: string; no: number }[]) expect(c.no).toBe(numbers.get(c.key))
     expect(out.cells.find((c: { field: string }) => c.field === "endYm")).toMatchObject({ key: "s!3", reasonId: "needsReview", note: "引渡日から推定" })
     expect(out.cells.find((c: { field: string }) => c.field === "engineer")).toMatchObject({ reasonId: "missing" })
   })

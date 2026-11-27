@@ -52,7 +52,7 @@ async function fakeChat(page: Page, changes: ChatChange[], texts: string[], dism
 
 const MAIL = { subject: "工事経歴書のご確認（合成）", intro: "資料をお送りいただきありがとうございました。いくつか教えてください。" }
 
-test("AI のメールの下書きを承認すると件名・前置き・本文に使い、取り消すと決まった文に戻る。質問の文の欄は無く、本文は項目ごとの件数", async ({ page }) => {
+test("AI のメールの下書きを承認すると件名・前置き・本文に使い、取り消すと決まった文に戻る。本文は工事ごとに聞く項目を並べる", async ({ page }) => {
   const { customer } = await openNewCase(page)
   created.push(customer)
   await page.route((url) => callsServerFn(url.href, ["planWithAi"]), (route) => route.fulfill({ status: 500, body: "計画の AI を使わない" }))
@@ -65,12 +65,13 @@ test("AI のメールの下書きを承認すると件名・前置き・本文�
   expect(engineers).toBeGreaterThan(0)
   await expect(page.getByTestId("inquiry-question")).toHaveCount(0)
   await expect(page.getByTestId("inquiry-subject")).toHaveValue("工事経歴書の作成についてのご確認（行政書士青池事務所）")
-  await expect(page.getByTestId("inquiry-email")).toHaveValue(new RegExp(`配置技術者 ${engineers}件`))
+  await expect(page.getByTestId("inquiry-email")).toHaveValue(/■ 1\. .+\n(　（.+）\n)?　・配置技術者/)
+  await expect(page.getByTestId("inquiry-email")).not.toHaveValue(/Excel/)
 
   const texts: string[] = []
   const sentDismissed: string[][] = []
   await fakeChat(page, [{ kind: "inquiryMail", ...MAIL }], texts, sentDismissed)
-  const suggestion = page.locator('[data-testid="chat-suggestion"][data-suggestion="inquiry-text"]')
+  const suggestion = page.getByTestId("chat-suggestion")
 
   await test.step("外した問い合わせはチャットに送る。「AI でメールの下書きを作る」で指示を送り、変更案を承認すると件名・前置き・本文が変わる", async () => {
     await page.getByText(/問い合わせの一覧/).click()
