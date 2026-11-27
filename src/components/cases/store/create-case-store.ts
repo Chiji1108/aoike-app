@@ -119,9 +119,9 @@ export type CaseState = {
     /** 表の絞り込みの理由・聞き返し（kind は開いているもので決まる: 直すの段は直す行、表はすべて。null は選んでいない） */
     filter: TableFilter | null
     /**
-     * ダイアログ: delete は案件の削除、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ
+     * ダイアログ: delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ
      */
-    dialogs: { delete: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
+    dialogs: { delete: boolean; downloads: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
     /** ファイルをドラッグしている */
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
@@ -223,7 +223,7 @@ export function initialCaseState(page: {
       tab: null,
       workChoice: null,
       filter: null,
-      dialogs: { delete: false, pendingSources: [], askConfirm: null },
+      dialogs: { delete: false, downloads: false, pendingSources: [], askConfirm: null },
       dragging: false,
       focus: null,
       chatCanSend: false,

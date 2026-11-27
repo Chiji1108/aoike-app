@@ -1,10 +1,11 @@
 import { FileText, PanelRightClose, X } from "lucide-react"
+import { useShallow } from "zustand/react/shallow"
 import { useCase, useCaseActions, useCaseView, useTable } from "@/components/cases/store/context"
 import type { WorkTab } from "@/components/cases/work-tabs"
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
-import { FILE_KIND_LABELS, fileUrl, isSheetFile, type CaseFile } from "@/lib/cases/types"
+import { FILE_KIND_LABELS, fileUrl, isSheetFile, receivedFiles, type CaseFile } from "@/lib/cases/types"
 import type { MappingPlan, SheetGrid } from "@/lib/convert/plan"
 import { sameHeader } from "@/lib/convert/sources"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
@@ -67,10 +68,10 @@ export function WorkPanel() {
   )
 }
 
-/** 作業の画面の上: 案件のファイル・計画の元のシート・閉じる（段の並びはその下の StepBar） */
+/** 作業の画面の上: 届いたファイル（ダウンロードの控えは見出しの「…」のダウンロードの履歴）・計画の元のシート・閉じる（段の並びはその下の StepBar） */
 function Toolbar() {
   const actions = useCaseActions()
-  const files = useCase((s) => s.runtime.files)
+  const files = useCase(useShallow((s) => receivedFiles(s.runtime.files)))
   const sourceFileId = useCase((s) => s.work.sourceFileId)
   const busy = useCase((s) => !!s.runtime.loading || s.runtime.planDraft !== null)
   const source = useCase((s) => s.runtime.source)
@@ -92,7 +93,7 @@ function Toolbar() {
   )
 }
 
-/** 案件に付けたファイル（小さく並べる）。表になる届いたファイル（Excel・CSV）は変換の元に選べる（PDF は保存と一覧だけ） */
+/** 届いたファイル（小さく並べる。lib/cases/types.ts の FILE_ORIGINS）。表になる届いたファイル（Excel・CSV）は変換の元に選べる（PDF は保存と一覧だけ） */
 function FileChips({ files, sourceFileId, loading, onChoose }: { files: CaseFile[]; sourceFileId: string | null; loading: boolean; onChoose: (f: CaseFile) => void }) {
   if (!files.length) return null
   return (

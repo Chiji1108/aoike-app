@@ -11,8 +11,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { DownloadsDialog } from "./downloads-dialog"
 
-/** 案件の画面のダイアログ（削除・聞き返しの答えの確かめ・変換の元の確かめ）。開くかは ui.dialogs（ダウンロードの前の確認は段の中身） */
+/** 案件の画面のダイアログ（削除・ダウンロードの履歴・聞き返しの答えの確かめ・変換の元の確かめ）。開くかは ui.dialogs（ダウンロードの前の確認は段の中身） */
 export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; name: string }; fiscalYear: number }) {
   const router = useRouter()
   const { config, actions } = useCaseSession()
@@ -29,6 +30,7 @@ export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; 
       />
       <AskConfirmDialog />
       <SourceConfirmDialog />
+      <DownloadsDialog />
     </>
   )
 }

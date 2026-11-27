@@ -126,6 +126,11 @@ export function setDeleteOpen(env: CaseEnv, open: boolean) {
   setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, delete: open } }))
 }
 
+/** ダウンロードの履歴（見出しの「…」から）を開く・閉じる */
+export function setDownloadsOpen(env: CaseEnv, open: boolean) {
+  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, downloads: open } }))
+}
+
 /** ファイルをドラッグしている */
 export function setDragging(env: CaseEnv, dragging: boolean) {
   setUi(env.store, () => ({ dragging }))
