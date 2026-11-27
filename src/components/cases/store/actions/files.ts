@@ -274,7 +274,7 @@ export async function attach(env: CaseEnv, list: readonly File[]) {
       continue
     }
     if (kind === "answer" || kind === "marked") {
-      setUi(store, () => ({ tab: "inquiry" }))
+      setUi(store, () => ({ tab: "inquiry", tool: null }))
       await importAnswers(env, f, kind)
       continue
     }

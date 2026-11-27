@@ -168,6 +168,7 @@ export function ChatPanel(props: ChatPanelProps) {
         setMessages(h.messages)
         setCarried(h.carried)
         setHistory("loaded")
+        actions.setChatLoaded(true)
       },
       (e) => live && setHistory({ error: errorMessage(e, "会話を読めませんでした") }),
     )
@@ -198,48 +199,46 @@ export function ChatPanel(props: ChatPanelProps) {
     }
   }, [messages])
 
-  /** 送る。送れなかった（返事の途中・会話の読み込み中、またはサーバーが断った）なら false */
-  /** keepInput なら入力欄の書きかけを残す（決まった指示を送るボタン） */
-  /** 送る前の保存を待っている間（続けて押しても二度送らない） */
-  const [preparing, setPreparing] = useState(false)
-  const canSend = ready && !working && !preparing
-  // 送れるかを案件の画面に知らせる（ストアの ui.chatCanSend。「答える」の段の「AI に聞く」は、これが true の間だけ頼める）
-  useEffect(() => {
-    actions.setChatCanSend(canSend)
-  }, [canSend, actions])
+  /** 送れるか（ストアの1つの真実。case-view.ts の chatCanSend。送り始めてから返事が終わるまでは ui.chatTurn.sending で送れない） */
+  const canSend = useCaseView((v) => v.chatCanSend)
+  /**
+   * 送る。送れなかった（返事の途中・会話の読み込み中、またはサーバーが断った）なら false。keepInput なら入力欄の書きかけを残す（決まった指示を送るボタン）。
+   * 送り始めるその場でストアの sending を立て（送る前の保存を待つ間も。続けて押しても二度送らない）、返事が終わったら下ろす。書くのはここだけ
+   */
   async function send(text = input.trim(), options: { carryover?: true; keepInput?: true; needsSaved?: true } = {}) {
-    if (!text || working || preparing || !ready) return false
-    // 送れるかの真実（ストアの ui.chatCanSend）は、送り始めるその場で false にする（effect を待つと、その間に「AI に聞く」が通ってしまう）
-    actions.setChatCanSend(false)
-    setPreparing(true)
-    let saved: boolean
+    if (!text || !session.view(session.store.getState()).chatCanSend) return false
+    actions.setChatSending(true)
     try {
       // 送る前に作業を保存し終える（サーバーが保存した作業を読む道具のため。例: 振り返り）。保存の要る案内は保存できなければ送らない。
       // ほかの指示は保存できなくても送る（表は画面が送る）
-      saved = await session.settle()
+      const saved = await session.settle()
+      if (!saved && options.needsSaved) {
+        toast.error("作業を保存できていないので送りませんでした（保存の状態を確かめてから、もう一度押してください）")
+        return false
+      }
+      if (!options.carryover && !options.keepInput) setInput("")
+      failed.current = false
+      // 返事が終わるまで待つ（止めた・失敗したときも返る）
+      await sendMessage({ text }, options.carryover ? { body: { carryover: true } } : undefined)
+      return !failed.current
     } finally {
-      setPreparing(false)
+      actions.setChatSending(false)
     }
-    if (!saved && options.needsSaved) {
-      toast.error("作業を保存できていないので送りませんでした（保存の状態を確かめてから、もう一度押してください）")
-      return false
-    }
-    if (!options.carryover && !options.keepInput) setInput("")
-    failed.current = false
-    await sendMessage({ text }, options.carryover ? { body: { carryover: true } } : undefined)
-    return !failed.current
   }
+  const sendRef = useRef(send)
+  sendRef.current = send
   /**
    * 作業の画面から頼まれた決まった指示（「答える」の段の「AI に聞く」。ui.chatSend）を、受け取ったその場で送る。
-   * 頼めるのはストアの ui.chatCanSend が true の間だけ（askChat）で、送り始めるときにその場で false にするので、ここではそのまま送る。
+   * 頼めるのは送れる間だけ（case-view.ts の chatCanSend。askChat）で、送り始めるその場で送っている途中になるので、ここではそのまま送る。
    * 送ったあとのサーバーの失敗は、ふつうの送り損ねと同じ表示（失敗した返事・やり直し）に任せる
    */
   const chatSend = useCase((s) => s.ui.chatSend)
   useEffect(() => {
     if (!chatSend) return
     actions.takeChatSend()
-    void send(chatSend.text, { keepInput: true })
-  }, [chatSend])
+    // 送る処理は描くたびに作り直すので、最新のものを ref から呼ぶ（頼みが来たときだけ動かす）
+    void sendRef.current(chatSend.text, { keepInput: true })
+  }, [chatSend, actions])
   /** 会話にもう送った指示（once の案内を出さない） */
   const sentTexts = new Set(messages.flatMap((m) => (m.role === "user" ? [m.parts.map((p) => (p.type === "text" ? p.text : "")).join("")] : [])))
 
@@ -281,7 +280,7 @@ export function ChatPanel(props: ChatPanelProps) {
       }
       void send(a === "yes" ? "はい" : "いいえ").then((sent) => sent && proposalBase.answer(id, a))
     },
-    canSend: ready && !working,
+    canSend,
     undo: proposalBase.undo,
     undoState: proposalBase.undoState,
     awaiting: proposalBase.awaiting,
@@ -374,7 +373,7 @@ export function ChatPanel(props: ChatPanelProps) {
                       size="sm"
                       variant="outline"
                       className="w-fit"
-                      disabled={!ready || working || preparing}
+                      disabled={!canSend}
                       onClick={() => void send(sg.prompt, { keepInput: true, ...(sg.needsSaved ? { needsSaved: true } : {}) }).then((sent) => sent && actions.suggestionSent(sg.id))}
                       data-testid="chat-suggestion-send"
                     >

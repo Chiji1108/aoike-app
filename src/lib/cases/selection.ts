@@ -17,42 +17,14 @@ export function setSelection<T extends { selection: SelectionMode; selectionBy?:
   return t.selection === selection && t.selectionBy === by ? t : { ...t, selection, selectionBy: by }
 }
 
-/**
- * 保存した作業の出どころを読む（1か所）。この項目より前の保存は選び方をいつも書いていた（既定の7割ルールも）ので、値と控えで分ける:
- * - 全件（既定値ではない。前の形の alreadyApplied が true も読むときに全件にそろえてある）なら職員が決めた値
- * - ダウンロードの控え（CSV・最後の Excel）があれば、その選び方で出したので職員が決めた値（開き直して聞き返さない）
- * - ほかの7割ルール（alreadyApplied が false も既定値）は既定値のままと見なして聞く（はっきり7割を選んでいた案件も一度聞くことになるが、聞き漏らすよりよい）
- * selection は前の形を読み替えたあとの値、downloaded はその案件にダウンロードの控えがあるか（hasDownloadCopies）
- */
-export function savedSelectionBy(saved: { selectionBy?: SelectionBy | null; selection: SelectionMode; downloaded: boolean }): SelectionBy | null {
-  if (saved.selectionBy !== undefined) return saved.selectionBy
-  return saved.selection === "all" || saved.downloaded ? "staff" : null
-}
-
-/** 案件にダウンロードの控え（CSV・最後の Excel）があるか（前の形の保存の載せる工事を読む） */
-export const hasDownloadCopies = (files: readonly { kind: string }[]) => files.some((f) => f.kind === "csv" || f.kind === "final_sheet")
+/** 取り消しの記録に残す選び方と出どころ（今の形だけ。前の版の値だけの記録は読まない〔移行 drizzle/csv/0011 で空にした〕） */
+export const selectionSettingSchema = z.object({ selection: selectionSchema, selectionBy: selectionBySchema })
 
 /**
- * 取り消しの記録に残す選び方。selectionBy が無いのは前の版の記録（値だけ）で、出どころは記録を読むときに作業と同じ決まり（savedSelectionBy）で決める
- * （fromSaved が案件の控えの有無と一緒に withSavedSelectionBy で埋める。作業の今の値と出どころがそろうので、取り消すと戻る）
+ * 翌年に引き継ぐ去年の選び方: 去年に変換して出し、選び方を誰かが決めていたときだけ（既定値のままなら null で、今年は「答える」で聞く）
  */
-export type SelectionSetting = { selection: SelectionMode; selectionBy?: SelectionBy | null }
-export const selectionSettingSchema = z.union([z.object({ selection: selectionSchema, selectionBy: selectionBySchema }), selectionSchema.transform((selection): SelectionSetting => ({ selection }))])
-
-/** 前の版の記録の選び方の出どころを、作業と同じ決まりで埋める（downloaded は案件にダウンロードの控えがあるか） */
-export const withSavedSelectionBy = (s: SelectionSetting, downloaded: boolean): SelectionSource => ({
-  selection: s.selection,
-  selectionBy: savedSelectionBy({ selectionBy: s.selectionBy, selection: s.selection, downloaded }),
-})
-
-/**
- * 翌年に引き継ぐ去年の選び方: 去年に変換して出し、選び方を誰かが決めていたときだけ（既定値のままなら null で、今年は「答える」で聞く）。
- * 出どころは保存の形から savedSelectionBy で読む（downloaded は去年の案件にダウンロードの控えがあるか）
- */
-export const previousSelection = (
-  saved: { converted: boolean; selection: SelectionMode; selectionBy?: SelectionBy | null } | undefined,
-  downloaded: boolean,
-): SelectionMode | null => (saved?.converted && savedSelectionBy({ ...saved, downloaded }) !== null ? saved.selection : null)
+export const previousSelection = (saved: SelectionSource & { converted: boolean } | undefined): SelectionMode | null =>
+  saved?.converted && saved.selectionBy !== null ? saved.selection : null
 
 /**
  * 去年の選び方を引き継ぐ（1か所）。新しい作業（保存した作業が無い）にだけ、去年に決めた選び方を当てて previous にする。

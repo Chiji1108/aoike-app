@@ -21,7 +21,7 @@ test("前の形（並び順の id）の答えと取り消しの記録は、保�
     reportAnswers: { tax: "excluded", "plan-ask-1": "keep", "plan-ask-5": "exclude" },
     undo: [entry("report:plan-ask-1", [["plan-ask-1", null, "keep"]]), entry("report:tax", [["tax", null, "excluded"]])],
   }
-  const read = fromSaved(toSavedWork(w), [], [])
+  const read = fromSaved(toSavedWork(w), [])
   expect(read.reportAnswers).toEqual({ tax: "excluded", [askKey(ASK_C)]: "keep", "plan-ask-5": "exclude" })
   expect(read.undo.map((e) => [e.proposalId, e.label, e.reportAnswers])).toEqual([
     [`report:${askKey(ASK_C)}`, `report:${askKey(ASK_C)}`, [[askKey(ASK_C), null, "keep"]]],

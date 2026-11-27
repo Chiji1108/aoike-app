@@ -5,7 +5,7 @@ import { InquiryPanel } from "@/components/convert/inquiry-panel"
 /** 問い合わせのタブ: 顧客に聞くセル・メールの件名と前置き・添付の Excel */
 export function InquiryTab() {
   const actions = useCaseActions()
-  const shown = useTable((t) => t.shown)
+  const { shown, reconverting } = useTable(useShallow((t) => ({ shown: t.shown, reconverting: t.reconverting })))
   const { inquiries, attachment } = useCaseView(useShallow((v) => ({ inquiries: v.inquiries, attachment: v.attachment })))
   const { dismissed, answers, text } = useCase(useShallow((s) => ({ dismissed: s.work.dismissed, answers: s.work.answers, text: s.work.inquiryText })))
   if (!shown) return null
@@ -19,6 +19,7 @@ export function InquiryTab() {
       onText={actions.setInquiryText}
       attachment={attachment}
       onDownload={actions.downloadInquiry}
+      busy={reconverting}
       onToggle={actions.toggleInquiry}
     />
   )

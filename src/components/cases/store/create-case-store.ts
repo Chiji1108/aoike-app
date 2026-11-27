@@ -1,13 +1,12 @@
 import { createStore } from "zustand"
 import type { UploadNote } from "@/components/cases/case-report"
-import type { WorkTab } from "@/components/cases/work-tabs"
 import type { TableFilter } from "@/components/convert/status"
 import type { FinalImport } from "@/components/convert/final-import-panel"
 import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
 import type { CaseFile, CaseStatus } from "@/lib/cases/types"
 import { carrySelection } from "@/lib/cases/selection"
-import type { StepId } from "@/lib/cases/steps"
+import type { StepId, StepView, ToolId } from "@/lib/cases/steps"
 import { NO_ADDRESSES, type AddressBook } from "@/lib/convert/address"
 import type { Rule7Tax, SelectionMode } from "@/lib/convert/koji-selection"
 import { reviewPlanTransforms, type SheetGrid } from "@/lib/convert/plan"
@@ -113,7 +112,12 @@ export type CaseState = {
     /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
     wide: boolean
     /** 作業の画面に開いているもの（段・表・道具）。null は表ができる前（今の段。表ができたら今の段に決める。lib/cases/steps.ts の activeView） */
-    tab: WorkTab | null
+    tab: StepView | null
+    /**
+     * 開いている道具（工事場所・一括置換）。段の並びの外に重ねて開き、段の並びは tab を選んだまま。閉じる（null）と tab の段・表に戻る。
+     * 段・表を選ぶと閉じる
+     */
+    tool: ToolId | null
     /**
      * 職員が作業の画面を開いた（true）・閉じた（false）か。決めるまで（null）は、表があれば広い画面では開き、狭い画面では閉じておく
      * （狭い画面で開くとチャットを覆うので、チャットの「表を開く」で開く）
@@ -129,8 +133,11 @@ export type CaseState = {
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
     focus: FocusRequest | null
-    /** チャットに指示を送れるか（チャットの欄が知らせる。「答える」の段の「AI に聞く」） */
-    chatCanSend: boolean
+    /**
+     * チャットの指示の状態（送れるかの元。送れるかは case-view.ts の chatCanSend がここから作る）: loaded は保存した会話を読み終えた、
+     * sending は送り始めて（送る前の保存を待つ間も）から返事が終わるまで。書くのはチャットの欄の会話を読む処理と送る処理だけ
+     */
+    chatTurn: { loaded: boolean; sending: boolean }
     /** チャットに送る決まった指示（「答える」の段の「AI に聞く」。チャットの欄が送れるときに送って外す。新しい頼みは新しいオブジェクト） */
     chatSend: { text: string } | null
     /**
@@ -196,7 +203,7 @@ export function initialCaseState(page: {
   previous?: { selection: SelectionMode | null } | null
 }, chatPrefs: ChatPrefs | null = null): CaseState {
   // 載せる工事は、新しい作業にだけ去年に決めた選び方を引き継ぐ（保存した作業は変えない。lib/cases/selection.ts の carrySelection）
-  const opened = page.state ? fromSaved(page.state.work, page.state.aiCache, page.files) : newWork(null, page.settings.rule7Tax)
+  const opened = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
   const w = carrySelection(opened, page.previous?.selection, !page.state)
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
@@ -226,12 +233,13 @@ export function initialCaseState(page: {
     ui: {
       wide: false,
       tab: null,
+      tool: null,
       workChoice: null,
       filter: null,
       dialogs: { delete: false, downloads: false, pendingSources: [], askConfirm: null },
       dragging: false,
       focus: null,
-      chatCanSend: false,
+      chatTurn: { loaded: false, sending: false },
       chatSend: null,
       chat: { collapsed: chatPrefs?.collapsed ?? false, unread: null, size: chatPrefs?.size ?? null, hint: !chatPrefs?.hintShown },
     },

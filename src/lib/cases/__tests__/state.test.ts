@@ -36,7 +36,7 @@ const cannedAi: AiCaller = async (req: AiBatchRequest) => ({
 })
 
 const viaJson = (v: unknown) => JSON.parse(JSON.stringify(v))
-const roundTrip = (w: CaseWork) => fromSaved(savedWorkSchema.parse(viaJson(toSavedWork(w))), savedAiCacheSchema.parse(viaJson(toSavedAiCache(w.aiCache))), [])
+const roundTrip = (w: CaseWork) => fromSaved(savedWorkSchema.parse(viaJson(toSavedWork(w))), savedAiCacheSchema.parse(viaJson(toSavedAiCache(w.aiCache))))
 
 describe("案件の状態の保存と読み出し", () => {
   test("保存した AI の結果から、AI を呼ばずに同じ行を作り直せ、手直し・選択・設定が残る", async () => {
@@ -77,12 +77,10 @@ describe("案件の状態の保存と読み出し", () => {
     expect([...roundTrip(work).aiCache]).toEqual([["a", anonymized], ["b", address]])
   })
 
-  test("前の形（7割適用済み alreadyApplied）の作業と変更案は、載せる工事の選び方（selection）にして読む", () => {
+  test("作業の前の形（alreadyApplied・選び方の無い形）は読めない（移行 drizzle/csv/0011 でそろえる）。変更案の記録（R2）の前の形は選び方にして読む", () => {
     const { selection: _, ...saved } = toSavedWork(newWork())
-    expect(savedWorkSchema.parse({ ...saved, alreadyApplied: true }).selection).toBe("all")
-    expect(savedWorkSchema.parse({ ...saved, alreadyApplied: false }).selection).toBe("rule7")
-    expect(savedWorkSchema.parse(saved).selection).toBe("rule7")
-    expect("alreadyApplied" in savedWorkSchema.parse({ ...saved, alreadyApplied: true })).toBe(false)
+    expect(savedWorkSchema.safeParse({ ...saved, alreadyApplied: true }).success).toBe(false)
+    expect(savedWorkSchema.safeParse(saved).success).toBe(false)
     expect(chatChangeSchema.parse({ kind: "settings", alreadyApplied: true })).toEqual({ kind: "settings", selection: "all" })
     expect(chatChangeSchema.parse({ kind: "settings", tax: "included" })).toEqual({ kind: "settings", tax: "included" })
   })

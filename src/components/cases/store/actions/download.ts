@@ -57,9 +57,10 @@ export async function downloadFinalExcel(env: CaseEnv) {
 export async function downloadInquiry(env: CaseEnv) {
   const { config, store } = env
   const s = store.getState()
-  const { output, currentSource } = env.table(s)
+  const { output, currentSource, reconverting } = env.table(s)
   const { attachment, placement, placementId, activeCells } = env.view(s)
-  if (!output) return
+  // 変換し直している間は前の行なので書き出さない（CSV・最後の Excel と同じ）
+  if (!output || reconverting) return
   try {
     const [{ markedXlsx }, { inquiryXlsx }] = await loadInquiryXlsx()
     const type = contentTypeOf("x.xlsx")

@@ -10,8 +10,10 @@ export type StepId = (typeof STEPS)[number]
 /** 道具（「その他」にまとめる。段に入らない、ときどき使うもの。7割と金額はダウンロードの段の中） */
 export const TOOLS = ["location", "replace"] as const
 export type ToolId = (typeof TOOLS)[number]
-/** 作業の画面に出すもの: 段・表（すべての行）・道具 */
-export type WorkView = StepId | "table" | ToolId
+/** 段の並びで選ぶもの（段か表。道具は段の並びの外に開く） */
+export type StepView = StepId | "table"
+/** 作業の画面に開けるもの: 段・表・道具 */
+export type WorkView = StepView | ToolId
 
 export const VIEW_LABELS: Record<WorkView, string> = {
   answer: "答える",
@@ -61,7 +63,7 @@ export function nextStep(todo: CaseTodo, from: StepId): StepId {
  * 開いているもの。表ができたときに今の段に決め（session.ts の watch が ui.tab に書く。そのあとは段が済んでも動かない）、
  * それまで（null）は今の段
  */
-export const activeView = (chosen: WorkView | null, todo: CaseTodo): WorkView => chosen ?? currentStep(todo)
+export const activeView = (chosen: StepView | null, todo: CaseTodo): StepView => chosen ?? currentStep(todo)
 
 /** 表の絞り込みの種類（直すの段は直す行だけ、表はすべての行。切り替えは出さない） */
-export const tableKindOf = (view: WorkView): "fix" | "all" => (view === "fix" ? "fix" : "all")
+export const tableKindOf = (view: StepView): "fix" | "all" => (view === "fix" ? "fix" : "all")

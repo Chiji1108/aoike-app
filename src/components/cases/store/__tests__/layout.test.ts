@@ -48,8 +48,10 @@ describe("並べ方と画面の action（ui）", () => {
   test("狭い画面: 表ができても重ねて開かず、道具の結果ではタブだけ切り替える。開くとうしろを覆う", async () => {
     const s = await converted(false)
     expect(layout(s)).toMatchObject({ work: { place: "overlay", shown: false }, covered: false })
+    const tab = s.store.getState().ui.tab
     s.actions.openTab("location", "auto")
-    expect(s.store.getState().ui.tab).toBe("location")
+    // 道具は段の並びの外に開く（段の並びは選んでいた段のまま）
+    expect(s.store.getState().ui).toMatchObject({ tool: "location", tab })
     expect(layout(s).covered).toBe(false)
     s.actions.showTab("table")
     expect(layout(s)).toMatchObject({ work: { place: "overlay", shown: true }, covered: true })
@@ -61,12 +63,20 @@ describe("並べ方と画面の action（ui）", () => {
     // 送れない間は受け付けない（頼みを残さない）
     s.actions.askChat("説明して")
     expect(s.store.getState().ui.chatSend).toBeNull()
-    s.actions.setChatCanSend(true)
+    s.actions.setChatLoaded(true)
     s.actions.askChat("説明して")
     expect(layout(s)).toMatchObject({ covered: false, workShown: false })
     const ui = s.store.getState().ui
     expect(ui.chatSend).toEqual({ text: "説明して" })
     expect(ui.focus).toEqual({ kind: "chatWindow" })
+    // 送っている途中（送り始めてから返事が終わるまで）は受け付けない
+    s.actions.takeChatSend()
+    s.actions.setChatSending(true)
+    expect(s.view(s.store.getState()).chatCanSend).toBe(false)
+    s.actions.askChat("説明して")
+    expect(s.store.getState().ui.chatSend).toBeNull()
+    s.actions.setChatSending(false)
+    s.actions.askChat("説明して")
     // 同じ指示でも、もう一度頼めば新しい頼み（もう一度送る）
     s.actions.askChat("説明して")
     expect(s.store.getState().ui.chatSend).not.toBe(ui.chatSend)
@@ -221,7 +231,7 @@ describe("チャットの窓（広い画面で表があるとき）", () => {
     const { saved, prefs } = memoryPrefs({ collapsed: true, size: null, hintShown: true })
     const s = await convertedWith(prefs)
     const writes = saved.writes
-    s.actions.setChatCanSend(true)
+    s.actions.setChatLoaded(true)
     s.actions.askChat("説明して")
     expect(layout(s)).toMatchObject({ chat: "window", chatCollapsed: false, workShown: true })
     expect(s.store.getState().ui.chatSend).toEqual({ text: "説明して" })
@@ -291,6 +301,32 @@ describe("段（済んでも勝手に移らない）", () => {
     s.actions.undoWithNotice("report:selection", "答え")
     expect(s.store.getState().work).toMatchObject({ selection: "rule7", selectionBy: null })
     expect(s.view(s.store.getState()).questionStates[0]).toEqual({ id: "selection", answered: false })
+  })
+})
+
+describe("道具と段の並び", () => {
+  test("道具は ui.tool に開き、段・表を選ぶと閉じる。閉じると選んでいた段に戻る", async () => {
+    const s = await converted(true)
+    await settle()
+    s.actions.showTab("gyoshu")
+    s.actions.showTab("replace")
+    expect(s.store.getState().ui).toMatchObject({ tab: "gyoshu", tool: "replace" })
+    expect(s.view(s.store.getState())).toMatchObject({ view: "gyoshu", tool: "replace" })
+    s.actions.closeTool()
+    expect(s.store.getState().ui).toMatchObject({ tab: "gyoshu", tool: null })
+    s.actions.showTab("location")
+    s.actions.goStep("fix")
+    expect(s.store.getState().ui).toMatchObject({ tab: "fix", tool: null })
+  })
+
+  test("直すの段を開くと理由の絞り込みだけを外し、表の聞き返しの絞り込みは残す", async () => {
+    const s = await converted(true)
+    s.actions.setFilter({ kind: "fix", reason: "empty" })
+    s.actions.goStep("fix")
+    expect(s.store.getState().ui.filter).toBeNull()
+    s.actions.setFilter({ kind: "all", ask: "plan-ask-0" })
+    s.actions.goStep("fix")
+    expect(s.store.getState().ui.filter).toEqual({ kind: "all", ask: "plan-ask-0" })
   })
 })
 

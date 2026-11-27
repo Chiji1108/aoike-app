@@ -188,10 +188,15 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）
       chatReady: !!t.rows && !t.reconverting && (noSheetSource || (w.converted && !!rt.source && !!t.grid && !!t.plan)),
+      chatCanSend: false,
       layout: layoutOfInput(s.ui.wide, t.hasTable, !!t.output && !!t.shown, s.ui.workChoice, s.ui.chat.collapsed),
       view: "table",
+      tool: null,
     }
     out.view = activeView(s.ui.tab, out.todo)
+    out.tool = s.ui.tool
+    // チャットに指示を送れるか（1つの真実: 送る準備ができ、会話を読み終え、送っている途中でない）。「答える」の段の「AI に聞く」とチャットの欄が同じ値を読む
+    out.chatCanSend = out.chatReady && s.ui.chatTurn.loaded && !s.ui.chatTurn.sending
     // 中身が前と同じ参照なら前の結果を返す（selector が描画ごとに新しいものを返さない）
     const same = last && (Object.keys(out) as (keyof CaseView)[]).every((k) => Object.is(out[k], last!.out[k]))
     last = { state: s, out: same ? last!.out : out }
@@ -218,7 +223,11 @@ export type CaseView = {
   formatDiff: { diff: ReturnType<typeof compareFormats>; lines: ReturnType<typeof describeFormatDiff> } | null
   noSheetSource: boolean
   chatReady: boolean
+  /** チャットに指示を送れるか（chatReady と ui.chatTurn から作る） */
+  chatCanSend: boolean
   layout: ReturnType<typeof layoutOf>
   /** 作業の画面に開いているもの（段・表・道具。職員が選ぶまでは今の段。lib/cases/steps.ts） */
   view: ReturnType<typeof activeView>
+  /** 開いている道具（段の並びの外に重ねて開く。ui.tool） */
+  tool: CaseState["ui"]["tool"]
 }

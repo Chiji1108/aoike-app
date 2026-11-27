@@ -214,7 +214,7 @@ export type AnswerQuestion = { question: ReportQuestion; go: { label: string; di
  */
 export function useAnswerQuestions(): { questions: AnswerQuestion[]; chatAsks: AnswerQuestion[] } {
   const { actions, config } = useCaseSession()
-  const chatCanSend = useCase((s) => s.ui.chatCanSend)
+  const chatCanSend = useCaseView((v) => v.chatCanSend)
   const todo = useCaseView((v) => v.todo)
   const proposals = useCase((s) => s.work.proposals)
   const undoStates = useCase((s) => derive(s).undoStates)

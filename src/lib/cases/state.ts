@@ -13,8 +13,8 @@ import { EMPTY_INQUIRY_TEXT, inquiryTextSchema, type InquiryText } from "../inqu
 import { addedRowSchema, MAX_ADDED_ROWS, type AddedRow } from "./added"
 import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
-import { hasDownloadCopies, savedSelectionBy, selectionBySchema, withSavedSelectionBy, type SelectionBy, type SelectionSource } from "./selection"
-import { basisSchema, cellEditSchema, fieldIdSchema, legacySelection, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
+import { selectionBySchema, type SelectionBy } from "./selection"
+import { basisSchema, cellEditSchema, fieldIdSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
 
 /**
@@ -153,11 +153,9 @@ export const savedWorkSchema = z
   taxBy: taxBySchema.default(null),
   basis: basisSchema,
   rule7Tax: rule7TaxSchema.default("excluded"),
-  selection: selectionSchema.optional(),
-  /** 載せる工事を誰が決めたか（この項目より前の保存には無い。読むときに savedSelectionBy で決める） */
-  selectionBy: selectionBySchema.optional(),
-  /** 前の形（7割適用済み＝全行を載せる）。読むときに selection にそろえる */
-  alreadyApplied: z.boolean().optional(),
+  /** 載せる工事の選び方と、誰が決めたか（lib/cases/selection.ts）。どちらも必ず持つ（無い前の形は読めない。移行 drizzle/csv/0011 でそろえた） */
+  selection: selectionSchema,
+  selectionBy: selectionBySchema,
   rounding: roundingSchema,
   proposals: z.array(proposalSchema).default([]),
   added: z.array(addedRowSchema).max(MAX_ADDED_ROWS).default([]),
@@ -167,9 +165,7 @@ export const savedWorkSchema = z
   rejectedExcel: z.array(z.string().max(4000)).max(MAX_REJECTED_EXCEL).default([]),
   markFailure: z.object({ fileId: z.string().max(64), key: z.string().max(64), reason: z.string().max(200) }).nullable().default(null),
   allHintClosed: z.boolean().default(false),
-  })
-  // 選び方の出どころ（selectionBy）は、無い前の形ではダウンロードの控えの有無も見るので、読むとき（fromSaved・previousSelection）に savedSelectionBy で決める
-  .transform(({ alreadyApplied, selection, ...w }) => ({ ...w, selection: legacySelection(selection, alreadyApplied) ?? "rule7" }))
+})
 export type SavedWork = z.infer<typeof savedWorkSchema>
 
 /** AI の結果（大きい。変換したときだけ変わるので、変わったときだけ保存する） */
@@ -182,16 +178,9 @@ export function toSavedWork({ aiCache: _, ...w }: CaseWork): SavedWork {
 
 export const toSavedAiCache = (cache: AiCache): SavedAiCache => [...cache]
 
-/**
- * 保存した作業を読む（前の形の聞き返しの答えの id は鍵に読み替える。lib/cases/asks.ts）。files は案件のファイル（前の形の載せる工事の出どころを
- * ダウンロードの控えの有無から読む。lib/cases/selection.ts の savedSelectionBy）
- */
-export function fromSaved(w: SavedWork, aiCache: SavedAiCache, files: readonly { kind: string }[]): CaseWork {
-  const downloaded = hasDownloadCopies(files)
-  const selectionBy = savedSelectionBy({ selectionBy: w.selectionBy, selection: w.selection, downloaded })
-  // 前の版の取り消しの記録の選び方も、作業と同じ決まり・同じ控えの有無で出どころを埋める（取り消すと今の値と合って戻る）
-  const undo = w.undo.map((e) => (e.selection ? { ...e, selection: [withSavedSelectionBy(e.selection[0], downloaded), withSavedSelectionBy(e.selection[1], downloaded)] as [SelectionSource, SelectionSource] } : e))
-  return withAskKeys({ ...w, selectionBy, undo, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
+/** 保存した作業を読む（前の形の聞き返しの答えの id は鍵に読み替える。lib/cases/asks.ts） */
+export function fromSaved(w: SavedWork, aiCache: SavedAiCache): CaseWork {
+  return withAskKeys({ ...w, aiCache: new Map(aiCache), edits: new Map(w.edits), manual: new Map(w.manual), dismissed: new Set(w.dismissed) })
 }
 
 /** D1 の1行に入る大きさ（D1 の上限は 2,000,000 バイト。少し余裕を持たせる）。作業と AI の結果はそれぞれ別の行 */

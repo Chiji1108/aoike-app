@@ -1,7 +1,6 @@
 import { FileText, PanelRightClose, X } from "lucide-react"
 import { useShallow } from "zustand/react/shallow"
 import { useCase, useCaseActions, useCaseView, useTable } from "@/components/cases/store/context"
-import type { WorkTab } from "@/components/cases/work-tabs"
 import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Tabs, TabsContent } from "@/components/ui/tabs"
@@ -10,7 +9,7 @@ import type { MappingPlan, SheetGrid } from "@/lib/convert/plan"
 import { sameHeader } from "@/lib/convert/sources"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 import { cn } from "@/lib/utils"
-import { isStep } from "@/lib/cases/steps"
+import { isStep, VIEW_LABELS, type StepView, type ToolId } from "@/lib/cases/steps"
 import { StepBar } from "./step-bar"
 import { StepDone } from "./step-done"
 import { AnswerTab } from "./tabs/answer-tab"
@@ -31,13 +30,19 @@ type Plan = MappingPlan<KojiFieldId>
  */
 export function WorkPanel() {
   const actions = useCaseActions()
-  const view = useCaseView((v) => v.view)
+  const { view, tool } = useCaseView(useShallow((v) => ({ view: v.view, tool: v.tool })))
   const pad = "min-h-0 overflow-auto p-4 pb-[calc(1rem+var(--chat-cover-b,0px))]"
   return (
     <section className="flex h-full min-h-0 flex-col bg-background" aria-label="作業の画面" data-testid="work-panel" data-view={view}>
       <Toolbar />
-      <Tabs value={view} onValueChange={(v: WorkTab) => (isStep(v) ? actions.goStep(v) : actions.setTab(v))} className="min-h-0 flex-1 gap-0">
+      {/* 段の並びは段か表のどれかを選んだまま。道具を開いている間は段・表の中身を隠し、道具は Tabs の外に出す */}
+      <Tabs
+        value={view}
+        onValueChange={(v: StepView) => (isStep(v) ? actions.goStep(v) : actions.setTab(v))}
+        className={cn("min-h-0 gap-0", tool ? "flex-none" : "flex-1")}
+      >
         <StepBar />
+        <div hidden={tool !== null} className="flex min-h-0 flex-1 flex-col">
         <TabsContent value="answer" keepMounted className={pad} data-testid="answer-section" data-step-panel="answer">
           <AnswerTab />
         </TabsContent>
@@ -69,13 +74,33 @@ export function WorkPanel() {
         <TabsContent value="export" keepMounted className={pad} data-testid="export-section" data-step-panel="export">
           <ExportTab />
         </TabsContent>
-        <TabsContent value="location" keepMounted className={pad}>
-          <LocationTab />
-        </TabsContent>
-        <TabsContent value="replace" keepMounted className={pad} data-testid="replace-details">
-          <ReplaceTab />
-        </TabsContent>
+        </div>
       </Tabs>
+      {/* 道具（工事場所・一括置換）。どれも置いたまま（閉じても中の欄の状態を消さない） */}
+      <ToolPanel id="location" open={tool === "location"} className={pad}>
+        <LocationTab />
+      </ToolPanel>
+      <ToolPanel id="replace" open={tool === "replace"} className={pad} testId="replace-details">
+        <ReplaceTab />
+      </ToolPanel>
+    </section>
+  )
+}
+
+/** 道具の中身。開いていることが分かるように名前と「閉じる」（段の並びで選んでいる段・表に戻る）を上に出す */
+function ToolPanel({ id, open, className, testId, children }: { id: ToolId; open: boolean; className: string; testId?: string; children: React.ReactNode }) {
+  const actions = useCaseActions()
+  return (
+    <section hidden={!open} className="flex min-h-0 flex-1 flex-col" aria-label={VIEW_LABELS[id]} data-testid={`tool-${id}`}>
+      <div className="flex items-center gap-2 border-b px-4 py-1.5 text-sm">
+        <span className="font-medium">{VIEW_LABELS[id]}</span>
+        <Button size="xs" variant="ghost" className="ml-auto" onClick={actions.closeTool} data-testid="tool-close">
+          <X /> 閉じる
+        </Button>
+      </div>
+      <div className={cn("flex-1", className)} data-testid={testId}>
+        {children}
+      </div>
     </section>
   )
 }
