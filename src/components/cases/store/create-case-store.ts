@@ -20,7 +20,6 @@ export type Source = { fileId: string; name: string; sheets: SheetGrid[] }
  */
 export type PeerState = "none" | "open" | "saved"
 
-/** 載せる件数が大きく減る答えを押したときの確かめ（押す前に何件減るか・7割に届くかを出す） */
 
 /** チャットの欄の中の移り先（target の要素、無ければ最初の答えを待つもの）と、その中でフォーカスを合わせるボタン */
 export type ChatTarget = { target: string; button?: string }
