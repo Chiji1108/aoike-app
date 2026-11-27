@@ -108,8 +108,8 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       questions: ReturnType<typeof questionStatesOf>,
       inquiries: ReturnType<typeof inquiriesOf>,
       dismissed: CaseState["work"]["dismissed"],
-      inquirySent: CaseState["work"]["inquirySent"],
-    ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, questions, inquiries, dismissed, inquirySent }),
+      inquiring: boolean,
+    ) => caseTodo({ shown: shown ?? NO_ROWS, inclusion, rowFixes, exportRows: output?.length ?? 0, proposals, contents, questions, inquiries, dismissed, inquiring }),
   )
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
   const manualIncludedOf = memoLast((inclusion: TableDerived["inclusion"]) => manualIncludedCount(inclusion))
@@ -132,7 +132,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     const advice = selectionAdviceOf(t.shown, t.inclusion, summary)
     const questionStates = questionStatesOf(t.hasTable, w.selectionAnswered, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
     /** 届いたファイルはあるが変換の元を選んでいない（PDF だけ・元にしなかった）案件か。AI に一から表を作らせる。元は作業の sourceFileId だけで決める */
-    const noSheetSource = !w.sourceFileId && !rt.loading && rt.files.some((f) => f.kind === "source")
+    const noSheetSource = !w.sourceFileId && !rt.loading && !rt.sourceError && rt.files.some((f) => f.kind === "source")
     const out: CaseView = {
       rowFixes,
       inquiries,
@@ -142,7 +142,7 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       askEffects: askEffectsOf(askRows, t.edited, t.shown, t.selected, summary, planAsks, w.manual, w.tax, w.basis, w.rule7Tax, w.selection),
       questionStates,
       selectionAdvice: advice,
-      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, w.inquirySent),
+      todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, rt.status === "inquiring"),
       manualIncluded: manualIncludedOf(t.inclusion),
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）

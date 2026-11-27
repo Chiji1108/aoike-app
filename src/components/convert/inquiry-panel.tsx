@@ -8,11 +8,13 @@ import { fieldLabel } from "@/lib/spec/koji-keireki"
 import { errorMessage } from "@/lib/errors"
 import { countsByItem, DEFAULT_INTRO, inquiryEmail } from "@/lib/inquiry/email"
 import { DraftText } from "./draft-text"
-import { MAX_INTRO_LENGTH, MAX_SUBJECT_LENGTH, type InquirySent, type InquiryText } from "@/lib/inquiry/text"
+import { MAX_INTRO_LENGTH, MAX_SUBJECT_LENGTH, type InquiryText } from "@/lib/inquiry/text"
 import { CASE_TOPICS, inquiryKey, REASONS, type Inquiry } from "@/lib/inquiry/inquiry"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
 
 type Row = RowResult<KojiFieldId>
+
+const BUSY_TITLE = "変換し直しています。終わると使えます"
 
 /**
  * 顧客に問い合わせる: 件数・項目ごとの件数・外すチェックと、メールの件名と本文（聞くことは本文に工事ごとに並べる）。
@@ -26,8 +28,9 @@ export function InquiryPanel({
   text,
   onText,
   onToggle,
-  sent,
+  inquiring,
   onSent,
+  busy,
 }: {
   inquiries: Inquiry[]
   allRows: Row[]
@@ -36,10 +39,12 @@ export function InquiryPanel({
   text: InquiryText
   onText: (next: (prev: InquiryText) => InquiryText) => void
   onToggle: (key: string, ask: boolean) => void
-  /** 「送った」の記録（無ければまだ送っていない） */
-  sent: InquirySent | null
-  /** 「送った」を押した（コピーでは送った扱いにしない） */
+  /** 案件が問い合わせ中（送った・返事待ち） */
+  inquiring: boolean
+  /** 「送った」: 案件の状態を問い合わせ中にする（コピーでは送った扱いにしない。戻すときは案件の状態を切り替える） */
   onSent: () => void
+  /** 変換し直している間（表は前の行なので、本文のコピーと「送った」を押せない） */
+  busy: boolean
 }) {
   const active = useMemo(() => inquiries.filter((q) => !dismissed.has(inquiryKey(q))), [inquiries, dismissed])
   const email = useMemo(() => inquiryEmail(active, allRows, text), [active, allRows, text])
@@ -124,19 +129,19 @@ export function InquiryPanel({
               <Copy />
               件名をコピー
             </Button>
-            <Button variant="outline" onClick={() => void copy(email.body, "本文")} data-testid="copy-email">
+            <Button variant="outline" onClick={() => void copy(email.body, "本文")} disabled={busy} title={busy ? BUSY_TITLE : undefined} data-testid="copy-email">
               <Copy />
               本文をコピー
             </Button>
           </div>
           <Textarea readOnly className="h-64 font-mono text-xs" value={email.body} data-testid="inquiry-email" />
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={onSent} data-testid="inquiry-sent">
+            <Button variant="outline" onClick={onSent} disabled={busy || inquiring} title={busy ? BUSY_TITLE : undefined} data-testid="inquiry-sent">
               <Send />
               送った
             </Button>
-            <span className="text-xs text-muted-foreground" data-testid="inquiry-sent-at">
-              {sent ? `${new Date(sent.at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} に送りました（返事待ち）` : "メールを送ったら押します（返事待ちにします）"}
+            <span className="text-xs text-muted-foreground" data-testid="inquiry-sent-state">
+              {inquiring ? "問い合わせ中（返事待ち）" : "メールを送ったら押します（案件を問い合わせ中にします）"}
             </span>
           </div>
           <p className="text-xs text-muted-foreground" data-testid="answer-note">

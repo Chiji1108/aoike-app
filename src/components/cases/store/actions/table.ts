@@ -5,7 +5,7 @@ import { needsConfirm } from "@/lib/cases/ask-impact"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
 import { pendingGyoshuItems } from "@/lib/cases/todo"
-import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO, SENT_UNDO } from "@/lib/cases/undo"
+import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer, approvedChange, decide } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
 import { selectionSettled, setSelection } from "@/lib/cases/selection"
@@ -20,7 +20,6 @@ import { ASK_KINDS } from "../case-view"
 import { setUi, setWork } from "../create-case-store"
 import type { CaseEnv } from "../env"
 import { commit, undoGroup, type Committed } from "./proposals"
-import { changeStatus } from "./case"
 import { supersedeConversion } from "./source"
 
 const SPEC = KOJI_KEIREKI
@@ -173,27 +172,6 @@ export function dismissRemaining(env: CaseEnv) {
     return n ? { ...s.work, dismissed: new Set([...s.work.dismissed, ...keys]) } : s.work
   })
   if (n) notifyCommitted(env, `残りの問い合わせ ${n} 件を聞かないことにしました`, committed, id, "問い合わせを外したこと")
-}
-
-/**
- * 問い合わせのメールを「送った」: 押した時刻と、そのとき聞いていた問い合わせを作業に1つだけ記録する（前の記録は置き換える。返事待ちはこれで決める）。
- * 取り消しの記録に残し、通知から戻せる
- */
-export function markInquirySent(env: CaseEnv) {
-  const id = `${SENT_UNDO}${crypto.randomUUID()}`
-  const status = env.store.getState().runtime.status
-  const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
-    const keys = env.view(s).inquiries.map(inquiryKey).filter((k) => !s.work.dismissed.has(k))
-    return { ...s.work, inquirySent: { at: Date.now(), keys } }
-  })
-  // 案件の状態も問い合わせ中にする（案件の一覧に出す）。取り消すと記録と一緒に前の状態に戻す
-  if (status !== "inquiring") void changeStatus(env, "inquiring")
-  const undoSent = () => {
-    undoWithNotice(env, id, "「送った」")
-    if (status !== "inquiring" && env.store.getState().runtime.status === "inquiring") void changeStatus(env, status)
-  }
-  if (committed === "tooLarge") toast.warning("問い合わせを送ったことにしました（取り消しの記録に残せないので、取り消せません）")
-  else toast.success("問い合わせを送ったことにしました（返事待ち）", committed === "undoable" ? { action: { label: "取り消す", onClick: undoSent } } : undefined)
 }
 
 /** 問い合わせに入れる・外す（外した問い合わせはメールと件数に入れない） */

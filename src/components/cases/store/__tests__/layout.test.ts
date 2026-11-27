@@ -123,19 +123,15 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.store.getState().runtime.inquiryHint).toBe("sent")
   })
 
-  test("「送った」で返事待ちにし（取り消せる）、「残りは聞かない」はセルの問い合わせだけをまとめて外す（1つの取り消しの記録）", async () => {
+  test("案件を問い合わせ中にすると返事待ち（戻せば戻る）。「残りは聞かない」はセルの問い合わせだけをまとめて外す（1つの取り消しの記録）", async () => {
     const s = await converted(true)
     const todo = () => s.view(s.store.getState()).todo.inquiry
     const lastUndo = () => s.store.getState().work.undo.at(-1)!
     expect(todo().state).toBe("todo")
-    s.actions.markInquirySent()
-    expect(todo()).toMatchObject({ state: "waiting", unsent: 0 })
-    // 案件の状態も問い合わせ中にする
-    expect(s.store.getState().runtime.status).toBe("inquiring")
-    expect(lastUndo()).toMatchObject({ proposalId: expect.stringMatching(/^sent:/), kind: "op" })
-    s.actions.undoWithNotice(lastUndo().proposalId)
+    await s.actions.changeStatus("inquiring")
+    expect(todo().state).toBe("waiting")
+    await s.actions.changeStatus("converting")
     expect(todo().state).toBe("todo")
-    expect(s.store.getState().work.inquirySent).toBeNull()
     // 税込・税抜（案件全体の問い合わせ）は外さない
     s.store.setState((st) => ({ work: { ...st.work, tax: "unknown", taxBy: null } }))
     const before = todo()
@@ -167,6 +163,14 @@ describe("並べ方と画面の action（ui）", () => {
     s.actions.confirmSource(pending!.id, false)
     expect(s.store.getState().work.sourceFileId).toBeNull()
     expect(view()).toMatchObject({ noSheetSource: true, chatReady: true })
+  })
+
+  test("壊れた Excel だけでは、表を一から作るチャットにならない", async () => {
+    const s = createCaseSession({ ...page(), files: [] }, fakeDeps({ fetchFile: async () => new Uint8Array(0) }), noChannel)
+    s.connect()
+    await s.actions.attach([new File([new Uint8Array(1)], "壊れた.xlsx")])
+    expect(s.store.getState().runtime.sourceError).not.toBeNull()
+    expect(s.view(s.store.getState())).toMatchObject({ noSheetSource: false, chatReady: false })
   })
 
   test("読めない表を付けたら元にせず、同じ回の次の表を元に試す", async () => {

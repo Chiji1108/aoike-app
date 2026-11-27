@@ -33,7 +33,7 @@ const askSource = (env: CaseEnv, file: CaseFile) =>
 /**
  * 届いたファイルを付ける（チャットの📎でアップロードしたファイル、画面にドラッグしたファイル）。どれも届いたファイルとして保存する
  * （顧客の回答のファイルもチャットの AI が読む）。変換の元がまだ無ければ、表のファイルを順に変換の元として開き、読めたものを元にする
- * （読めなければ同じ回の次の表を試す）。もう元があれば保存するだけ（元を変えるときは、ファイルの行の「変換の元にする」から選ぶ）
+ * （読めなければ同じ回の次の表を試す。ほかの開く操作に追い越されたら、元を開くのはやめる）。もう元があれば保存するだけ（元を変えるときは、ファイルの行の「変換の元にする」から選ぶ）
  */
 export async function attach(env: CaseEnv, list: readonly File[]) {
   const { store } = env
@@ -55,7 +55,11 @@ export async function attach(env: CaseEnv, list: readonly File[]) {
     if (store.getState().work.added.length) {
       askSource(env, saved)
       hasSource = true
-    } else hasSource = await openSource(env, saved, true)
+      continue
+    }
+    const opened = await openSource(env, saved, true)
+    // 追い越されたら（ほかで元を選んだ）、次のファイルを元にしない
+    hasSource = opened !== "unreadable"
   }
 }
 

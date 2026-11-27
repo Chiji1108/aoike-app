@@ -1,4 +1,5 @@
 import { OFFICE_NAME } from "../constants"
+import { groupBy } from "../group-by"
 import type { RowResult } from "../convert/convert"
 import type { KojiFieldId } from "../spec/koji-keireki"
 import { ASK_COLUMNS, CASE_TOPICS, columnOf, namedOf, type AskColumn, type CellInquiry, type Inquiry } from "./inquiry"
@@ -56,9 +57,10 @@ export function inquiryEmail(inquiries: readonly Inquiry[], rows: readonly KojiR
   const cases = inquiries.flatMap((q) => (q.kind === "case" ? [CASE_TOPICS[q.topic].question] : []))
   cases.forEach((t, i) => sections.push(`${i + 1}. ${t}`))
   const cells = inquiries.filter((q): q is CellInquiry => q.kind === "cell")
+  const byRow = groupBy(cells, (q) => q.rowKey)
   const works = rows.flatMap((row) => {
-    const qs = cells.filter((q) => q.rowKey === row.key)
-    const lines = qs.length ? askLines(row, qs) : []
+    const qs = byRow.get(row.key)
+    const lines = qs ? askLines(row, qs) : []
     return lines.length ? [[`■ ${workTitle(row)}`, ...lines].join("\n")] : []
   })
   if (works.length) {

@@ -196,7 +196,7 @@ test("開くと今の段（答える）。聞き返しは答えるの段だけ�
     await page.getByTestId("inquiry-sent").click()
     await expect(step).toHaveAttribute("data-state", "waiting")
     await expect(step).toContainText("返事待ち")
-    await expect(page.getByTestId("inquiry-sent-at")).toContainText("に送りました")
+    await expect(page.getByTestId("inquiry-sent-state")).toHaveText("問い合わせ中（返事待ち）")
     await expect(page.getByTestId("inquiry-remaining")).toBeVisible()
     await expect(page.getByTestId("next-step-export")).toHaveAttribute("title", /問い合わせ \d+件（送った・返事待ち）/)
   })
