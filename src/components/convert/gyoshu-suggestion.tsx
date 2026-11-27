@@ -17,7 +17,16 @@ type Row = RowResult<KojiFieldId>
 /** 最後に頼んだ結果（保存しない。案そのものは案件の作業に残る）。failed は呼び出しに失敗した行（もう一度頼める） */
 export type FixRun = { asked: number; proposed: number; undecided: number; byBasis: Partial<Record<GyoshuBasis, number>>; failed: string[]; error?: string }
 
-export function useGyoshuSuggestion({ caseId, onPlans, onCaseCost }: { caseId: string; onPlans: (plans: { rowKey: string; edit: CellEdit }[]) => void; onCaseCost: (usd: number) => void }) {
+export function useGyoshuSuggestion({
+  caseId,
+  onPlans,
+  onCaseCost,
+}: {
+  caseId: string
+  /** 案を一覧に足す。sourceFileId は頼み始めたときの変換の元（受け取るまでに元が変わっていたら捨てる） */
+  onPlans: (sourceFileId: string | null, plans: { rowKey: string; edit: CellEdit }[]) => void
+  onCaseCost: (usd: number) => void
+}) {
   const [running, setRunning] = useState<number | null>(null)
   const [last, setLast] = useState<FixRun | null>(null)
   const busy = useRef(false)
@@ -29,7 +38,7 @@ export function useGyoshuSuggestion({ caseId, onPlans, onCaseCost }: { caseId: s
    * keys の行（表の行）に業種の案を出す。rows は今の表（shown。傾向はこの表のほかの行から数える）。
    * 100行ずつの呼び出しは並べて呼び、成功した分は一覧の案にする（失敗した分の行は failed に残し、もう一度頼める。払った結果を捨てない）
    */
-  const run = useCallback(async (rows: readonly Row[], keys: readonly string[]) => {
+  const run = useCallback(async (rows: readonly Row[], keys: readonly string[], sourceFileId: string | null) => {
     const { onPlans, onCaseCost } = live.current
     if (busy.current || !keys.length) return
     busy.current = true
@@ -70,7 +79,7 @@ export function useGyoshuSuggestion({ caseId, onPlans, onCaseCost }: { caseId: s
       const { edits, undecided } = suggestionEdits(answered, results, trend)
       const byBasis: FixRun["byBasis"] = {}
       for (const e of edits) byBasis[e.basis] = (byBasis[e.basis] ?? 0) + 1
-      if (edits.length) onPlans(edits.map((e) => ({ rowKey: e.rowKey, edit: e.edit })))
+      if (edits.length) onPlans(sourceFileId, edits.map((e) => ({ rowKey: e.rowKey, edit: e.edit })))
       setLast({ asked: asked.length, proposed: edits.length, undecided, byBasis, failed, ...(errors.size ? { error: [...errors].join(" / ") } : {}) })
     } catch (e) {
       setLast({ asked: asked.length, proposed: 0, undecided: 0, byBasis: {}, failed: asked.map((r) => r.key), error: errorMessage(e, "AI の案を出せませんでした") })

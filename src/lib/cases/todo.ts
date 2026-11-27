@@ -162,6 +162,16 @@ export const awaitsAnswer = (todo: CaseTodo, proposalId: string) => todo.answer.
 /** タブの数（数を出さないタブは 0） */
 export const tabBadge = (todo: CaseTodo, tab: string) => (tab === "gyoshu" || tab === "inquiry" || tab === "location" ? todo.badges[tab] : 0)
 
+/**
+ * 業種の AI の案は、業種の一覧に今いる行（gyoshuTodo）にだけ意味がある（一覧に出す・案のまま決める・保存するは、みなこれを通す）。
+ * 一覧にいない行の案を落とした作業（落とすものが無ければ同じもの）
+ */
+export function listedGyoshuPlans<W extends { gyoshuPlans: ReadonlyMap<string, CellEdit> }>(w: W, rows: readonly Pick<GyoshuItem, "key">[]): W {
+  const listed = new Set(rows.map((r) => r.key))
+  if ([...w.gyoshuPlans.keys()].every((k) => listed.has(k))) return w
+  return { ...w, gyoshuPlans: new Map([...w.gyoshuPlans].filter(([k]) => listed.has(k))) }
+}
+
 /** 業種を決める行（status.ts の gyoshuTodo）を一覧の行にする。案は業種の AI の案、無ければ今の値（AI の推定・要確認でコード表にある値） */
 function gyoshuItems(
   shown: readonly RowResult<KojiFieldId>[],

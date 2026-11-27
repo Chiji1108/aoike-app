@@ -81,6 +81,9 @@ describe("案件の状態の保存と読み出し", () => {
     expect(savedWorkSchema.safeParse({ ...saved, tax: "both" }).success).toBe(false)
     expect(savedWorkSchema.safeParse({ ...saved, edits: [["k", { value: "x", by: "someone" }]] }).success).toBe(false)
     expect(savedAiCacheSchema.safeParse([["k", { id: 0, value: "x" }]]).success).toBe(false)
+    // 業種の AI の案の値は業種コードだけ
+    expect(savedWorkSchema.safeParse({ ...saved, gyoshuPlans: [["s!1", { value: "8", by: "chat" }]] }).success).toBe(true)
+    expect(savedWorkSchema.safeParse({ ...saved, gyoshuPlans: [["s!1", { value: "電気", by: "chat" }]] }).success).toBe(false)
   })
 })
 

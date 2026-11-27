@@ -38,10 +38,11 @@ export function useGyoshuSuggest() {
   const { config } = useCaseSession()
   const gyoshu = useGyoshuTool()
   const shown = useTable((t) => t.shown)
+  const sourceFileId = useCase((s) => s.work.sourceFileId)
   const canSuggest = config.chatEnabled && gyoshu.running === null
   const blocked = canSuggest ? undefined : !config.chatEnabled ? "AI を使えません" : "AI が案を考えています"
   const run = (keys: readonly string[]) => {
-    if (shown && canSuggest) void gyoshu.run(shown, keys)
+    if (shown && canSuggest) void gyoshu.run(shown, keys, sourceFileId)
   }
   return { canSuggest, blocked, run, state: gyoshu }
 }
@@ -144,7 +145,7 @@ export type AnswerQuestion = { question: ReportQuestion; go: { label: string; di
 
 /**
  * 「答える」の段に出すもの: 報告の聞き返し（その場で答える。「AI に聞く」は決まった質問をチャットに送ってチャットへ移る）と、
- * チャットのもの（「答える」に数える承認待ちの変更案・AI の聞き返し・一覧の外の業種の AI の案と、答えて閉じたもの）。
+ * チャットのもの（「答える」に数える承認待ちの変更案・AI の聞き返しと、答えて閉じたもの）。
  * 変更案の付いた「はい・いいえ」の聞き返しだけその場で答え、ほかはチャットのその変更案へ移る
  */
 export function useAnswerQuestions(): { questions: AnswerQuestion[]; chatAsks: AnswerQuestion[] } {

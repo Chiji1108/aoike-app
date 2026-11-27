@@ -13,6 +13,7 @@ import { taxBySchema, type TaxBy } from "./tax"
 import { undoEntrySchema, type UndoEntry } from "./undo"
 import { basisSchema, cellEditSchema, replacementsSchema, roundingSchema, rule7TaxSchema, selectionSchema, taxSchema } from "../schemas"
 import type { KojiFieldId } from "../spec/koji-keireki"
+import { GYOSHU } from "../spec/code-sets"
 
 /**
  * 案件の画面の作業（メモリの形）。変換の結果（行）は持たない。行は元のファイル・計画・端数・AI の結果（aiCache）から
@@ -119,7 +120,8 @@ export const savedWorkSchema = z
   undo: z.array(undoEntrySchema),
   reportAnswers: z.record(z.string(), z.string().max(100)),
   inquiryText: inquiryTextSchema,
-  gyoshuPlans: z.array(z.tuple([z.string(), cellEditSchema])),
+  /** 業種の AI の案の値は業種コードだけ */
+  gyoshuPlans: z.array(z.tuple([z.string(), cellEditSchema.refine((e) => GYOSHU.some((g) => g.code === e.value), "業種の案が業種コードではありません")])),
 })
 export type SavedWork = z.infer<typeof savedWorkSchema>
 

@@ -3,7 +3,7 @@ import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { CONFIRM_LABEL, shortLabel } from "@/components/convert/status"
 import type { CaseWork } from "@/lib/cases/state"
 import { setTax } from "@/lib/cases/tax"
-import { answeringCells } from "@/lib/cases/todo"
+import { answeringCells, listedGyoshuPlans } from "@/lib/cases/todo"
 import { CONFIRM_UNDO, DISMISS_UNDO, GYOSHU_UNDO, RANGE_UNDO, reportUndoId, SELECTION_UNDO } from "@/lib/cases/undo"
 import { answer } from "@/lib/chat/proposals"
 import { editKey, editSession, staffEdit, type CellEdit } from "@/lib/convert/convert"
@@ -117,10 +117,11 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
   const committed = commit(env.store, { group: id, kind: "op" }, (s) => {
     const { work: w } = s
     const { letters } = env.table(s)
+    const plans = listedGyoshuPlans(w, env.view(s).todo.gyoshu.rows).gyoshuPlans
     const edits = new Map(w.edits)
-    const gyoshuPlans = new Map(w.gyoshuPlans)
+    const gyoshuPlans = new Map(plans)
     for (const d of decisions) {
-      const plan = w.gyoshuPlans.get(d.key)
+      const plan = plans.get(d.key)
       let edit = staffEdit(d.value, letters)
       if (plan?.value === d.value) {
         const { guessed: _, ...confirmed } = plan
@@ -134,9 +135,17 @@ export function decideGyoshu(env: CaseEnv, decisions: readonly GyoshuDecision[],
   notifyCommitted(env, how === "plan" ? `${decisions.length} 行の業種を案のまま決めました` : "業種を決めました", committed, id, "業種の決定")
 }
 
-/** 業種の AI の案を一覧に足す（表の値は変えない。同じ行の前の案は置き換える） */
-export const addGyoshuPlans = (env: CaseEnv, plans: readonly { rowKey: string; edit: CellEdit }[]) =>
-  update(env, "gyoshuPlans", (prev) => new Map([...prev, ...plans.map((p): [string, CellEdit] => [p.rowKey, p.edit])]))
+/**
+ * 業種の AI の案を一覧に足す（表の値は変えない。同じ行の前の案は置き換える）。案は業種の一覧に今いる行にだけ意味があるので、
+ * 頼んでいる間に決めた行（一覧にもういない）の案と、頼み始めたあとに変換の元が変わったときの案は捨てる
+ */
+export function addGyoshuPlans(env: CaseEnv, sourceFileId: string | null, plans: readonly { rowKey: string; edit: CellEdit }[]) {
+  const s = env.store.getState()
+  if (s.work.sourceFileId !== sourceFileId) return
+  const listed = new Set(env.view(s).todo.gyoshu.rows.map((r) => r.key))
+  const fresh = plans.filter((p) => listed.has(p.rowKey))
+  if (fresh.length) update(env, "gyoshuPlans", (prev) => new Map([...prev, ...fresh.map((p): [string, CellEdit] => [p.rowKey, p.edit])]))
+}
 
 /**
  * 載せる工事の選び方を変える（ダウンロードの段の7割と金額の「載せる工事」・表の「載せる」の見出しのチェック・「全件にしますか？」で同じ）。

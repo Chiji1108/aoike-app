@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import type { SaveRequest } from "@/lib/cases/autosave"
 import { fixture } from "@/lib/convert/__tests__/helpers"
 import { setWork, type ChatPrefs } from "../create-case-store"
 import type { CaseDeps } from "../deps"
@@ -170,7 +171,7 @@ describe("並べ方と画面の action（ui）", () => {
     expect(a && b).toBeTruthy()
     const before = s.store.getState().work.edits
     const plan = { value: "8", by: "chat" as const, guessed: true as const, message: "AI の案（工事名から）: 合成" }
-    s.actions.addGyoshuPlans([{ rowKey: a!.key, edit: plan }, { rowKey: b!.key, edit: plan }])
+    s.actions.addGyoshuPlans(s.store.getState().work.sourceFileId, [{ rowKey: a!.key, edit: plan }, { rowKey: b!.key, edit: plan }])
     expect(s.store.getState().work.edits).toBe(before)
     expect(rows().find((r) => r.key === a!.key)!.plan).toEqual({ value: "8", note: plan.message })
     s.actions.decideGyoshu([{ key: a!.key, value: "8" }, { key: b!.key, value: "9" }], "pick")
@@ -181,6 +182,34 @@ describe("並べ方と画面の action（ui）", () => {
     s.actions.undoWithNotice(s.store.getState().work.undo.at(-1)!.proposalId)
     expect(s.store.getState().work.edits.get(editKey(a!.key, "gyoshu"))).toEqual({ value: "", by: "staff" })
     expect(s.store.getState().work.gyoshuPlans.size).toBe(0)
+  })
+
+  test("業種の AI の案は一覧に今いる行だけ: 頼んでいる間に手で決めた行の案は捨て（取り消しても古い案は出ない）、元が変わったら捨て、保存には一覧にいる行の分だけ", async () => {
+    const saves: SaveRequest[] = []
+    const s = createCaseSession(page(), fakeDeps({ saveState: async (req) => (saves.push(req), { ok: true, version: req.version + 1 }) }))
+    s.connect()
+    s.actions.setWide(true)
+    await s.actions.openSource(FILES[0]!, true)
+    await vi.waitFor(() => expect(s.view(s.store.getState()).layout.work).not.toBeNull())
+    const rows = () => s.view(s.store.getState()).todo.gyoshu.rows
+    const keys = s.table(s.store.getState()).shown!.slice(0, 2).map((r) => r.key)
+    setWork(s.store, (w) => ({ ...w, edits: new Map([...w.edits, ...keys.map((k): [string, CellEdit] => [editKey(k, "gyoshu"), { value: "", by: "staff" }])]) }))
+    const [a, b] = keys as [string, string]
+    const source = s.store.getState().work.sourceFileId
+    const plan = { value: "8", by: "chat" as const, guessed: true as const, message: "AI の案（工事名から）: 合成" }
+    // 頼んでいる間に a を手で決める → 届いた案は a の分を捨てる
+    s.actions.decideGyoshu([{ key: a, value: "9" }], "pick")
+    s.actions.addGyoshuPlans(source, [{ rowKey: a, edit: plan }, { rowKey: b, edit: plan }])
+    expect([...s.store.getState().work.gyoshuPlans.keys()]).toEqual([b])
+    s.actions.undoWithNotice(s.store.getState().work.undo.at(-1)!.proposalId)
+    expect(rows().find((r) => r.key === a)!.plan).toBeNull()
+    // 頼み始めたあとに元が変わっていたら、届いた案は捨てる
+    s.actions.addGyoshuPlans("別の元", [{ rowKey: a, edit: plan }])
+    expect(s.store.getState().work.gyoshuPlans.has(a)).toBe(false)
+    // 表で b の業種を決めて一覧から外れると、保存する作業には b の案を入れない（ストアの作業はそのまま）
+    setWork(s.store, (w) => ({ ...w, edits: new Map(w.edits).set(editKey(b, "gyoshu"), { value: "9", by: "staff" }) }))
+    await s.settle()
+    expect(saves.at(-1)!.work.gyoshuPlans).toEqual([])
   })
 
   test("並べ方は同じ状態なら同じもの（selector が描画ごとに新しいものを返さない）", async () => {
