@@ -25,7 +25,9 @@ export type Bucket = {
 }
 
 const ms = (d: Date) => d.getTime()
-const toCustomer = (r: typeof csvCustomers.$inferSelect): Customer => ({ ...r, createdAt: ms(r.createdAt), updatedAt: ms(r.updatedAt) })
+/** 顧客の列のうち顧客として返すもの（ルールの文章と版は getRules だけが読む） */
+const customerColumns = { id: csvCustomers.id, name: csvCustomers.name, createdAt: csvCustomers.createdAt, updatedAt: csvCustomers.updatedAt }
+const toCustomer = (r: { id: string; name: string; createdAt: Date; updatedAt: Date }): Customer => ({ ...r, createdAt: ms(r.createdAt), updatedAt: ms(r.updatedAt) })
 const toCase = (r: typeof csvCases.$inferSelect): Case => ({ ...r, createdAt: ms(r.createdAt), updatedAt: ms(r.updatedAt) })
 const toFile = ({ r2Key: _, status: __, ...r }: typeof csvCaseFiles.$inferSelect): CaseFile => ({ ...r, createdAt: ms(r.createdAt) })
 
@@ -37,7 +39,7 @@ const liveCase = (db: Db, caseId: string) => exists(db.select({ one: sql`1` }).f
 
 export async function listCustomers(db: Db): Promise<CustomerSummary[]> {
   const rows = await db
-    .select({ customer: csvCustomers, caseCount: count(csvCases.id) })
+    .select({ customer: customerColumns, caseCount: count(csvCases.id) })
     .from(csvCustomers)
     .leftJoin(csvCases, eq(csvCases.customerId, csvCustomers.id))
     .groupBy(csvCustomers.id)
@@ -52,12 +54,12 @@ export async function otherCustomerNames(db: Db, customerId: string): Promise<st
 }
 
 export async function getCustomer(db: Db, id: string): Promise<Customer | undefined> {
-  const [row] = await db.select().from(csvCustomers).where(eq(csvCustomers.id, id))
+  const [row] = await db.select(customerColumns).from(csvCustomers).where(eq(csvCustomers.id, id))
   return row && toCustomer(row)
 }
 
 export async function createCustomer(db: Db, name: string): Promise<Customer> {
-  const [row] = await db.insert(csvCustomers).values({ id: crypto.randomUUID(), name }).returning()
+  const [row] = await db.insert(csvCustomers).values({ id: crypto.randomUUID(), name }).returning(customerColumns)
   return toCustomer(row!)
 }
 
@@ -155,8 +157,8 @@ export async function appendRuleOnce(
 ): Promise<"added" | "already"> {
   const col = rulesColumns(target)
   const owner = target.scope === "global" ? sql`${csvSettings} where ${csvSettings.id} = ${SETTINGS_ID}` : sql`${csvCustomers} where ${csvCustomers.id} = ${target.customerId}`
-  // 足したあとの字数（「改行・- 」の3字を足す）が上限までなら足せる。行が無ければ足さない
-  const fits = sql`(select length(${col.rules}) + 3 + ${charCount(add.text)} <= ${MAX_RULES_TOTAL} from ${owner})`
+  // 足したあとの字数（文章が空なら「- 」の2字、あれば「改行・- 」の3字を足す）が上限までなら足せる。行が無ければ足さない
+  const fits = sql`(select length(${col.rules}) + case when ${col.rules} = '' then 2 else 3 end + ${charCount(add.text)} <= ${MAX_RULES_TOTAL} from ${owner})`
   const token = crypto.randomUUID()
   const mark = db
     .insert(csvRuleAppends)

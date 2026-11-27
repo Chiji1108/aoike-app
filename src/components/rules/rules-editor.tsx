@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,9 @@ import { saveRulesFn } from "@/server/rules-fns"
 
 /**
  * 全体ルール・顧客ルールの文章（1つの文章をそのまま直して保存する）。チャットの AI への指示にそのまま入る。
- * ほかの画面が先に保存していたら保存を断り、入力を残したまま今の文章を見せる（もう一度保存すると、今の文章を置き換える）
+ * ほかの画面が先に保存していたら保存を断り、入力を残したまま今の文章を見せる（もう一度保存すると、今の文章を置き換える）。
+ * 読み直し（initial が変わる）では、直していなければ入力も入れ替え、直している間は保存した文章と版だけを新しくする（入力を黙って消さない。
+ * 文章がほかで変わっていたら、断られたときと同じく今の文章を見せる）
  */
 export function RulesEditor({ target, initial, testId }: { target: RuleTarget; initial: Rules; testId: string }) {
   const [saved, setSaved] = useState(initial)
@@ -18,17 +20,22 @@ export function RulesEditor({ target, initial, testId }: { target: RuleTarget; i
   /** ほかの画面で保存された今の文章（保存を断ったときだけ） */
   const [conflict, setConflict] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /** 送っている途中か（同じ描画のうちに続けて押されても二度送らない。busy は次の描画まで変わらない） */
+  const sending = useRef(false)
   if (initial !== loaded) {
     setLoaded(initial)
     setSaved(initial)
-    setDraft(initial.text)
-    setConflict(null)
+    if (draft.trim() === saved.text) {
+      setDraft(initial.text)
+      setConflict(null)
+    } else if (initial.text !== saved.text) setConflict(initial.text) // 直している間にほかで変わっていたら、保存の前に見せる
   }
   const length = charCount(draft.trim())
   const changed = draft.trim() !== saved.text
 
   async function save() {
-    if (busy) return
+    if (sending.current) return
+    sending.current = true
     setBusy(true)
     try {
       const r = await saveRulesFn({ data: { target, version: saved.version, text: draft } })
@@ -41,6 +48,7 @@ export function RulesEditor({ target, initial, testId }: { target: RuleTarget; i
     } catch (e) {
       toast.error(errorMessage(e, "ルールを保存できませんでした"))
     } finally {
+      sending.current = false
       setBusy(false)
     }
   }

@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test"
 import { createUIMessageStream, createUIMessageStreamResponse } from "ai"
 import type { ChatMetadata } from "../src/lib/chat/messages"
 import { proposalKey, type ChatChange, type Proposal, type ProposalRecord } from "../src/lib/chat/proposals"
-import { convertFixture, deleteCustomer, open, openNewCase, reload } from "./helpers"
+import { callsServerFn, convertFixture, deleteCustomer, open, openNewCase, reload } from "./helpers"
 
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
@@ -80,6 +80,32 @@ test("顧客ルール: 2つの画面で直すと、後から保存した方は�
   await reload(page)
   await expect(input(page, list)).toHaveValue("- 完成年月は引渡日")
   await other.close()
+})
+
+test("保存を続けて押しても1回だけ送り、自分の保存を「ほかの画面で保存された」と出さない", async ({ page }) => {
+  const { customer } = await openNewCase(page)
+  created.push(customer)
+  await page.getByRole("link", { name: customer }).click()
+  const list = "customer-rules"
+  let calls = 0
+  // 保存を遅らせ、返る前に続けて押す
+  await page.route(
+    (url) => callsServerFn(url.href, ["saveRulesFn"]),
+    async (route) => {
+      calls++
+      await new Promise((r) => setTimeout(r, 800))
+      await route.fallback()
+    },
+  )
+  await input(page, list).fill("- 完成年月は引渡日")
+  const save = page.getByTestId(list).getByTestId("rules-save")
+  await save.evaluate((el: HTMLButtonElement) => {
+    el.click()
+    el.click()
+  })
+  await expect(page.getByTestId(list).getByTestId("rules-length")).not.toContainText("まだ保存していません")
+  expect(calls).toBe(1)
+  await expect(page.getByTestId(list).getByTestId("rules-conflict")).toHaveCount(0)
 })
 
 /** 手元の R2（開発サーバーと同じ .wrangler/state）に変更案の記録を置く（サーバーのチャットが置くのと同じ形。承認はサーバーがここから読む） */

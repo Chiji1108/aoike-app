@@ -98,6 +98,15 @@ describe("ルールの文章", () => {
     expect([...(await getRules(db, t)).text].length).toBe(MAX_RULES_TOTAL)
   })
 
+  test("文章が空のときは「- 」の2字だけ足すので、上限ちょうどまで足せる", async () => {
+    const customer = await createCustomer(db, "合成建設")
+    const c = await createCase(db, customer.id, 2026)
+    const t: RuleTarget = { scope: "customer", customerId: customer.id }
+    await expect(appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "𠮷".repeat(MAX_RULES_TOTAL - 1) })).rejects.toBeInstanceOf(RulesTooLongError)
+    expect(await appendRuleOnce(db, t, { caseId: c.id, proposalId: "p", item: 0, text: "𠮷".repeat(MAX_RULES_TOTAL - 2) })).toBe("added")
+    expect([...(await getRules(db, t)).text].length).toBe(MAX_RULES_TOTAL)
+  })
+
   test("顧客を消すと顧客ルールも消え、もう足せない（全体ルールは残る）", async () => {
     const customer = await createCustomer(db, "合成建設")
     const c = await createCase(db, customer.id, 2026)
@@ -111,22 +120,33 @@ describe("ルールの文章", () => {
   })
 })
 
-describe("項目から1つの文章にする（0014）", () => {
-  test("項目を並びの順に「- 」の行にして1つの文章にし、項目の表を消す。項目の無い顧客は空", () => {
+describe("項目から1つの文章にする（0014・0015）", () => {
+  test("0014 は列を足して項目を並びの順に「- 」の行で移す。0015 はその間に前の版が書いた項目を、今の版がまだ書いていない文章だけ移し直して、項目の表を消す", () => {
     const old = new Database(":memory:")
     const tags = readdirSync(new URL("../../../drizzle/csv/", import.meta.url)).filter((f) => f.endsWith(".sql")).map((f) => f.replace(/\.sql$/, "")).sort()
     const apply = (list: string[]) => {
       for (const tag of list) for (const statement of readFileSync(new URL(`../../../drizzle/csv/${tag}.sql`, import.meta.url), "utf8").split("--> statement-breakpoint")) old.exec(statement)
     }
+    const rules = () => old.prepare("select id, rules, rules_version as v from csv_customers order by id").all()
     apply(tags.filter((t) => t < "0014"))
-    old.exec("insert into csv_customers (id, name) values ('c1', '合成建設'), ('c2', '合成工務店')")
+    old.exec("insert into csv_customers (id, name) values ('c1', '合成建設'), ('c2', '合成工務店'), ('c3', '合成設備')")
     old.exec("insert into csv_rule_items (id, scope, customer_id, text, position, source) values ('b', 'customer', 'c1', 'B', 2, 'chat'), ('a', 'customer', 'c1', 'A', 1, 'staff')")
-    apply(tags.filter((t) => t >= "0014"))
-    expect(old.prepare("select id, rules, rules_version as v from csv_customers order by id").all()).toEqual([
+    apply(tags.filter((t) => t === "0014_rules_text"))
+    expect(rules()).toEqual([
       { id: "c1", rules: "- A\n- B", v: 0 },
       { id: "c2", rules: "", v: 0 },
+      { id: "c3", rules: "", v: 0 },
     ])
     expect(old.prepare("select rules from csv_settings").get()).toEqual({ rules: DEFAULT_GLOBAL_RULES })
+    // デプロイまでの間: 前の版が c1・c2 の項目を書き、今の版が c1 の文章を保存した
+    old.exec("insert into csv_rule_items (id, scope, customer_id, text, position, source) values ('c', 'customer', 'c1', 'C', 3, 'staff'), ('d', 'customer', 'c2', 'D', 1, 'staff')")
+    old.exec("update csv_customers set rules = '- 今の版で保存', rules_version = 1 where id = 'c1'")
+    apply(tags.filter((t) => t >= "0015"))
+    expect(rules()).toEqual([
+      { id: "c1", rules: "- 今の版で保存", v: 1 },
+      { id: "c2", rules: "- D", v: 0 },
+      { id: "c3", rules: "", v: 0 },
+    ])
     expect(old.prepare("select name from sqlite_master where name = 'csv_rule_items'").all()).toEqual([])
   })
 })
