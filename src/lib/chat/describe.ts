@@ -48,7 +48,7 @@ const short = (s: string) => ([...s].length > SHORT_NAME ? `${[...s].slice(0, SH
 /** 顧客の回答から読んだ変更（record_answers）は、項目の名前に添えて分かるようにする（聞いていない項目の訂正は「顧客の訂正」） */
 const BY_NOTE: Partial<Record<Extract<ChatChange, { kind: "cell" }>["edit"]["by"], string>> = { customer: "（顧客の回答）", confirmed: "（顧客が確認）" }
 
-/** 7割と金額の設定の変更（変更案の settings・チャットの set_selection の入力）を言葉にする。振り返りの材料も同じ言葉で出す */
+/** 7割と金額の設定の変更（変更案の settings・チャットの set_selection の入力）を言葉にする */
 export function describeSettings(c: { tax?: TaxMode; selection?: SelectionMode; basis?: Basis; rounding?: Rounding }): string[] {
   return [
     c.tax && `Excel の金額: ${TAX_LABELS[c.tax]}`,
@@ -95,7 +95,7 @@ export function describeChange(c: ChatChange, view: TableView, byKey: ReadonlyMa
     case "settings":
       return { where: "案件", what: "7割と金額の設定", from: "", to: describeSettings(c).join(" / ") }
     case "rule":
-      return { where: c.scope === "global" ? "全体ルール" : "顧客ルール", what: c.source === "review" ? "項目を足す（振り返り）" : "項目を足す", from: "", to: c.text }
+      return { where: c.scope === "global" ? "全体ルール" : "顧客ルール", what: "項目を足す", from: "", to: c.text }
     case "plan":
       return { where: "列の対応", what: "変換し直す", from: "", to: [...describePlanPatch(c.patch, c.before ?? (plan ? beforeOf(plan, c.patch) : undefined)), `理由: ${c.patch.reason}`].join(" / ") }
     case "inquiry":

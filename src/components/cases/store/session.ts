@@ -147,24 +147,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     }
   }
 
-  /** 去年と今年の元の Excel の見出し（「去年のやり方で直す」で、去年のコードの文字列のうち見出しの名前は伏せない） */
-  const carryoverHeaders = () => {
-    const s = store.getState()
-    const { previousSide } = env.view(s)
-    const { grid, plan } = env.table(s)
-    const prevHeader = previousSide?.sheets.find((x) => x.name === previousSide.sheet)?.rows[previousSide.headerRow] ?? []
-    const curHeader = grid && plan ? (grid.rows[plan.headerRow] ?? []) : []
-    return [...new Set([...prevHeader, ...curHeader].map((h) => h.trim()).filter(Boolean))]
-  }
-  /** 去年の元の Excel の配置技術者の列の値（「去年のやり方で直す」で去年のコードから個人名を消す。去年の計画のシートと列があるときだけ） */
-  const carryoverNames = () => {
-    const { previous } = config
-    const { previousSide } = env.view(store.getState())
-    if (!previous || !previousSide || previousSide.sheet !== previous.sheet || previous.headerRow === null) return []
-    const rows = previousSide.sheets.find((x) => x.name === previousSide.sheet)?.rows.slice(previous.headerRow + 1) ?? []
-    return [...new Set(rows.flatMap((r) => previous.engineerColumns.map((c) => (r[c] ?? "").trim()).filter(Boolean)))].slice(0, 20_000)
-  }
-
   return {
     store,
     table: env.table,
@@ -173,8 +155,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     actions,
     tableWire,
     chatRequest,
-    carryoverHeaders,
-    carryoverNames,
     settle: sync.settle,
     /**
      * 画面につなぐ（保存の層・別のタブとの道・自動で始める処理）。変換の元をまだ読んでいなければ読み、計画が無ければ立てる。去年の Excel も読み始める。
@@ -187,7 +167,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
       const { work, runtime } = store.getState()
       const file = runtime.files.find((f) => f.id === work.sourceFileId)
       if (file && (!runtime.source || (!work.plan && env.config.chatEnabled))) void openSource(env, file, !work.plan)
-      // 去年の Excel は開いたときから読み始める（計画の AI に去年の列の対応を添えるのと、「去年のやり方で直す」で個人名を伏せるのに使う。1回だけ読む）
+      // 去年の Excel は開いたときから読み始める（計画の AI に去年の列の対応を添える。1回だけ読む）
       void loadPreviousSheets(env)
       return () => {
         unwatch()

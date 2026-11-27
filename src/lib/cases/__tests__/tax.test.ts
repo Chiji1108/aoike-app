@@ -11,7 +11,7 @@ const unknown = {}
 /** チャットの変更案で税の設定を承認する（画面と同じく取り消しの記録を残す） */
 function approveTax(w: CaseWork, tax: "included" | "excluded"): CaseWork {
   const after = applyChanges(w, [], [{ kind: "settings", tax }])
-  const entry = undoEntry(w, after, { id: "u1", proposalId: "p1", kind: "approval", label: "p1", at: 0 })!
+  const entry = undoEntry(w, after, { id: "u1", proposalId: "p1", label: "p1", at: 0 })!
   return { ...after, undo: pushUndo(after.undo, entry) }
 }
 

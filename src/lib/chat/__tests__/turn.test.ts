@@ -178,8 +178,8 @@ describe("チャットの道具（決まった入力で）", () => {
     await call(tools, "set_selection", { tax: "included", selection: "rule7" })
     expect(state.question).toBe("(仮称)も取ってよいですか")
     expect(state.pending).toEqual([
-      { kind: "rule", scope: "customer", text: "注文者の株式会社は㈱にする", source: "chat" },
-      { kind: "rule", scope: "customer", text: "完成年月は引渡日", source: "chat" },
+      { kind: "rule", scope: "customer", text: "注文者の株式会社は㈱にする" },
+      { kind: "rule", scope: "customer", text: "完成年月は引渡日" },
       { kind: "settings", tax: "included", selection: "rule7" },
     ])
   })
@@ -463,8 +463,7 @@ describe("問い合わせの文面（propose_inquiry）", () => {
 
   test("get_inquiries のメモは値と同じ記号で出し、分かっている名前も伏せる", async () => {
     const withNote = { ...asked, rows: asked.rows.map((r) => (r.key === "s!2" ? { ...r, cells: { ...r.cells, endYm: { ...r.cells.endYm, value: "202409", guessed: true as const, status: "warning" as const, message: `${yamada}様の引渡日から推定（担当 新顔一郎）` } } } : r)) }
-    const review = { turns: async () => [], names: async () => ["新顔一郎"], taken: async () => ({ rules: [], pending: [] }) }
-    const out = await call(chatTools(newTurnState(withNote, undefined, undefined, null, null, review)), "get_inquiries", {})
+    const out = await call(chatTools(newTurnState(withNote, undefined, undefined, null, null, async () => ["新顔一郎"])), "get_inquiries", {})
     const c = out.cells.find((x: { key: string; field: string }) => x.key === "s!2" && x.field === "endYm")
     expect(c.note).toBe("〔Ａ〕様の引渡日から推定（担当 〔個人名〕）")
     expect(c.question).toBeUndefined()

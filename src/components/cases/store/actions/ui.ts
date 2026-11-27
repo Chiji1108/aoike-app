@@ -5,8 +5,7 @@ import type { ChatAction } from "@/lib/chat/messages"
 import { setRuntime, setUi, type ChatPrefs, type ChatSize, type ChatTarget } from "../create-case-store"
 import type { CaseEnv } from "../env"
 
-/** チャットの案内のうち、案件を終えるときの振り返り・問い合わせのメールの下書き（返ってきた Excel の案内はファイルの id） */
-export const REVIEW_SUGGESTION = "review"
+/** チャットの案内のうち、問い合わせのメールの下書き（返ってきた Excel の案内はファイルの id） */
 export const INQUIRY_SUGGESTION = "inquiry-text"
 
 /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
@@ -193,14 +192,9 @@ export function setChatSending(env: CaseEnv, sending: boolean) {
   setUi(env.store, (u) => ({ chatTurn: { ...u.chatTurn, sending } }))
 }
 
-/** 案内を送った（返ってきた Excel の案内はファイルの id、振り返りは review、問い合わせのメールの下書きは inquiry-text） */
+/** 案内を送った（返ってきた Excel の案内はファイルの id、問い合わせのメールの下書きは inquiry-text） */
 export function suggestionSent(env: CaseEnv, id: string) {
   setRuntime(env.store, (r) => ({
-    hints:
-      id === REVIEW_SUGGESTION
-        ? { ...r.hints, review: false }
-        : id === INQUIRY_SUGGESTION
-          ? { ...r.hints, inquiry: "sent" }
-          : { ...r.hints, answer: r.hints.answer.filter((h) => h.fileId !== id) },
+    hints: id === INQUIRY_SUGGESTION ? { ...r.hints, inquiry: "sent" } : { ...r.hints, answer: r.hints.answer.filter((h) => h.fileId !== id) },
   }))
 }

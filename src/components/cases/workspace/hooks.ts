@@ -5,12 +5,11 @@ import { useCase, useCaseActions, useCaseSession, useCaseView, useTable } from "
 import { ASK_KINDS } from "@/components/cases/store/case-view"
 import { derive } from "@/components/cases/store/derive"
 import { reportUndoId } from "@/components/cases/store/actions/table"
-import { INQUIRY_SUGGESTION, REVIEW_SUGGESTION } from "@/components/cases/store/actions/ui"
+import { INQUIRY_SUGGESTION } from "@/components/cases/store/actions/ui"
 import type { ProposalActions } from "@/components/chat/proposal-card"
 import type { Suggestion } from "@/components/chat/chat-panel"
 import { awaitsAnswer } from "@/lib/cases/todo"
 import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
-import { REVIEW_PROMPT } from "@/lib/chat/review"
 import { SELECTION_LABELS, TAX_LABELS } from "@/lib/convert/koji-selection"
 import { aiAnswerPrompt } from "@/lib/inquiry/inquiry"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
@@ -119,13 +118,12 @@ export function useReportQuestions(): ReportQuestion[] {
   }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, selection, reportAnswers, undoStates])
 }
 
-/** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き・振り返り）。押すと決まった指示を送る */
+/** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き）。押すと決まった指示を送る */
 export function useChatSuggestions(): readonly Suggestion[] {
   const answerHints = useCase((s) => s.runtime.hints.answer)
   const inquiryHint = useCase((s) => s.runtime.hints.inquiry === "shown")
-  const reviewHint = useCase((s) => s.runtime.hints.review)
   const subjectSet = useCase((s) => s.work.inquiryText.subject !== null)
-  const { pendingReview, pendingInquiryText } = useCase(useShallow((s) => ({ pendingReview: derive(s).pendingReview, pendingInquiryText: derive(s).pendingInquiryText })))
+  const pendingInquiryText = useCase((s) => derive(s).pendingInquiryText)
   const { left, active } = useCaseView(useShallow((v) => ({ left: v.todo.inquiry.left, active: v.todo.inquiry.active })))
   return useMemo(
     () => [
@@ -150,35 +148,8 @@ export function useChatSuggestions(): readonly Suggestion[] {
             },
           ]
         : []),
-      ...(reviewHint && !pendingReview
-        ? [
-            {
-              id: REVIEW_SUGGESTION,
-              text: "案件を完了にしました。今年の指示・手直し・聞き返しの答えを AI が振り返り、来年のための顧客ルールの案（毎年の決まり）を出せます。今年だけの事情は分けて伝え、ルールには足しません。承認した項目だけ顧客ルールに足します。",
-              label: "振り返って顧客ルールの案を出す",
-              prompt: REVIEW_PROMPT,
-              // サーバーは保存した作業の変更案の状態から振り返る。会話に一度送ったら案内しない
-              needsSaved: true as const,
-              once: true as const,
-            },
-          ]
-        : []),
     ],
-    [answerHints, left, inquiryHint, active, pendingInquiryText, subjectSet, reviewHint, pendingReview],
-  )
-}
-
-/**
- * 「去年のやり方で直す」（同じ顧客の前の年度の案件があるときだけ）。ready は去年の Excel を読み終えたか（読めなかった・去年の Excel が無いときは待たない。
- * 読めた去年の Excel の配置技術者の名前と見出しを、去年のコードを伏せるのに使う）。names・headers は送るときにその時点の状態から作る
- */
-export function useCarryover() {
-  const session = useCaseSession()
-  const { previous } = session.config
-  const ready = useCase((s) => !!previous && (!previous.source || s.runtime.previous !== null))
-  return useMemo(
-    () => (previous ? { fiscalYear: previous.fiscalYear, ready, names: session.carryoverNames, headers: session.carryoverHeaders } : null),
-    [previous, ready, session],
+    [answerHints, left, inquiryHint, active, pendingInquiryText, subjectSet],
   )
 }
 

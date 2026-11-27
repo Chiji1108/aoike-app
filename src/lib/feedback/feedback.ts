@@ -1,8 +1,11 @@
 import { z } from "zod"
 import { withNames } from "../convert/persons"
 import { CORPORATE_FORMS, ORGANIZATION_WORDS } from "../convert/transforms"
-import { knownWords, norm, PROPER_RE } from "../chat/carryover"
 import { charCount } from "../chat/rules"
+import { removeSpaces } from "../convert/text"
+import { CODE_SETS } from "../spec/code-sets"
+import { KOJI_KEIREKI } from "../spec/koji-keireki"
+import { GYOSHU_WORK_LABELS } from "../spec/work-name"
 
 /**
  * 要望（D1 の csv_feedback）。チャットの AI が仕事をしながら「こういう機能があれば良かった」と思ったことと、職員が書き足したもの。
@@ -78,6 +81,20 @@ export type FeedbackSummary = { id: string; kind: FeedbackKind; want: string; id
 /** 要望に入れない名前の材料。names は顧客名・注文者、works は工事名とその注文者、known は知っている語にする文（全体ルール・顧客ルールなど） */
 export type FeedbackNames = { names: Iterable<string>; works: Iterable<{ client: string; workName: string }>; known?: readonly string[] }
 
+/** 語の比べ方（NFKC にして空白を除く） */
+const norm = (s: string) => removeSpaces(s.normalize("NFKC"))
+
+/** 固有名になりうる語: 漢字の続き・カタカナの続き（ひらがなは区切りとみなす） */
+const PROPER_RE = /[\p{Script=Han}々〆ヵヶ]+|[\p{Script=Katakana}ー]+/gu
+
+/** 書式の決まり（14列の名前・説明・公式の記載ルール・コードの名前・工事名に付ける業種の工事の名）。ルールと一緒に、知っている語に入れる */
+const SPEC_TEXT = [
+  ...KOJI_KEIREKI.fields.flatMap((f) => [f.label, f.description]),
+  ...KOJI_KEIREKI.writingRules,
+  ...Object.values(CODE_SETS).flatMap((set) => set.map((c) => c.label)),
+  ...GYOSHU_WORK_LABELS,
+].join("\n")
+
 /** 工事名の語を一般の語とみなす、その語を工事名に含む注文者の数（違う注文者の工事名に何度も出る語は、建物や現場の名でない） */
 const COMMON_ACROSS_CLIENTS = 3
 /** 法人格・敬称（名の本体を取り出すときに外す） */
@@ -99,8 +116,8 @@ const tooShort = (s: string) => [...s].length < 2 || (/^[a-z0-9]+$/.test(s) && s
  * - 工事名: 固有名らしい語（漢字・カタカナの続き、英数字の続き）のうち、知っている語に無く、違う注文者の工事名に何度も出ない（一般の語でない）もの
  */
 export function feedbackNameCheck({ names, works, known = [] }: FeedbackNames): (text: string) => string[] {
-  // 知っている語（carryover.ts の knownWords。表の値は入れない）に、法人・建物の一般の語を足す
-  const knownText = lower(knownWords({ rows: [], edits: [] }, [...known, ...ORGANIZATION_WORDS], []))
+  // 知っている語（書式の決まりとルール）に、法人・建物の一般の語を足す
+  const knownText = [...known, ...ORGANIZATION_WORDS, SPEC_TEXT].map(lower).join("\n")
   const isKnown = (w: string) => knownText.includes(w)
   const features = new Set<string>()
   for (const raw of names) {

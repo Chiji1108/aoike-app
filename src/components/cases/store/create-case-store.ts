@@ -87,8 +87,6 @@ export type CaseState = {
      * source は元のファイルを読む、case は元・計画（計画・回答の結果を捨てる）、conversion は変換、status は案件の状態の変更
      */
     gen: { source: number; case: number; conversion: number; status: number }
-    /** 去年の案件の元の Excel（列の計画の参考・「去年のやり方で直す」で個人名を伏せる。読めなければ理由。読み終わるまで null） */
-    previous: SheetGrid[] | { error: string } | null
     /** 引いた住所（増えたら表を作り直す） */
     addressBook: AddressBook
     /** ルールの追記・工事場所を保存している間（変更案の承認を止める） */
@@ -99,10 +97,9 @@ export type CaseState = {
     finalResult: FinalImport | null
     /**
      * チャットの案内: answer は色付きの欄の外の記入・読めなかった記入のある返ってきた Excel（ファイルごとに AI に読ませるかを出す）、
-     * review は案件を「完了」にしたので振り返りを出せると案内するか（完了から戻すか、送ったら消す）、
      * inquiry は問い合わせのメールの下書きの案内（hidden はまだ、shown は作業の画面で問い合わせのタブを見たので出す、sent は送ったのでこの画面ではもう出さない）
      */
-    hints: { answer: { fileId: string; name: string }[]; review: boolean; inquiry: "hidden" | "shown" | "sent" }
+    hints: { answer: { fileId: string; name: string }[]; inquiry: "hidden" | "shown" | "sent" }
   }
   /**
    * 画面の状態（保存しない。変えるのは actions/ui.ts などの action だけ）。作業の画面・チャットをどう並べるかは、ここから layoutOf（lib/cases/layout.ts）で決める
@@ -219,12 +216,11 @@ export function initialCaseState(page: {
       converting: false,
       convertError: null,
       gen: { source: 0, case: 0, conversion: 0, status: 0 },
-      previous: null,
       addressBook: NO_ADDRESSES,
       busy: { rule: false },
       notes: [],
       finalResult: null,
-      hints: { answer: [], review: false, inquiry: "hidden" },
+      hints: { answer: [], inquiry: "hidden" },
     },
     ui: {
       wide: false,

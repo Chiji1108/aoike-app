@@ -1,8 +1,8 @@
 import { toast } from "sonner"
 import { MAX_ADDED_ROWS } from "@/lib/cases/added"
 import { MAX_REJECTED_EXCEL, type CaseWork } from "@/lib/cases/state"
-import { canUndo, pushUndo, undo, undoEntry, type UndoEntry, type UndoKind } from "@/lib/cases/undo"
-import { addedCountAfter, applyChanges, approvedChange, decide, decisionOf, isAnswered, withLogged, withUndone, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
+import { canUndo, pushUndo, undo, undoEntry, type UndoEntry } from "@/lib/cases/undo"
+import { addedCountAfter, applyChanges, approvedChange, decide, decisionOf, isAnswered, type Proposal, type ProposalRecord } from "@/lib/chat/proposals"
 import type { MappingPlan, ValueFilter } from "@/lib/convert/plan"
 import { applyPlanPatch, sheetShapeOf } from "@/lib/convert/plan-patch"
 import { changeSignature } from "@/lib/excel/final-import"
@@ -26,18 +26,17 @@ export function receiveProposal(store: CaseStore, record: ProposalRecord, how: "
 }
 
 /**
- * 取り消せる変更の記録の中身。group は取り消すときの単位（変更案の id・`report:<聞き返し>`・操作の印と id）、kind は上限を数える枠、
- * items は承認した変更案の項目の番号、external は戻さない外への書き込み、exclusions は計画の聞き返しの答えで足した出さない行の決まり
- * （計画の前後の代わりに、足した分だけを残す）
+ * 取り消せる変更の記録の中身。group は取り消すときの単位（変更案の id・`report:<聞き返し>`・操作の印と id）、
+ * external は戻さない外への書き込み、exclusions は計画の聞き返しの答えで足した出さない行の決まり（計画の前後の代わりに、足した分だけを残す）
  */
-export type CommitMeta = { group: string; kind: UndoKind; items?: number[]; external?: UndoEntry["external"]; exclusions?: ValueFilter[] }
+export type CommitMeta = { group: string; external?: UndoEntry["external"]; exclusions?: ValueFilter[] }
 
 /** 入れた変更の取り消し: undoable は取り消せる、tooLarge は記録が大きすぎて取り消せない、none は記録が無い（変わったものが無かった） */
 export type Committed = "undoable" | "tooLarge" | "none"
 
 /**
  * 取り消せる変更（承認・聞き返しの答え・画面の操作）を入れる。next はその時点の状態から次の作業を作り、前後の差分を取り消しの記録にして同じ1回で積む
- * （取り消しの記録を積むのはここだけ）。変更案の承認なら、記録に残した項目を変更案にも書く（logged）。取り消せるかを返す（取り消せるときだけ「取り消す」を出す）
+ * （取り消しの記録を積むのはここだけ）。取り消せるかを返す（取り消せるときだけ「取り消す」を出す）
  */
 export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) => CaseWork): Committed {
   let result: Committed = "none"
@@ -47,8 +46,6 @@ export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) 
     const entry = undoEntry(before, meta.exclusions ? { ...after, plan: before.plan } : after, {
       id: crypto.randomUUID(),
       proposalId: meta.group,
-      kind: meta.kind,
-      items: meta.items ?? [],
       label: meta.group,
       at: Date.now(),
       external: meta.external,
@@ -57,9 +54,7 @@ export function commit(store: CaseStore, meta: CommitMeta, next: (s: CaseState) 
     if (!entry) return { work: after }
     const undo = pushUndo(after.undo, entry)
     result = undo.at(-1)!.tooLarge ? "tooLarge" : "undoable"
-    const items = meta.items ?? []
-    const proposals = meta.kind === "approval" && items.length ? after.proposals.map((p) => (p.id === meta.group ? withLogged(p, items) : p)) : after.proposals
-    return { work: { ...after, undo, proposals } }
+    return { work: { ...after, undo } }
   })
   return result
 }
@@ -68,7 +63,6 @@ export type UndoSummary = { reverted: number; kept: number; planChanged: boolean
 
 /**
  * group の、まだ取り消していない記録を新しい順に取り消す（cases/undo.ts: 後のままの値だけを戻し、あとで変えた値は残して kept に数える）。
- * 変更案の承認なら、取り消した項目の番号を変更案にも書く（記録が上限で捨てられても、振り返り・去年のやり方が取り消したことを知れる）。
  * 変更案は開き直さない。計画を戻したら変換し直す（converted を外す）。取り消せる記録が無ければ null
  */
 export function undoGroup(store: CaseStore, group: string): UndoSummary | null {
@@ -76,7 +70,6 @@ export function undoGroup(store: CaseStore, group: string): UndoSummary | null {
   store.setState((s) => {
     let work = s.work
     const sum: UndoSummary = { reverted: 0, kept: 0, planChanged: false }
-    const items: number[] = []
     let undone = false
     for (const e of [...work.undo].reverse()) {
       if (e.proposalId !== group || !canUndo(e)) continue
@@ -87,15 +80,8 @@ export function undoGroup(store: CaseStore, group: string): UndoSummary | null {
       sum.reverted += r.reverted
       sum.kept += r.kept
       sum.planChanged ||= r.planChanged
-      items.push(...(e.items ?? []))
     }
     if (!undone) return s
-    // logged の無い前の変更案は、取り消す前の記録（取り消せないもの・取り消し済みも）の項目から logged を書く（記録がこのあと捨てられても判断できる）。
-    // 項目の分からない前の記録があれば書かない（記録で見る読み方のまま）
-    const records = s.work.undo.filter((e) => e.proposalId === group)
-    const legacy = records.every((e) => e.items) ? records.flatMap((e) => e.items!) : null
-    if (items.length)
-      work = { ...work, proposals: work.proposals.map((p) => (p.id === group ? withUndone(p.logged || !legacy ? p : withLogged(p, legacy), items) : p)) }
     if (sum.planChanged) work = { ...work, converted: false }
     out = sum
     return { work }
@@ -169,7 +155,7 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
   }
   const apply = (items: number[], external: UndoEntry["external"] = []) => {
     if (!items.length) return
-    commit(store, { group: id, kind: "approval", items, external }, (s) => {
+    commit(store, { group: id, external }, (s) => {
       const w = s.work
       const edited = env.table(s).view?.edited ?? []
       const overlaid = applyChanges(w, edited, items.map((i) => approvedChange(p, changes[i]!)))
@@ -200,7 +186,7 @@ export async function decideProposal(env: CaseEnv, id: string, indices: number[]
         // サーバーが変更案の記録から追記し、足した印も一緒に書く（開き直して同じ項目をもう一度承認しても二度足さない）
         await deps.approveRule(id, i)
         if (!stillOpen()) return true
-        commit(store, { group: id, kind: "approval", items: [i], external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
+        commit(store, { group: id, external: ["rule"] }, ({ work: w }) => ({ ...w, proposals: w.proposals.map((x) => (x.id === id ? decide(x, [i], "applied") : x)) }))
       }
       return false
     })

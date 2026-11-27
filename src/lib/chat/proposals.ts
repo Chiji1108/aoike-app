@@ -7,7 +7,7 @@ import { basisSchema, cellEditSchema, fieldIdSchema, legacySelection, roundingSc
 import type { KojiFieldId } from "../spec/koji-keireki"
 import { foundSchema, siteRefSchema, SOURCE_LABELS, type Found } from "../location/sites"
 import { planPatchSchema, type PlanPatch } from "../convert/plan-patch"
-import { proposedRuleSourceSchema, ruleScopeSchema, type ProposedRuleSource, type RuleScope } from "./rules"
+import { ruleScopeSchema, type RuleScope } from "./rules"
 import { setTax, type TaxBy } from "../cases/tax"
 import { setSelection } from "../cases/selection"
 import { applyInquiryChange, introSchema, subjectSchema, type InquiryText } from "../inquiry/text"
@@ -38,8 +38,8 @@ export type ChatChange =
       basis?: Basis
       rounding?: Rounding
     }
-  /** 全体ルール・顧客ルールへの追記（承認すると保存する）。source は足した項目の由来（chat: 職員が頼んだ追記、review: 案件を終えるときの振り返り） */
-  | { kind: "rule"; scope: RuleScope; text: string; source: ProposedRuleSource }
+  /** 全体ルール・顧客ルールへの追記（承認すると保存する） */
+  | { kind: "rule"; scope: RuleScope; text: string }
   /**
    * 列の対応（計画）の差分（convert/plan-patch.ts）。承認すると、そのときの計画に重ねて変換し直す（表の値は変換し直した値になり、手直しはその上に重なる）。
    * 表の変更ではないので、ここ（applyChanges）では何もしない。before は変更案を作ったときの同じ項目の値（「前 → 後」で見せる。前の変更案には無い）
@@ -82,16 +82,6 @@ export type Proposal = {
   id: string
   origin: ProposalOrigin
   question: ProposalQuestion | null
-  /**
-   * 承認を取り消した項目の番号（取り消しの記録 cases/undo.ts と同じ事実。記録は上限で捨てられるので、振り返り・去年のやり方はまずこれを読む。
-   * この項目より前の変更案には無い）
-   */
-  undone?: number[]
-  /**
-   * 承認した項目のうち、取り消しの記録に残した項目の番号（表を変えなかった承認は記録が無いので入らない）。logged がすべて undone にあれば
-   * 承認をすべて取り消した（cases/undo.ts の記録が上限で捨てられても、変更案だけで分かる）。この項目より前の変更案には無い
-   */
-  logged?: number[]
 } & (
   | { state: "open"; count: number; applied: number[]; rejected: number[] }
   | { state: "closed"; applied: number; rejected: number }
@@ -130,17 +120,12 @@ export function approvedChange(p: Pick<Proposal, "origin">, c: ChatChange): Chat
   return { ...c, edit }
 }
 
-/** 閉じた形に残す項目（id・出どころ・聞き返し・取り消した項目） */
-const closedBase = (p: Proposal) => ({ id: p.id, origin: p.origin, question: p.question, ...(p.undone ? { undone: p.undone } : {}), ...(p.logged ? { logged: p.logged } : {}) })
+/** 閉じた形に残す項目（id・出どころ・聞き返し） */
+const closedBase = (p: Proposal) => ({ id: p.id, origin: p.origin, question: p.question })
 
 /** 決める前に要らなくなった変更案（変換の元を変えたなど）を閉じる。未決は却下にする */
 export const discard = (p: Proposal): Proposal => (p.state === "open" ? { ...closedBase(p), state: "closed", applied: p.applied.length, rejected: p.count - p.applied.length } : p)
 
-/** 番号を書き足す（開いていても閉じていても。もう書いた番号は重ねない） */
-function withItems(p: Proposal, key: "undone" | "logged", items: readonly number[]): Proposal {
-  const next = [...new Set([...(p[key] ?? []), ...items])].sort((a, b) => a - b)
-  return next.length === (p[key]?.length ?? 0) ? p : { ...p, [key]: next }
-}
 /**
  * 開いているのに記録（R2）の無い変更案を閉じる（決められないので。未決は却下）。known は記録がある（読めた・読めなかった）変更案の id。
  * 閉じた数も返す（案件を読むときにサーバーが使う）
@@ -153,24 +138,6 @@ export function closeUnrecorded(proposals: readonly Proposal[], known: ReadonlyS
     return discard(p)
   })
   return { proposals: next, closed }
-}
-
-/** 承認を取り消した項目を書き足す */
-export const withUndone = (p: Proposal, items: readonly number[]) => withItems(p, "undone", items)
-/** 取り消しの記録に残した承認の項目を書き足す */
-export const withLogged = (p: Proposal, items: readonly number[]) => withItems(p, "logged", items)
-
-/**
- * 承認をすべて取り消した変更案か。取り消しの記録に残した承認の項目（logged）がすべて取り消し済みで、取り消していない記録も無いとき
- * （表を変えなかった承認の項目は記録が無いので数えない。ルールの追記など戻せない記録が残れば取り消していない）。
- * logged の無い前の変更案は、記録だけで見る（その変更案の記録がすべて取り消し済み）
- */
-export function approvalsUndone(p: Proposal, undo: readonly { proposalId: string; undone?: true }[]): boolean {
-  const records = undo.filter((e) => e.proposalId === p.id)
-  if (records.some((e) => !e.undone)) return false
-  if (!p.logged) return records.length > 0
-  const undone = new Set(p.undone ?? [])
-  return p.logged.length > 0 && p.logged.every((i) => undone.has(i))
 }
 
 export function newProposal(id: string, origin: ProposalOrigin, changes: readonly ChatChange[], question: string | null): Proposal {
@@ -318,8 +285,7 @@ export const chatChangeSchema: z.ZodType<ChatChange> = z.discriminatedUnion("kin
       const s = legacySelection(selection, alreadyApplied)
       return { ...c, ...(s ? { selection: s } : {}) }
     }),
-  // 前の変更案には由来が無い（チャットの追記だけだった）
-  z.object({ kind: z.literal("rule"), scope: ruleScopeSchema, text: z.string(), source: proposedRuleSourceSchema.default("chat") }),
+  z.object({ kind: z.literal("rule"), scope: ruleScopeSchema, text: z.string() }),
   z.object({ kind: z.literal("plan"), patch: planPatchSchema, before: planPatchSchema.optional() }),
   foundSchema.extend({
     kind: z.literal("location"),
@@ -342,8 +308,6 @@ export const proposalSchema: z.ZodType<Proposal> = (() => {
       z.object({ kind: z.literal("fix"), runId: z.string(), field: z.literal("gyoshu") }),
     ]),
     question: z.object({ text: z.string(), answer: z.enum(["yes", "no"]).nullable() }).nullable(),
-    undone: z.array(z.number().int().min(0)).optional(),
-    logged: z.array(z.number().int().min(0)).optional(),
   }
   return z.discriminatedUnion("state", [
     z.object({ ...base, state: z.literal("open"), count: z.number().int().min(0), applied: z.array(z.number().int()), rejected: z.array(z.number().int()) }),

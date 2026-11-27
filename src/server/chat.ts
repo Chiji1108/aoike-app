@@ -3,16 +3,13 @@ import Anthropic, { toFile } from "@anthropic-ai/sdk"
 import { createUIMessageStream, createUIMessageStreamResponse, generateId, toUIMessageStream, type ModelMessage, type UserModelMessage } from "ai"
 import { z } from "zod"
 import { getCsvDb } from "@/db"
-import { containerName, contentTypeOf, r2KeyOf, type Case, type FileKind } from "@/lib/cases/types"
+import { containerName, contentTypeOf, r2KeyOf, type FileKind } from "@/lib/cases/types"
 import { fromWire, caseTableWireSchema } from "@/lib/chat/wire"
 import { ENDED_TEXT, type ChatHistory, type ChatMessage, type ChatMetadata } from "@/lib/chat/messages"
-import { approvedChatProposals, carryoverPrompt, cleanCarryoverCodes, codesFromUi, knownWords, namesForCarryover, type Carryover } from "@/lib/chat/carryover"
-import { reviewTurnsFromUi } from "@/lib/chat/review"
 import { tryParseJson } from "@/lib/json"
-import { savedAiCacheSchema, savedWorkSchema } from "@/lib/cases/state"
 import { mappingPlanSchema } from "@/lib/convert/plan-schema"
 import { sheetShapeSchema } from "@/lib/convert/plan-patch"
-import { decisionOf, newProposal, proposalKey, proposalPrefix, proposalRecordSchema, type ProposalRecord } from "@/lib/chat/proposals"
+import { newProposal, proposalKey, proposalPrefix, proposalRecordSchema, type ProposalRecord } from "@/lib/chat/proposals"
 import { newTurnState, startTurn, systemPrompt, type ContainerFile, type TurnStep } from "@/lib/chat/turn"
 import { tokensOfAiSdk, usdOf } from "@/lib/cost"
 import { errorMessage } from "@/lib/errors"
@@ -55,12 +52,6 @@ const requestSchema = z.object({
   sourceFileId: z.string().max(64).nullable(),
   /** 今の列の対応と計画の元のシートの大きさ（チャットの set_plan の確かめ。変換の元の表が無い案件は null） */
   plan: z.object({ plan: mappingPlanSchema, shape: sheetShapeSchema }).nullable().default(null),
-  carryover: z.boolean().optional(),
-  /** 去年の元の Excel の配置技術者の列の値（画面が去年の Excel から読む。去年のコードの個人名を消すのに使う） */
-  // 値の長さでは断らない（長い値は名前にしないだけ。lib/chat/carryover.ts の collectNames）
-  carryoverNames: z.array(z.string()).max(20_000).optional(),
-  /** 去年と今年の元の Excel の見出し（去年のコードの文字列のうち、見出しの名前は伏せずに残す） */
-  carryoverHeaders: z.array(z.string()).max(2_000).optional(),
 })
 
 /** AI のコンテナに渡す案件のファイルの種類（届いたファイルと、返ってきた Excel〔印付き・記入用Excel〕。顧客の回答を AI が読む） */
@@ -112,10 +103,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
   const kase = await store.getCase(db, caseId)
   if (!kase || kase.deleting) return text("案件が見つかりません", 404)
   const [customer, files, rules] = await Promise.all([store.getCustomer(db, kase.customerId), store.listFiles(db, caseId), store.rulesForAi(db, kase.customerId)])
-  // 「去年のやり方で直す」: 前の年度の案件があるかだけ先に見る（去年の会話・作業は、印を取ってこの会話でまだ添えていないと分かってから読む）
-  const previous = body.carryover ? await store.previousCase(db, kase) : undefined
-  if (body.carryover && !previous) return text("前の年度の案件が見つかりません", 404)
-
   // 指示を処理している印を立てる。ここから下ろすまで、この案件の会話を書くのはこの指示だけ
   const turn = { id: body.id, startedAt: Date.now() }
   let loaded: Loaded
@@ -133,21 +120,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
     throw e
   }
   const startSession: ChatSession = loaded.doc.session ?? { model: [], container: null, files: [], generated: [] }
-  let carryover: Carryover | null = null
-  if (previous) {
-    if (startSession.carryover) {
-      await endTurn(caseId, loaded, { ...loaded.doc, turn: null })
-      return text("この会話にはもう去年のコードを添えています（会話を終えると、もう一度添えられます）", 409)
-    }
-    try {
-      const words = knownWords(body.table, [rules.global, rules.customer], body.carryoverHeaders ?? [])
-      carryover = await carryoverOf(db, previous, { previousEngineers: body.carryoverNames, current: body.table }, words)
-    } catch (e) {
-      await endTurn(caseId, loaded, { ...loaded.doc, turn: null })
-      return text(errorMessage(e, "去年の案件の会話を読めませんでした"), 502)
-    }
-  }
-  const carryText = carryover && carryoverPrompt(carryover)
   const containerLive = startSession.container !== null && Date.parse(startSession.container.expiresAt) > Date.now() + CONTAINER_MARGIN_MS
 
   // 案件の届いたファイルと返ってきた Excel（印付き・記入用Excel）をコンテナに渡す。まだ上げていないものは Files API に上げ、上げるたびに記録する（途中で失敗しても、会話を終えるときに消せる）。
@@ -190,8 +162,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
         data: { type: "reference" as const, reference: { anthropic: f.anthropicId } },
         providerOptions: { anthropic: { containerUpload: true } },
       })),
-      // 去年のコードは AI への指示の前に添える（画面の会話には出さない。印だけを返事に付ける）
-      ...(carryText ? [{ type: "text" as const, text: carryText.text }] : []),
       { type: "text" as const, text: body.text },
     ],
   }
@@ -206,9 +176,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
   // 住所データの索引と個人名の確かめは、工事場所を調べるときだけ作る
   let checker: Promise<(text: string) => boolean> | undefined
   const guard = async (sites: Site[]) => guardPersonal(sites, await (checker ??= personalChecker(db, caseId, body.table)))
-  /** 保存した作業（振り返りと名前の確かめで、指示の間に1回だけ読む） */
-  let savedCase: ReturnType<typeof readSavedCase> | undefined
-  const saved = () => (savedCase ??= readSavedCase(db, caseId))
   /** ほかの顧客の名前（問い合わせのメールの下書きと要望に入れない。指示の間で1回だけ読む） */
   let others: Promise<readonly string[]> | undefined
   const otherCustomers = () => (others ??= store.otherCustomerNames(db, kase.customerId))
@@ -251,16 +218,8 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
     },
     body.plan,
     { lookup: serverAddressLookup },
-    {
-      // 会話は、この指示を受けたときの画面の会話（会話を終えても残る）
-      // 保存した作業（画面は振り返りを送る前に保存し終える）の変更案の状態・取り消しの記録と、この指示を受けたときの画面の会話（会話を終えても残る）
-      turns: async () => {
-        const s = await saved()
-        return s ? reviewTurnsFromUi(loaded.doc.ui, s.work.proposals, s.work.undo) : "まだ案件の作業を保存していないので振り返れません（変換して保存してからもう一度）"
-      },
-      names: async () => namesOfSaved(await saved()),
-      taken: () => takenRules(db, kase.customerId, caseId, saved),
-    },
+    // 保存した作業から分かっている個人名（道具が要るときに、指示の間で1回だけ読む）
+    async () => namesOfSaved(await readSavedCase(db, caseId)),
     { customerName: customer?.name ?? "", otherCustomers },
     {
       list: () => feedback.openFeedbackSummaries(db),
@@ -325,8 +284,7 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
               uploads: state.view?.uploads,
               unviewable: state.view && failure ? unviewableAfter(state.view, failure) : [],
             })
-            // 去年のコードを添えた回が履歴に入ったら、この会話ではもう添えない
-            return record(caseId, loaded, ok && outcome.completed && carryText ? { ...settled, carryover: true } : settled)
+            return record(caseId, loaded, settled)
           },
           addCost: async () => {
             if (usd > 0) await store.addCaseCost(db, caseId, usd)
@@ -339,10 +297,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
       } finally {
         recorded.resolve(ours)
       }
-      // この会話で去年のコードを添えたか（会話の記録の印。添えた回が履歴に入ったときだけ立つ）。画面はこれでボタンを出すかを決める
-      const carried = loaded.doc.session?.carryover === true
-      if (carryover && carryText && carried)
-        writer.write({ type: "data-carryover", data: { fiscalYear: carryover.fiscalYear, codes: carryText.included, ...(carryover.skipped ? { skipped: carryover.skipped } : {}) } })
       // 一括調査を始めるボタン（検索は職員が押してから。件数と費用の目安を添える）
       if (state.locationOffer) writer.write({ type: "data-location-offer", data: state.locationOffer })
       // 要望を残した印（止めた・失敗した回でも、残したものは残っているので出す）
@@ -357,7 +311,7 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
       // 費用は止めた・失敗した回でも画面に届ける（サーバーは足したので、画面の案件の合計と食い違わないように）
       const caseUsd = (await store.getCase(db, caseId).catch(() => undefined))?.costUsd ?? kase.costUsd + usd
       const total = steps.reduce((t, s) => ({ input: t.input + (s.usage.inputTokens ?? 0), output: t.output + (s.usage.outputTokens ?? 0) }), { input: 0, output: 0 })
-      const metadata: ChatMetadata = { usd, caseUsd, ms: Date.now() - turn.startedAt, inputTokens: total.input, outputTokens: total.output, toolCalls: state.toolCalls, carryover: carried }
+      const metadata: ChatMetadata = { usd, caseUsd, ms: Date.now() - turn.startedAt, inputTokens: total.input, outputTokens: total.output, toolCalls: state.toolCalls }
       writer.write({ type: "message-metadata", messageMetadata: metadata })
       if (failure) throw failure
       if (!ours) throw new ChatConflictError()
@@ -374,38 +328,6 @@ async function runTurn(request: Request, caseId: string): Promise<Response> {
     onError: (e) => (e instanceof ChatConflictError ? e.message : errorMessage(e, "AI の呼び出しに失敗しました")),
   })
   return createUIMessageStreamResponse({ stream })
-}
-
-/**
- * 去年の案件の、職員が承認した変更案につながったコード（lib/chat/carryover.ts）。去年の作業の変更案の状態と画面の会話から取り出し、
- * 集めた個人名を〔個人名〕にし、知っている語（words）に無い固有名らしい語を含む文字列・コメントを伏せる。作業が無ければ（変換していない）コードも無い
- */
-async function carryoverOf(db: store.Db, prev: Case, from: Omit<Parameters<typeof namesForCarryover>[0], "previous">, words: string): Promise<Carryover> {
-  const row = await store.getCaseState(db, prev.id)
-  if (!row) return { fiscalYear: prev.fiscalYear, codes: [] }
-  // 去年の作業か AI の結果が今の形で読めなければ、個人名を消し切れないのでコードは添えない（顧客ルールだけで直す）
-  const work = savedWorkSchema.safeParse(tryParseJson(row.json))
-  const aiCache = savedAiCacheSchema.safeParse(tryParseJson(row.aiCache))
-  if (!work.success || !aiCache.success) return { fiscalYear: prev.fiscalYear, codes: [], skipped: "去年の案件の作業を読めなかったので、コードは添えません" }
-  const { ui } = (await loadChat(bucket(), prev.id)).doc
-  const names = namesForCarryover({ ...from, previous: { work: work.data, aiCache: aiCache.data } })
-  return { fiscalYear: prev.fiscalYear, codes: cleanCarryoverCodes(codesFromUi(ui, approvedChatProposals(work.data.proposals, work.data.undo)), names, words) }
-}
-
-/**
- * 振り返りで重ねて案にしない項目: 今の顧客ルールと、まだ決めていない振り返りの案（R2 の開いている変更案の記録のうち、保存した作業で決めていない項目。
- * ほかのタブで出してまだ画面に届いていない案も入る）
- */
-async function takenRules(db: store.Db, customerId: string, caseId: string, saved: () => ReturnType<typeof readSavedCase>) {
-  const s = await saved()
-  const proposals = new Map((s?.work.proposals ?? []).map((p) => [p.id, p]))
-  const closed = new Set([...proposals.values()].filter((p) => p.state === "closed").map((p) => p.id))
-  const [rules, { records }] = await Promise.all([store.listRuleItems(db, { scope: "customer", customerId }), readOpenProposals(caseId, closed)])
-  const pending = records.flatMap((r) => {
-    const p = proposals.get(r.proposal.id)
-    return r.changes.flatMap((c, i) => (c.kind === "rule" && c.source === "review" && (!p || (p.state === "open" && decisionOf(p, i) === "pending")) ? [c.text] : []))
-  })
-  return { rules: rules.map((r) => r.text), pending }
 }
 
 /**
@@ -536,9 +458,8 @@ export async function readOpenProposals(caseId: string, closed: ReadonlySet<stri
 /** 画面に出す会話（GET /api/csv/cases/<caseId>/chat。チャット欄を開いたときに読む。画面は validateUIMessages で形を確かめる） */
 export const chatHistory = (request: Request, caseId: string) =>
   signedIn(request, async () => {
-    const { ui, session } = (await loadChat(bucket(), caseId)).doc
-    // carryover はこの会話で去年のコードを添えたか（会話の記録の印。画面は「去年のやり方で直す」を出すかをこれで決める）
-    const history: ChatHistory = { messages: ui, carryover: session?.carryover === true }
+    const { ui } = (await loadChat(bucket(), caseId)).doc
+    const history: ChatHistory = { messages: ui }
     return Response.json(history, { headers: { "cache-control": "private, no-store" } })
   })
 

@@ -3,8 +3,7 @@ import { eq } from "drizzle-orm"
 import { z } from "zod"
 import { getCsvDb } from "@/db"
 import { csvCases } from "@/db/cases-schema"
-import { reviewGuard } from "@/lib/chat/review"
-import { EMPTY_INQUIRY_TEXT } from "@/lib/inquiry/text"
+import { nameGuard } from "@/lib/chat/names"
 import { tryParseJson } from "@/lib/json"
 import { feedbackInputSchema, feedbackNameCheck, feedbackStatusSchema, feedbackTexts, type FeedbackItem } from "@/lib/feedback/feedback"
 import * as store from "./case-store"
@@ -56,8 +55,7 @@ async function staffCheck(db: store.Db) {
       else if (field === "workName") works.push({ client: c.customerId, workName: k.data[2] })
     }
   }
-  const empty = { rows: [], added: [], edits: new Map(), replacements: {}, manual: new Map(), tax: "excluded", basis: {}, rule7Tax: "excluded", selection: "all", rounding: "floor", dismissed: new Set<string>(), inquiryText: EMPTY_INQUIRY_TEXT } as const
-  const guard = reviewGuard(empty, persons)
+  const guard = nameGuard({ rows: [], edits: new Map(), replacements: {} }, persons)
   const [customers, rules] = await Promise.all([store.listCustomers(db), store.rulesForAi(db, null)])
   const names = feedbackNameCheck({ names: [...customers.map((c) => c.name), ...clients], works, known: [rules.global] })
   return (text: string) => [...(guard.has(text) ? ["個人名・表の記号"] : []), ...names(text)]

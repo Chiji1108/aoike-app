@@ -113,7 +113,7 @@ export function createAutosave(options: AutosaveOptions) {
 
   /**
    * 待たずに送り、今の変更まで保存し終えるのを待つ。保存し終えたら true、送れない・止まっている（別の画面・削除・大きすぎる）なら false
-   * （サーバーが保存した作業を読む処理の前に使う。例: 振り返り）
+   * （サーバーが保存した作業を読む処理の前に使う。例: チャットの送る前）
    */
   function settle(): Promise<boolean> {
     if (stopped) return Promise.resolve(false)

@@ -16,8 +16,6 @@ export type ChatSession = {
   generated: string[]
   /** API が受け取らなかったファイル（コンテナの中の名前と理由。view_file はこの会話ではもう見せない。失敗した回は履歴に入らないので覚えておく） */
   unviewable?: { name: string; reason: string }[]
-  /** この会話の履歴に去年のコードを添えた（「去年のやり方で直す」は1つの会話で1回。履歴に同じ長い文を重ねない） */
-  carryover?: true
 }
 /**
  * turn は指示を処理している印（指示の初めに立て、終わりに下ろす）。立っている間はほかの画面の指示と「会話を終える」を断るので、
@@ -50,7 +48,6 @@ const docSchema = z.object({
       files: z.array(z.object({ anthropicId: z.string(), caseFileId: z.string(), name: z.string(), original: z.string() })),
       generated: z.array(z.string()),
       unviewable: z.array(z.object({ name: z.string(), reason: z.string() })).optional(),
-      carryover: z.literal(true).optional(),
     })
     .nullable(),
   turn: z.object({ id: z.string(), startedAt: z.number() }).nullable().default(null),

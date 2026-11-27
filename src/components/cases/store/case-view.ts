@@ -12,7 +12,6 @@ import { askTargets, sourceKey } from "@/lib/convert/sources"
 import { collectInquiries, inquiryKey, type CellInquiry } from "@/lib/inquiry/inquiry"
 import { chooseAttachment, placeMarks, placementKey } from "@/lib/inquiry/marked"
 import type { KojiFieldId } from "@/lib/spec/koji-keireki"
-import { previousSideOf } from "./actions/source"
 import type { CaseState } from "./create-case-store"
 import type { CaseConfig } from "./env"
 import { memoLast, type TableDerived } from "./table"
@@ -133,8 +132,6 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
   )
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
   const manualIncludedOf = memoLast((inclusion: TableDerived["inclusion"]) => manualIncludedCount(inclusion))
-  /** 去年の元の Excel の工事のシートと見出しの行（「去年のやり方で直す」で伏せる名前・伏せない見出しを読む）。去年の Excel を読んだときに1回だけ決める */
-  const previousSideOfSheets = memoLast((sheets: CaseState["runtime"]["previous"]) => (config.previous && Array.isArray(sheets) ? previousSideOf(config.previous, sheets) : null))
   const layoutOfInput = memoLast((wide: boolean, hasTable: boolean, workReady: boolean, workChoice: boolean | null, chatCollapsed: boolean) =>
     layoutOf({ wide, hasTable, workReady, workChoice, chatCollapsed }),
   )
@@ -158,7 +155,6 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
     const questionStates = questionStatesOf(t.hasTable, w.selectionAnswered, w.tax, w.taxBy, w.reportAnswers, askIdsOf(askRows))
     /** 問い合わせを送ったか（案件が問い合わせ中か、問い合わせの Excel・メールの下書き〔件名〕を出した） */
     const inquirySent = rt.status === "inquiring" || rt.files.some((f) => f.kind === "inquiry_sheet") || w.inquiryText.subject !== null
-    const previousSide = previousSideOfSheets(rt.previous)
     /** 変換の元の表が無く（PDF だけ）、AI に一から表を作らせる案件か */
     const noSheetSource = !w.sourceFileId && onlyNonSheetSources(rt.files)
     const out: CaseView = {
@@ -176,7 +172,6 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       selectionAdvice: advice,
       todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, w.answers !== null, inquirySent),
       manualIncluded: manualIncludedOf(t.inclusion),
-      previousSide,
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）
       chatReady: !!t.rows && !t.reconverting && (noSheetSource || (w.converted && !!rt.source && !!t.grid && !!t.plan)),
@@ -214,7 +209,6 @@ export type CaseView = {
   selectionAdvice: ReturnType<typeof selectionAdvice>
   todo: ReturnType<typeof caseTodo>
   manualIncluded: number
-  previousSide: ReturnType<typeof previousSideOf>
   noSheetSource: boolean
   chatReady: boolean
   /** チャットに指示を送れるか（chatReady と ui.chatTurn から作る） */
