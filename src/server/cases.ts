@@ -114,6 +114,8 @@ async function previousOf(db: store.Db, kase: Case) {
     engineerColumns: engineer ? planColumns(engineer) : [],
     /** 去年の列の対応（列の計画の AI に参考として渡す） */
     plan: plan ?? null,
+    /** 去年の載せる工事（7割ルール／全件。今年の既定にして聞かない。作業が読めなければ null） */
+    selection: saved?.selection ?? null,
   }
 }
 

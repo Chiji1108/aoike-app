@@ -7,7 +7,7 @@ import type { SaveStatus } from "@/lib/cases/autosave"
 import { fromSaved, newWork, type CaseWork, type SavedAiCache, type SavedPlan, type SavedWork } from "@/lib/cases/state"
 import type { CaseFile, CaseStatus } from "@/lib/cases/types"
 import { NO_ADDRESSES, type AddressBook } from "@/lib/convert/address"
-import type { Rule7Tax } from "@/lib/convert/koji-selection"
+import type { Rule7Tax, SelectionMode } from "@/lib/convert/koji-selection"
 import { reviewPlanTransforms, type SheetGrid } from "@/lib/convert/plan"
 import type { Markability } from "@/lib/inquiry/markable"
 import { withRecorded, type ChatChange, type ProposalRecord } from "@/lib/chat/proposals"
@@ -109,20 +109,19 @@ export type CaseState = {
   ui: {
     /** 作業の画面をチャットの横に並べられる幅か（画面が matchMedia で見て入れる） */
     wide: boolean
-    /** 作業の画面のタブ */
-    tab: WorkTab
+    /** 作業の画面に開いているもの（段・表・道具）。null は職員が選んでいない（今の段を開く。lib/cases/steps.ts の activeView） */
+    tab: WorkTab | null
     /**
      * 職員が作業の画面を開いた（true）・閉じた（false）か。決めるまで（null）は、表があれば広い画面では開き、狭い画面では閉じておく
      * （狭い画面で開くとチャットを覆うので、チャットの「表を開く」で開く）
      */
     workChoice: boolean | null
-    /** 表の絞り込み（職員が選んだもの。null は選んでいない） */
+    /** 表の絞り込みの理由・聞き返し（kind は開いているもので決まる: 直すの段は直す行、表はすべて。null は選んでいない） */
     filter: TableFilter | null
     /**
-     * ダイアログ: export はダウンロードの前の確認（returnTo は閉じたあとにフォーカスを合わせるチャットの欄の移り先。開くたびに外す）、
-     * delete は案件の削除、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
+     * ダイアログ: delete は案件の削除、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ
      */
-    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
+    dialogs: { delete: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
     /** ファイルをドラッグしている */
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
@@ -188,8 +187,12 @@ export function initialCaseState(page: {
   closedMissing: number
   settings: { rule7Tax: Rule7Tax }
   previousUnsaved: boolean
+  /** 去年の案件（載せる工事を去年と同じにする） */
+  previous?: { selection: SelectionMode | null } | null
 }, chatPrefs: ChatPrefs | null = null): CaseState {
-  const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : newWork(null, page.settings.rule7Tax)
+  // 新しい案件の載せる工事は、去年の案件で決めていればそれ（lib/cases/selection-advice.ts。聞かずに知らせだけ）
+  const fresh = newWork(null, page.settings.rule7Tax)
+  const w = page.state ? fromSaved(page.state.work, page.state.aiCache) : { ...fresh, selection: page.previous?.selection ?? fresh.selection }
   return {
     work: { ...reviewSavedPlan(w), proposals: withRecorded(w.proposals, page.proposals) },
     contents: new Map(page.proposals.map((r) => [r.proposal.id, r.changes])),
@@ -217,10 +220,10 @@ export function initialCaseState(page: {
     },
     ui: {
       wide: false,
-      tab: "table",
+      tab: null,
       workChoice: null,
       filter: null,
-      dialogs: { export: { open: false, returnTo: null }, delete: false, pendingSources: [], askConfirm: null },
+      dialogs: { delete: false, pendingSources: [], askConfirm: null },
       dragging: false,
       focus: null,
       chatCanSend: false,

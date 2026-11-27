@@ -10,8 +10,9 @@ import type { ProposalActions } from "@/components/chat/proposal-card"
 import type { Suggestion } from "@/components/chat/chat-panel"
 import { awaitsAnswer } from "@/lib/cases/todo"
 import { carryoverReady } from "@/lib/chat/carryover"
+import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
 import { REVIEW_PROMPT } from "@/lib/chat/review"
-import { TAX_LABELS } from "@/lib/convert/koji-selection"
+import { SELECTION_LABELS, TAX_LABELS } from "@/lib/convert/koji-selection"
 import { aiAnswerPrompt } from "@/lib/inquiry/inquiry"
 import { INQUIRY_TEXT_PROMPT } from "@/lib/inquiry/text"
 import { useGyoshuTool } from "./tools"
@@ -57,7 +58,9 @@ export function useGyoshuSuggest() {
  */
 export function useReportQuestions(): ReportQuestion[] {
   const actions = useCaseActions()
-  const { questionStates, askRows, askEffects, planAsks } = useCaseView(useShallow((v) => ({ questionStates: v.questionStates, askRows: v.askRows, askEffects: v.askEffects, planAsks: v.planAsks })))
+  const { questionStates, askRows, askEffects, planAsks, advice } = useCaseView(
+    useShallow((v) => ({ questionStates: v.questionStates, askRows: v.askRows, askEffects: v.askEffects, planAsks: v.planAsks, advice: v.selectionAdvice })),
+  )
   const tax = useCase((s) => s.work.tax)
   const reportAnswers = useCase((s) => s.work.reportAnswers)
   const undoStates = useCase((s) => derive(s).undoStates)
@@ -66,6 +69,19 @@ export function useReportQuestions(): ReportQuestion[] {
     /** key は税なら tax、計画の聞き返しなら鍵（askKey） */
     const undoAnswer = (key: string) => (undoStates.get(reportUndoId(key))?.can ? () => actions.undoWithNotice(reportUndoId(key), "答え") : null)
     return questionStates.map(({ id, answered }): ReportQuestion => {
+      if (id === "selection") {
+        // 載せる工事（lib/cases/selection-advice.ts の案を「おすすめ」に添える）。答えたあとも表の見出しのチェック・7割と金額で変えられる
+        const recommended = advice.ask ? advice.recommended : null
+        const sel = reportAnswers.selection
+        return {
+          id,
+          text: "載せる工事は？",
+          detail: [advice.ask ? advice.reason : null, "業種を決める・直すの行の数が変わるので、先に決めます。あとから表の見出しのチェック・7割と金額でも変えられます"].filter(Boolean).join("。"),
+          options: (["rule7", "all"] as const).map((v) => ({ value: v, label: `${SELECTION_LABELS[v]}${v === recommended ? "（おすすめ）" : ""}` })),
+          answered: answered && (sel === "rule7" || sel === "all") ? SELECTION_LABELS[sel] : null,
+          undo: answered ? undoAnswer(id) : null,
+        }
+      }
       if (id === "tax") {
         const label = !answered ? null : tax !== "unknown" ? TAX_LABELS[tax] : "分からない（顧客に聞く）"
         return {
@@ -100,7 +116,7 @@ export function useReportQuestions(): ReportQuestion[] {
         undo: label !== null ? undoAnswer(r.key) : null,
       }
     })
-  }, [actions, questionStates, askRows, askEffects, planAsks, tax, reportAnswers, undoStates])
+  }, [actions, questionStates, askRows, askEffects, planAsks, advice, tax, reportAnswers, undoStates])
 }
 
 /** チャットの案内（返ってきた Excel を AI で読む・問い合わせのメールの下書き・振り返り）。押すと決まった指示を送る */
@@ -176,4 +192,57 @@ export function useCarryover() {
     () => (previous ? { fiscalYear: previous.fiscalYear, ready, names: session.carryoverNames, headers: session.carryoverHeaders } : null),
     [previous, ready, session],
   )
+}
+
+/** 変更案の出どころの名前（「答える」の段） */
+const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", excel: "Excel で直した分", answer: "顧客の回答", location: "工事場所", fix: "業種の AI の案" }
+const ANSWER_LABELS = { yes: "はい", no: "いいえ" } as const
+/** 「答える」の段で答える変更案の印（報告の聞き返しの id と分ける） */
+export const PROPOSAL_QUESTION = "proposal:"
+
+/** 「答える」の段の1つ。go はチャットへ移る操作（「AI に聞く」・チャットで承認するなど。無ければ出さない） */
+export type AnswerQuestion = { question: ReportQuestion; go: { label: string; disabled?: boolean; run: () => void } | null }
+
+/**
+ * 「答える」の段に出すもの: 報告の聞き返し（その場で答える。「AI に聞く」はチャットのその聞き返しへ）と、
+ * チャットのもの（「答える」に数える承認待ちの変更案・AI の聞き返し・一覧の外の業種の AI の案と、答えて閉じたもの）。
+ * 変更案の付いた「はい・いいえ」の聞き返しだけその場で答え、ほかはチャットのその変更案へ移る
+ */
+export function useAnswerQuestions(): { questions: AnswerQuestion[]; chatAsks: AnswerQuestion[] } {
+  const { actions, config } = useCaseSession()
+  const chatCanSend = useCase((s) => s.ui.chatCanSend)
+  const todo = useCaseView((v) => v.todo)
+  const proposals = useCase((s) => s.work.proposals)
+  const undoStates = useCase((s) => derive(s).undoStates)
+  const report = useReportQuestions()
+  return useMemo(() => {
+    const questions: AnswerQuestion[] = report.map((q) => ({
+      question: { ...q, prompt: undefined },
+      go:
+        q.prompt && config.chatEnabled
+          ? { label: "AI に聞く", disabled: !chatCanSend, run: () => actions.goChat({ target: `[data-testid="case-report"] [data-question="${q.id}"]`, button: '[data-testid="report-question-ask"]:not([disabled])' }) }
+          : null,
+    }))
+    const answered = (p: Proposal, text: string, a: "yes" | "no"): AnswerQuestion => ({
+      question: { id: `${PROPOSAL_QUESTION}${p.id}`, text, options: [], answered: ANSWER_LABELS[a], undo: undoStates.get(p.id)?.can ? () => actions.undoWithNotice(p.id) : null },
+      go: null,
+    })
+    const ask = (p: OpenProposal, waiting: number): AnswerQuestion => {
+      const id = `${PROPOSAL_QUESTION}${p.id}`
+      const go = (label: string) => ({ label, run: () => actions.goChat({ target: `[data-proposal="${p.id}"]` }) })
+      const q = p.question
+      if (q && q.answer === null)
+        return p.count > 0
+          ? { question: { id, text: q.text, detail: `${PROPOSAL_ORIGIN[p.origin.kind]}（${p.count} 件）は、答えてからチャットで承認します`, options: [{ value: "no", label: "いいえ" }, { value: "yes", label: "はい" }], answered: null }, go: go("チャットで見る") }
+          : { question: { id, text: q.text, detail: "答えると AI が続けます", options: [], answered: null }, go: go("チャットで答える") }
+      return { question: { id, text: `${PROPOSAL_ORIGIN[p.origin.kind]}の承認待ち ${waiting} 件`, detail: "中身をチャットで確かめて、承認か却下します", options: [], answered: null }, go: go("チャットで確かめる") }
+    }
+    const one = (p: Proposal): AnswerQuestion[] => {
+      const item = todo.answer.find((a) => a.kind === "proposal" && a.proposalId === p.id)
+      if (item?.kind === "proposal" && p.state === "open") return [ask(p, item.waiting)]
+      return p.state === "closed" && p.origin.kind !== "fix" && p.origin.kind !== "location" && p.question?.answer ? [answered(p, p.question.text, p.question.answer)] : []
+    }
+    const chatAsks = [...proposals.filter((p) => p.origin.kind !== "fix").flatMap(one), ...proposals.filter((p) => p.origin.kind === "fix").flatMap(one)]
+    return { questions, chatAsks }
+  }, [actions, config.chatEnabled, chatCanSend, todo, proposals, undoStates, report])
 }

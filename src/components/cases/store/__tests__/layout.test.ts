@@ -73,15 +73,11 @@ describe("並べ方と画面の action（ui）", () => {
     expect(s.store.getState().ui.focus).toEqual({ kind: "chat", target: '[data-proposal="p"]' })
   })
 
-  test("ダウンロードの前の確認からチャットへ移ると、確認を閉じて閉じたあとのフォーカス先を残し、開き直すと外す", async () => {
+  test("ダウンロードは段として開く（ダイアログでない）。選ぶまでは今の段を開く", async () => {
     const s = await converted(false)
+    expect(s.store.getState().ui.tab).toBeNull()
     s.actions.openExport()
-    const to = { target: '[data-proposal="p"]' }
-    s.actions.exportToChat(to)
-    expect(s.store.getState().ui.dialogs.export).toEqual({ open: false, returnTo: to })
-    expect(s.store.getState().ui.focus).toEqual({ kind: "chat", ...to })
-    s.actions.openExport()
-    expect(s.store.getState().ui.dialogs.export).toEqual({ open: true, returnTo: null })
+    expect(s.store.getState().ui).toMatchObject({ tab: "export", workChoice: true })
   })
 
   test("業種の直し方を1行から押すと、業種のタブを開いてその行への頼みを書く（2行以上は頼まない）", async () => {

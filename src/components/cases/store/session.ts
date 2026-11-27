@@ -1,6 +1,6 @@
 import type { UploadNote } from "@/components/cases/case-report"
 import type { WorkTab } from "@/components/cases/work-tabs"
-import type { StepId } from "@/components/cases/next-steps"
+import type { StepId } from "@/lib/cases/steps"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { GyoshuDecision } from "@/components/convert/gyoshu-panel"
 import { caseContext, NO_SOURCE_CONTEXT } from "@/lib/chat/context"
@@ -109,8 +109,6 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     runFixAction: (action: FixActionId, keys: readonly string[]) => ui.runFixAction(env, action, keys),
     chatAction: (a: ChatAction) => ui.chatAction(env, a),
     openExport: () => ui.openExport(env),
-    closeExport: () => ui.closeExport(env),
-    exportToChat: (to: ChatTarget) => ui.exportToChat(env, to),
     setDeleteOpen: (open: boolean) => ui.setDeleteOpen(env, open),
     setDragging: (dragging: boolean) => ui.setDragging(env, dragging),
     setChatCanSend: (canSend: boolean) => ui.setChatCanSend(env, canSend),
@@ -248,7 +246,7 @@ function watch(env: CaseEnv): () => void {
       })
     }
     // 作業の画面で問い合わせのタブを見たら、チャットに「AI でメールの下書きを作る」を出す（一度送ったら、この画面では出さない）
-    if (s.runtime.hints.inquiry === "hidden" && s.ui.tab === "inquiry" && env.view(s).layout.workShown)
+    if (s.runtime.hints.inquiry === "hidden" && env.view(s).view === "inquiry" && env.view(s).layout.workShown)
       queueMicrotask(() => {
         if (watching && store.getState().runtime.hints.inquiry === "hidden") setRuntime(store, (r) => ({ hints: { ...r.hints, inquiry: "shown" } }))
       })

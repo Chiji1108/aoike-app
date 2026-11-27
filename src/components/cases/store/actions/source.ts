@@ -43,8 +43,8 @@ const replanWork = (w: CaseWork, sourceFileId: string): CaseWork => ({
   rule7Tax: w.rule7Tax,
   selection: w.selection,
   rounding: w.rounding,
-  // 税込・税抜の答えは元に依らないので引き継ぐ。計画の聞き返しの答えは前の計画のもの
-  reportAnswers: w.reportAnswers.tax ? { tax: w.reportAnswers.tax } : {},
+  // 税込・税抜と載せる工事の答えは元に依らないので引き継ぐ。計画の聞き返しの答えは前の計画のもの
+  reportAnswers: { ...(w.reportAnswers.tax ? { tax: w.reportAnswers.tax } : {}), ...(w.reportAnswers.selection ? { selection: w.reportAnswers.selection } : {}) },
   // メールの件名・前置きは行に依らないので引き継ぐ
   inquiryText: w.inquiryText,
   // 変更案は前の元の行を指すので閉じる（消さずに残す。消すと、サーバーの記録から開き直したときにまた足される）

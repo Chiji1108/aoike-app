@@ -138,12 +138,15 @@ test("表がまだ無くても、答える（変更案）とチャットの答�
 })
 
 test("報告の聞き返し: 表ができてから。税は誰も決めていなければ聞き、決まるか「分からない」で答えた。計画の聞き返しは exclude・keep だけを答えと見なす", () => {
-  const base = { hasTable: true, tax: "unknown" as const, taxBy: null, reportAnswers: {}, asks: [{ id: "plan-ask-0", key: "ask:doubtful:1:k" }] }
+  const base = { hasTable: true, askSelection: false, tax: "unknown" as const, taxBy: null, reportAnswers: {}, asks: [{ id: "plan-ask-0", key: "ask:doubtful:1:k" }] }
   expect(reportQuestionStates({ ...base, hasTable: false })).toEqual([])
   expect(reportQuestionStates(base)).toEqual([
     { id: "tax", answered: false },
     { id: "plan-ask-0", answered: false },
   ])
+  // 載せる工事は聞くときだけ、最初に聞く
+  expect(reportQuestionStates({ ...base, askSelection: true })[0]).toEqual({ id: "selection", answered: false })
+  expect(reportQuestionStates({ ...base, askSelection: true, reportAnswers: { selection: "all" } })[0]).toEqual({ id: "selection", answered: true })
   // 計画が決めた税は聞かない
   expect(reportQuestionStates({ ...base, tax: "included", taxBy: "plan" }).map((q) => q.id)).toEqual(["plan-ask-0"])
   expect(reportQuestionStates({ ...base, tax: "excluded", taxBy: "staff", reportAnswers: { tax: "excluded", "ask:doubtful:1:k": "keep" } })).toEqual([

@@ -191,6 +191,12 @@ export function answerProposal(env: CaseEnv, id: string, a: "yes" | "no") {
  */
 export function answerReport(env: CaseEnv, id: string, value: string) {
   const { store } = env
+  if (id === "selection") {
+    // 載せる工事（7割ルール／全件）。答えたあとも表の見出しのチェック・7割と金額のタブで変えられる
+    if (value !== "rule7" && value !== "all") return
+    commit(store, { group: reportUndoId(id), kind: "approval" }, ({ work: w }) => ({ ...w, selection: value, reportAnswers: { ...w.reportAnswers, selection: value } }))
+    return
+  }
   if (id === "tax") {
     // 「分からない（顧客に聞く）」も職員が決めた値（計画のし直しで上書きしない）
     const next = value === "included" || value === "excluded" ? value : "unknown"

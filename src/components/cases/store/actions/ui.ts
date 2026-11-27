@@ -1,4 +1,4 @@
-import type { StepId } from "@/components/cases/next-steps"
+import type { StepId } from "@/lib/cases/steps"
 import type { WorkTab } from "@/components/cases/work-tabs"
 import type { FixActionId, TableFilter } from "@/components/convert/status"
 import type { ChatAction } from "@/lib/chat/messages"
@@ -95,13 +95,10 @@ export function chatArrived(env: CaseEnv, tone: "new" | "error") {
   setUi(env.store, (u) => ({ chat: { ...u.chat, unread: tone } }))
 }
 
-/** 次にやることの段へ移る。答えるはチャットの最初の答えを待つものへ（狭い画面では作業の画面を閉じる） */
+/** 段を開く（どの段にもいつでも行ける。順番は案内だけ）。直すは理由の絞り込みを外して直す行のすべてから */
 export function goStep(env: CaseEnv, id: StepId) {
-  if (id === "export") return openExport(env)
-  if (id === "inquiry") return showTab(env, "inquiry")
-  if (id === "gyoshu") return showTab(env, "gyoshu")
-  if (id === "fix") return setUi(env.store, () => ({ filter: { kind: "fix" }, tab: "table", workChoice: true }))
-  goChat(env, PENDING_TARGET)
+  if (id === "fix") return setUi(env.store, () => ({ filter: { kind: "fix" }, tab: "fix", workChoice: true }))
+  showTab(env, id)
 }
 
 /**
@@ -114,26 +111,14 @@ export function runFixAction(env: CaseEnv, action: FixActionId, keys: readonly s
   setUi(env.store, () => ({ tab: "gyoshu", workChoice: true, ...(keys.length === 1 ? { focus: { kind: "gyoshuRow", key: keys[0]! } } : {}) }))
 }
 
-/** 返事のボタン（ダウンロードの前の確認・問い合わせ） */
+/** 返事のボタン（ダウンロード・問い合わせの段を開く） */
 export function chatAction(env: CaseEnv, a: ChatAction) {
-  if (a === "export") openExport(env)
-  else showTab(env, "inquiry")
+  showTab(env, a === "export" ? "export" : "inquiry")
 }
 
-/** ダウンロードの前の確認を開く（閉じたあとのフォーカスは開いたボタンに戻す） */
+/** ダウンロードの段を開く（前の確認はダイアログでなく段の中身） */
 export function openExport(env: CaseEnv) {
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, export: { open: true, returnTo: null } } }))
-}
-
-/** ダウンロードの前の確認を閉じる */
-export function closeExport(env: CaseEnv) {
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, export: { open: false, returnTo: null } } }))
-}
-
-/** ダウンロードの前の確認を閉じてチャットの移り先へ移る（確認は閉じると開いたボタンにフォーカスを戻すので、その代わりに移り先のボタンへ） */
-export function exportToChat(env: CaseEnv, to: ChatTarget) {
-  setUi(env.store, (u) => ({ dialogs: { ...u.dialogs, export: { open: false, returnTo: to } } }))
-  goChat(env, to)
+  showTab(env, "export")
 }
 
 /** 案件の削除の確認を開く・閉じる */
