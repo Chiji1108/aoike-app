@@ -23,4 +23,4 @@ SET
   ),
   `version` = `version` + 1,
   `updated_at` = cast(unixepoch('subsecond') * 1000 as integer)
-WHERE json_type(`json`, '$.selectionAnswered') IS NULL;
+WHERE json_valid(`json`) AND json_type(`json`, '$.selectionAnswered') IS NULL;

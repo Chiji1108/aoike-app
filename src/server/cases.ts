@@ -116,9 +116,9 @@ async function previousOf(db: store.Db, kase: Case) {
     plan: plan ?? null,
     /**
      * 去年の載せる工事（7割ルール／全件）。今年の「答える」の載せる工事のおすすめに出すだけ（引き継がない。lib/cases/selection-advice.ts）。
-     * 去年に変換して出した表の選び方（作業が読めない・変換していなければ null）
+     * 去年に変換して、職員が答えた選び方（作業が読めない・変換していない・既定値のまま答えていなければ null）
      */
-    selection: saved?.converted ? saved.selection : null,
+    selection: saved?.converted && saved.selectionAnswered ? saved.selection : null,
   }
 }
 
