@@ -50,6 +50,7 @@ test("表の見出しの ▼ で、値・色で絞り、並べ替え、じょう
     await expect(panel(page)).toBeHidden()
     await expect(menu(page, "gyoshu")).toHaveAttribute("data-filtered", "1")
     await expect(page.getByTestId("column-filters")).toContainText("絞り込み中: 業種")
+    await expect(page.getByTestId("column-filters-count")).toHaveText(`（${all}行のうち ${count}行を表示）`)
   })
 
   await test.step("検索で一覧が狭まっているときに外した値だけが隠れ、一覧に無かった値は隠れない", async () => {
@@ -57,7 +58,8 @@ test("表の見出しの ▼ で、値・色で絞り、並べ替え、じょう
     await expect(page.locator(ROWS)).toHaveCount(all)
     const row = page.locator(ROWS).first()
     const origin = (await row.getByTestId("origin-cell").getAttribute("title"))!
-    const code = (await row.locator('td[data-field="gyoshu"] [data-code]').getAttribute("data-code").catch(() => null)) ?? ""
+    // 業種が空の行は data-code が無いので、待たずにその場で読む
+    const code = await row.locator('td[data-field="gyoshu"]').evaluate((td) => td.querySelector("[data-code]")?.getAttribute("data-code") ?? "")
     const sameCode = await page.locator(`${ROWS} td[data-field="gyoshu"]`).evaluateAll((tds, code) => tds.filter((td) => (td.querySelector("[data-code]")?.getAttribute("data-code") ?? "") === code).length, code)
     await page.getByLabel("表の中を検索").fill(origin)
     await expect(page.locator(ROWS)).toHaveCount(1)
@@ -68,10 +70,24 @@ test("表の見出しの ▼ で、値・色で絞り、並べ替え、じょう
     await expect(page.getByTestId("no-match")).toBeVisible()
     await page.getByLabel("表の中を検索").fill("")
     await expect(page.locator(ROWS)).toHaveCount(all - sameCode)
+    // ほかの業種の行だけに検索すると、外した値は一覧に無い: 「すべて選択」は一部の印で、外していることを1行出す。押すとこの列の絞り込みを外す
+    const other = await page.locator(ROWS).evaluateAll(
+      (trs, code) => trs.map((tr) => [tr.querySelector('[data-testid="origin-cell"]')!.getAttribute("title")!, tr.querySelector('td[data-field="gyoshu"] [data-code]')?.getAttribute("data-code") ?? ""] as const).find(([, c]) => c !== code)![0],
+      code,
+    )
+    await page.getByLabel("表の中を検索").fill(other)
+    await menu(page, "gyoshu").click()
+    await expect(panel(page).getByTestId("filter-hidden-excluded")).toHaveText("一覧に無い値 1件を外しています")
+    await expect(panel(page).getByTestId("filter-all")).toHaveAttribute("aria-checked", "mixed")
+    await panel(page).getByTestId("filter-all").click()
+    await expect(menu(page, "gyoshu")).not.toHaveAttribute("data-filtered", /./)
+    await page.keyboard.press("Escape")
+    await page.getByLabel("表の中を検索").fill("")
+    await expect(page.locator(ROWS)).toHaveCount(all)
   })
 
   await test.step("色で絞る: その列にある色だけ出し、選ぶとその色のセルの行だけ（ほかの列の絞り込みと重なる）", async () => {
-    await page.getByTestId("column-filters-clear").click()
+    await expect(page.getByTestId("column-filters")).toHaveCount(0)
     await expect(page.locator(ROWS)).toHaveCount(all)
     // 色のセルがある列を選ぶ
     const colored = page.locator(`${ROWS} td[data-tone="warning"], ${ROWS} td[data-tone="error"], ${ROWS} td[data-tone="ai"], ${ROWS} td[data-tone="changed"]`).first()
@@ -79,6 +95,8 @@ test("表の見出しの ▼ で、値・色で絞り、並べ替え、じょう
     const tone = (await colored.getAttribute("data-tone"))!
     await menu(page, field).click()
     const tones = panel(page).getByTestId("filter-tone")
+    // 色の一覧が描かれてから読む（evaluateAll は待たない）
+    await expect(panel(page).locator(`[data-testid="filter-tone"][data-tone="${tone}"]`)).toBeVisible()
     // 出すのはこの列にある色だけ
     const shownTones = await tones.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.tone!))
     const present = await page.locator(`${ROWS} td[data-field="${field}"]`).evaluateAll((tds) => [...new Set(tds.map((td) => (td as HTMLElement).dataset.tone!))])

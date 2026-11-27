@@ -40,9 +40,10 @@ export function withColumnFilter(filters: ColumnFilters, id: string, value: Colu
   return filters.some((f) => f.id === id) ? filters.map((f) => (f.id === id ? { id, value } : f)) : [...rest, { id, value }]
 }
 
-/** 列の表示を変える。隠した列の絞り込みは外す（見えない列で行が消えると、なぜ消えたか分からない） */
+/** 列の表示を変える。隠した列の絞り込みと並べ替えは外す（見えない列で行が消えたり並んだりすると、なぜそうなったか分からない） */
 export function withColumnVisibility(grid: TableGrid, columnVisibility: Record<string, boolean>): TableGrid {
-  return { ...grid, columnVisibility, columnFilters: grid.columnFilters.filter((f) => columnVisibility[f.id] !== false) }
+  const shown = (id: string) => columnVisibility[id] !== false
+  return { ...grid, columnVisibility, columnFilters: grid.columnFilters.filter((f) => shown(f.id)), sorting: grid.sorting.filter((s) => shown(s.id)) }
 }
 
 /**

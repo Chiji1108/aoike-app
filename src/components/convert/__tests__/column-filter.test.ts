@@ -21,9 +21,12 @@ describe("列のフィルター", () => {
     expect(withColumnFilter(f, "a", null)).toEqual([{ id: "b", value: { tone: "error" } }])
   })
 
-  test("隠した列の絞り込みは外す", () => {
-    const g = { ...EMPTY_GRID, columnFilters: withColumnFilter(withColumnFilter([], "a", { exclude: [] }), "b", { exclude: [] }) }
-    expect(withColumnVisibility(g, { a: false, b: true }).columnFilters.map((f) => f.id)).toEqual(["b"])
+  test("隠した列の絞り込みと並べ替えは外す", () => {
+    const g = { ...EMPTY_GRID, sorting: [{ id: "a", desc: true }], columnFilters: withColumnFilter(withColumnFilter([], "a", { exclude: [] }), "b", { exclude: [] }) }
+    const next = withColumnVisibility(g, { a: false, b: true })
+    expect(next.columnFilters.map((f) => f.id)).toEqual(["b"])
+    expect(next.sorting).toEqual([])
+    expect(withColumnVisibility(g, { b: false }).sorting).toEqual([{ id: "a", desc: true }])
   })
 
   test("値の一覧は表示の値と件数で、数の順・空白は最後", () => {

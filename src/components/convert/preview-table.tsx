@@ -141,8 +141,12 @@ type ActiveStore = ReturnType<typeof activeStore>
 /** 絞り込みを比べる鍵（止めた並びがどの絞り込みのものか） */
 const filterKey = (f: TableFilter) => `${f.kind}|${f.reason ?? ""}|${f.ask ?? ""}`
 
-/** 表の見え方の鍵（絞り込み・検索・並べ替え・列のフィルター。変わったら止めた並びと Shift＋クリックの起点を捨てる） */
-const viewKey = (f: TableFilter, needle: string, grid: TableGrid) => `${filterKey(f)}|${needle}|${JSON.stringify(grid.sorting)}|${JSON.stringify(grid.columnFilters)}`
+/**
+ * 表の見え方の鍵（絞り込み・検索・並べ替え・列のフィルター・列の表示。変わったら止めた並びと Shift＋クリックの起点を捨てる。
+ * 列の表示も入れるのは、検索が見えている列だけを探すので、列を出し入れすると検索に合う行が変わるため）
+ */
+const viewKey = (f: TableFilter, needle: string, grid: TableGrid) =>
+  `${filterKey(f)}|${needle}|${JSON.stringify(grid.sorting)}|${JSON.stringify(grid.columnFilters)}|${JSON.stringify(grid.columnVisibility)}`
 
 const resolve = <T,>(u: Updater<T>, old: T) => (typeof u === "function" ? (u as (o: T) => T)(old) : u)
 
@@ -540,6 +544,10 @@ export function PreviewTable({
           <span className="flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 py-0.5 pr-1 pl-2.5 text-xs text-sky-900" data-testid="column-filters">
             <Funnel className="size-3" aria-hidden />
             絞り込み中: {columnFilters.map((f) => columnLabel(spec, f.id)).join("・")}
+            {/* 段の並び・直す理由の数は列の絞り込みの前の数なので、見えている行の数と食い違わないように両方を出す（全部は直す理由・検索の後の行） */}
+            <span className="num text-sky-800/80" data-testid="column-filters-count">
+              （{data.length}行のうち {filtered.length}行を表示）
+            </span>
             <Button size="xs" variant="ghost" className="h-5 px-1.5" onClick={onClearColumnFilters} data-testid="column-filters-clear">
               すべて解除
             </Button>
@@ -809,7 +817,13 @@ function ColumnFilterPanel({
     const excluded = new Set(filter?.exclude)
     return new Set(items.filter((i) => !excluded.has(i.value)).map((i) => i.value))
   }, [filter, facetRows, items, column])
-  const allOn = matched.every((i) => selected.has(i.value))
+  /** 一覧に出ていない（ほかの列・検索・段で今は見えない）のに外したままの値の数 */
+  const hiddenExcluded = useMemo(() => {
+    if (!filter || !("exclude" in filter)) return 0
+    const listed = new Set(items.map((i) => i.value))
+    return filter.exclude.filter((v) => !listed.has(v)).length
+  }, [filter, items])
+  const allOn = matched.every((i) => selected.has(i.value)) && (needle !== "" || hiddenExcluded === 0)
   const someOn = matched.some((i) => selected.has(i.value))
   /**
    * 外す値を決める（チェックの無い値。一覧に無い値〔ほかの列・検索・段で今は見えない値〕で前に外したものは外したまま。外す値が無ければ絞り込みを外す）
@@ -827,6 +841,8 @@ function ColumnFilterPanel({
     choose(next)
   }
   const toggleMatched = (on: boolean) => {
+    // 検索していない「すべて選択」は、一覧に無い外した値も含めて、この列の絞り込みを外す
+    if (on && !needle) return onFilter(null)
     const next = new Set(selected)
     for (const i of matched) if (on) next.add(i.value)
     else next.delete(i.value)
@@ -879,6 +895,11 @@ function ColumnFilterPanel({
                 <Checkbox checked={allOn} indeterminate={!allOn && someOn} onCheckedChange={(on) => toggleMatched(on)} data-testid="filter-all" />
                 {needle ? "検索結果をすべて選択" : "すべて選択"}
               </label>
+            </li>
+          )}
+          {hiddenExcluded > 0 && (
+            <li className="px-2 py-1 text-muted-foreground" data-testid="filter-hidden-excluded">
+              一覧に無い値 {hiddenExcluded}件を外しています
             </li>
           )}
           {matched.slice(0, SHOWN_VALUES).map((i) => (
