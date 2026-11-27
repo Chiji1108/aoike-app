@@ -2,7 +2,7 @@ import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { toast } from "sonner"
 import { AppShell, CSV, PageHeader } from "@/components/app-shell"
-import { RuleList } from "@/components/rules/rule-list"
+import { RulesEditor } from "@/components/rules/rules-editor"
 import { Segmented } from "@/components/segmented"
 import { Label } from "@/components/ui/label"
 import { RULE7_TAX_LABELS, type Rule7Tax } from "@/lib/chat/rules"
@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authed/csv/rules")({
 })
 
 function RulesPage() {
-  const { items, settings } = Route.useLoaderData()
+  const { rules, settings } = Route.useLoaderData()
   const [rule7Tax, setRule7Tax] = useState(settings.rule7Tax)
 
   async function saveRule7Tax(next: Rule7Tax) {
@@ -43,7 +43,7 @@ function RulesPage() {
             testId="rule7-tax"
           />
         </div>
-        <RuleList target={{ scope: "global" }} initial={items} testId="global-rules" />
+        <RulesEditor target={{ scope: "global" }} initial={rules} testId="global-rules" />
       </div>
     </AppShell>
   )

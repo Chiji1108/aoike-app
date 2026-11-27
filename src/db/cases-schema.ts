@@ -4,43 +4,31 @@
 import { sql } from "drizzle-orm"
 import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { CASE_STATUSES, FILE_KINDS, FILE_STATUSES } from "@/lib/cases/types"
-import { RULE_SCOPES, RULE_SOURCES } from "@/lib/chat/rules"
 import { RULE7_TAXES } from "@/lib/convert/koji-selection"
 import { createdAt, updatedAt } from "./auth-schema"
 
+/**
+ * 顧客。rules は顧客ルール（1つの文章。AI への指示にそのまま入る）、rules_version は文章を保存するたびに1つ上げる版
+ * （2つの画面で直したときに後の保存を断る）。顧客を消すと顧客ルールも消える
+ */
 export const csvCustomers = sqliteTable("csv_customers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  rules: text("rules").notNull().default(""),
+  rulesVersion: integer("rules_version").notNull().default(0),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
 
 /**
- * 全体ルール・顧客ルールの項目（1項目1行）。並びは position（同じ一覧の中で小さい順）。customer_id は顧客ルールのときだけ（全体ルールは null）。
- * source は誰が足したか（staff: 職員が画面で・移した前の文章、chat: チャットの変更案の承認）、case_id は由来の案件（無ければ null。案件を消すと null にする）。
- * version は文章を直すたびに1つ上げ、同じ項目を2つの画面で直したときに後の保存を断る（並べ替えでは上げない）。顧客を消すと顧客ルールの項目も消す
+ * 事務所の設定（id は "global" の1行だけ。マイグレーション 0004 が作る）。rule7_tax は7割の計算を税抜・税込のどちらでするか（新しい案件の初期値）。
+ * rules は全体ルール（1つの文章）、rules_version はその版（顧客ルールと同じ）
  */
-export const csvRuleItems = sqliteTable(
-  "csv_rule_items",
-  {
-    id: text("id").primaryKey(),
-    scope: text("scope", { enum: RULE_SCOPES }).notNull(),
-    customerId: text("customer_id").references(() => csvCustomers.id),
-    text: text("text").notNull(),
-    position: integer("position").notNull(),
-    source: text("source", { enum: RULE_SOURCES }).notNull(),
-    caseId: text("case_id"),
-    version: integer("version").notNull().default(1),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (t) => [index("csv_rule_items_list_idx").on(t.scope, t.customerId, t.position), index("csv_rule_items_case_id_idx").on(t.caseId)],
-)
-
-/** 事務所の設定（id は "global" の1行だけ。マイグレーション 0004 が作る）。rule7_tax は7割の計算を税抜・税込のどちらでするか（新しい案件の初期値） */
 export const csvSettings = sqliteTable("csv_settings", {
   id: text("id").primaryKey(),
   rule7Tax: text("rule7_tax", { enum: RULE7_TAXES }).notNull().default("excluded"),
+  rules: text("rules").notNull().default(""),
+  rulesVersion: integer("rules_version").notNull().default(0),
   updatedAt: updatedAt(),
 })
 

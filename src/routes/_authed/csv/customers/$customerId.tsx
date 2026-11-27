@@ -4,7 +4,7 @@ import { Plus } from "lucide-react"
 import { toast } from "sonner"
 import { AppShell, CSV, PageHeader } from "@/components/app-shell"
 import { DeleteButton } from "@/components/cases/delete-dialog"
-import { RuleList } from "@/components/rules/rule-list"
+import { RulesEditor } from "@/components/rules/rules-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -106,7 +106,7 @@ function CustomerPage() {
         <h2 className="text-sm font-medium" title="この顧客のデータに当てる決まり。チャットの AI への指示に入ります">
           顧客ルール
         </h2>
-        <RuleList target={{ scope: "customer", customerId: customer.id }} initial={rules} testId="customer-rules" />
+        <RulesEditor target={{ scope: "customer", customerId: customer.id }} initial={rules} testId="customer-rules" />
       </section>
     </AppShell>
   )

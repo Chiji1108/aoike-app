@@ -25,7 +25,7 @@ import { withPlanTax } from "../src/lib/cases/tax"
 import { deriveTable, type CaseTable } from "../src/lib/cases/view"
 import { caseContext } from "../src/lib/chat/context"
 import { applyChanges, type ChatChange } from "../src/lib/chat/proposals"
-import { DEFAULT_GLOBAL_RULE_ITEMS, rulesText, ruleTextSchema } from "../src/lib/chat/rules"
+import { appendRule, DEFAULT_GLOBAL_RULES, ruleLineSchema } from "../src/lib/chat/rules"
 import { checkReport, newTurnState, startTurn, systemPrompt, type InquiryDeps, type TurnState } from "../src/lib/chat/turn"
 import type { RowResult } from "../src/lib/convert/convert"
 import { heuristicPlan, planSheets, sheetByNames } from "../src/lib/convert/heuristic-plan"
@@ -57,7 +57,9 @@ const BUDGET_USD = 5
 /** 顧客ルールだけで直す1回の指示（rules） */
 const RULES_TURN = "顧客ルールどおりに表を直して"
 /** 全体ルールは初期値の項目（新しい事務所と同じ）。7割の計算は事務所の初期値（税抜） */
-const GLOBAL_RULES = rulesText(DEFAULT_GLOBAL_RULE_ITEMS.map((text) => ({ text })))
+const GLOBAL_RULES = DEFAULT_GLOBAL_RULES
+/** 案件定義の顧客ルール（1行1つの決まり）を画面の文章の形（「- 」の行）にする */
+const rulesOf = (lines: string) => lines.split("\n").map((t) => t.trim()).filter(Boolean).reduce(appendRule, "")
 
 type CaseDef = {
   /** ROOT からの相対パスか絶対パス */
@@ -267,19 +269,20 @@ try {
   else if (variant === "answers") await answersEval()
   else if (variant === "inquiry") await inquiryEval()
   else if (variant !== "baseline") {
-    /** 顧客ルールの項目（画面の箇条書き）。案件定義の customerRules は1行1項目 */
-    let customerItems = def.customerRules.split("\n").map((t) => t.trim()).filter(Boolean)
+    /** 顧客ルールの文章（案件定義の customerRules は1行1つの決まりで、画面の文章と同じく「- 」の行にする） */
+    let customerRules = rulesOf(def.customerRules)
     const lastYearId = def.editFrom ?? caseId
     if (variant === "rules") {
       const edit = JSON.parse(readFileSync(join(OUT, `${lastYearId}-edit.json`), "utf8")) as { log: { rules: string[] }[] }
-      // edit で承認した顧客ルールの項目（画面の承認と同じく1項目ずつ足す）
-      customerItems = edit.log.flatMap((t) => t.rules).map((t) => ruleTextSchema.parse(t))
-      if (!customerItems.length) throw new Error("edit の結果に顧客ルールの追記案が無い")
+      // edit で承認した顧客ルールの行（画面の承認と同じく1行ずつ文章の最後に足す）
+      const lines = edit.log.flatMap((t) => t.rules).map((t) => ruleLineSchema.parse(t))
+      if (!lines.length) throw new Error("edit の結果に顧客ルールの追記案が無い")
+      customerRules = lines.reduce(appendRule, "")
     }
     const turns = variant === "rules" ? [RULES_TURN] : variant === "plan" ? (def.planInstructions ?? []) : def.instructions
     if (!turns.length) throw new Error(`${variant} の指示が案件定義に無い`)
     const t00 = Date.now()
-    const run = await chatPhase({ turns, table: tableOf(base), plan: base.plan, customerItems })
+    const run = await chatPhase({ turns, table: tableOf(base), plan: base.plan, customerRules })
     const final = compare(csvRows(run.table))
     writeFileSync(join(OUT, `${caseId}-${variant}.json`), JSON.stringify({ status: run.status, reason: run.reason, total: run.total, ms: Date.now() - t00, turns: run.log.length, log: run.log, final: csvRows(run.table), score: final }, null, 1))
     writeSummary(variant, { status: run.status, ...(run.reason ? { reason: run.reason } : {}), score: final, turns: run.log.length, ms: Date.now() - t00, conversionUsd: base.usd, usd: run.total })
@@ -312,7 +315,7 @@ async function chatPhase(p: {
   turns: string[]
   table: CaseTable
   plan: MappingPlan<KojiFieldId>
-  customerItems: string[]
+  customerRules: string
   inquiry?: InquiryDeps
 }) {
   /** 今の列の対応（set_plan を承認すると変わる。画面と同じく、変えたら変換し直す） */
@@ -339,7 +342,7 @@ async function chatPhase(p: {
     }
     for (const [i, text] of p.turns.entries()) {
       // 画面は指示のたびに今の列の対応で文脈を作る
-      const system = systemPrompt({ global: GLOBAL_RULES, customerName: def!.customerName, customer: rulesText(p.customerItems.map((text) => ({ text }))), rule7Tax: "excluded" }, caseContext(sheets, gridOf(plan), plan), uploads)
+      const system = systemPrompt({ global: GLOBAL_RULES, customerName: def!.customerName, customer: p.customerRules, rule7Tax: "excluded" }, caseContext(sheets, gridOf(plan), plan), uploads)
       if (total > BUDGET_USD) {
         status = "stopped"
         reason = `費用が $${total.toFixed(2)} で上限 $${BUDGET_USD} を超え、${p.turns.length - i} 回の指示を送っていない`
@@ -627,7 +630,7 @@ async function inquiryEval() {
   const inquiries = collectInquiries(view.output, { tax: table.tax })
   const others = [...new Set(Object.entries(CASES).flatMap(([id, c]) => (id === caseId || c.customerName === def!.customerName ? [] : [c.customerName])))]
   const t00 = Date.now()
-  const run = await chatPhase({ turns: [INQUIRY_TEXT_PROMPT], table, plan: base.plan, customerItems: def!.customerRules.split("\n").map((t) => t.trim()).filter(Boolean), inquiry: { customerName: def!.customerName, otherCustomers: async () => others } })
+  const run = await chatPhase({ turns: [INQUIRY_TEXT_PROMPT], table, plan: base.plan, customerRules: rulesOf(def!.customerRules), inquiry: { customerName: def!.customerName, otherCustomers: async () => others } })
   // 変更案は画面の承認と同じく表に重ねてある（applyChanges が問い合わせの文面にも重ねる）
   const text = run.table.inquiryText
   const texts = [text.subject ?? "", text.intro ?? ""].filter(Boolean)

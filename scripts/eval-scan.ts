@@ -15,7 +15,7 @@ import { deriveTable, type CaseTable } from "../src/lib/cases/view"
 import { containerName, contentTypeOf } from "../src/lib/cases/types"
 import { NO_SOURCE_CONTEXT } from "../src/lib/chat/context"
 import { applyChanges } from "../src/lib/chat/proposals"
-import { DEFAULT_GLOBAL_RULE_ITEMS, rulesText } from "../src/lib/chat/rules"
+import { DEFAULT_GLOBAL_RULES } from "../src/lib/chat/rules"
 import { IMAGE_READ_NOTE, newTurnState, startTurn, systemPrompt } from "../src/lib/chat/turn"
 import { fileAddressLookup } from "../src/lib/convert/address-file"
 import { tokensOfAiSdk, usdOf } from "../src/lib/cost"
@@ -51,7 +51,7 @@ try {
     const up = await anthropic.files.upload({ file: await toFile(readFileSync(join(DIR, original)), name, { type: contentTypeOf(original) }) })
     uploads.push({ id: up.id, name, original, path: join(DIR, original) })
   }
-  const system = systemPrompt({ global: rulesText(DEFAULT_GLOBAL_RULE_ITEMS.map((text) => ({ text }))), customerName: "合成サンプル電設", customer: "", rule7Tax: "excluded" }, NO_SOURCE_CONTEXT, uploads.map((u) => ({ name: u.name, original: u.original, isSource: false })))
+  const system = systemPrompt({ global: DEFAULT_GLOBAL_RULES, customerName: "合成サンプル電設", customer: "", rule7Tax: "excluded" }, NO_SOURCE_CONTEXT, uploads.map((u) => ({ name: u.name, original: u.original, isSource: false })))
   const messages: ModelMessage[] = [
     {
       role: "user",

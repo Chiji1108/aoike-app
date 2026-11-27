@@ -128,7 +128,7 @@ function rowsByKey(view: TableView): RowsByKey {
   return m
 }
 
-const EXTERNAL_LABELS = { rule: "ルールの項目" } as const
+const EXTERNAL_LABELS = { rule: "ルールに足した行" } as const
 
 /** 承認を取り消すボタンと、取り消しても戻らないもの */
 function UndoLine({ id, actions, busy }: { id: string; actions: ProposalActions; busy: boolean }) {
@@ -262,7 +262,7 @@ function countKinds(changes: readonly ChatChange[]) {
     n.include && `載せる・外す ${n.include}`,
     n.add && `工事を足す ${n.add}`,
     n.settings && "7割と金額の設定",
-    n.rule && `ルールの項目 ${n.rule}`,
+    n.rule && `ルールの行 ${n.rule}`,
     n.location && `工事場所 ${n.location}現場`,
     n.plan && "列の対応",
     n.inquiryMail && "メールの下書き",

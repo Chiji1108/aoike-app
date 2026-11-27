@@ -113,14 +113,14 @@ describe("ルールの案の個人名の確かめ（propose_rule）", () => {
   test("まだ保存した作業が無い（分かっている個人名が空）案件でも、表の人で確かめて propose_rule の案を出す", async () => {
     const state = newTurnState(table, undefined, undefined, null, null, async () => [])
     const tools = chatTools(state)
-    expect(await call(tools, "propose_rule", { scope: "customer", items: ["工事名の読点は取る"] })).toBe("職員に1項目の案を見せました（承認待ち）。")
+    expect(await call(tools, "propose_rule", { scope: "customer", items: ["工事名の読点は取る"] })).toBe("職員に1行の案を見せました（承認待ち）。")
     expect(await call(tools, "propose_rule", { scope: "customer", items: ["試験太郎は配置技術者にしない"] })).toMatchObject({ ok: false })
   })
 
   test("同じ指示の中で AI が手直しに入れた個人名も、ルールの案に入れない（確かめるときの表から集める）", async () => {
     const state = newTurnState(table, undefined, undefined, null, null, known)
     const tools = chatTools(state)
-    expect(await call(tools, "propose_rule", { scope: "customer", items: ["工事名の読点は取る"] })).toBe("職員に1項目の案を見せました（承認待ち）。")
+    expect(await call(tools, "propose_rule", { scope: "customer", items: ["工事名の読点は取る"] })).toBe("職員に1行の案を見せました（承認待ち）。")
     expect(await call(tools, "set_cells", { changes: [{ key: "s!2", field: "engineer", value: "新顔　一郎" }] })).toMatchObject({ ok: true })
     expect(await call(tools, "propose_rule", { scope: "customer", items: ["配置技術者は新顔一郎にする"] })).toMatchObject({ ok: false, items: [0] })
   })
