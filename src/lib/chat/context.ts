@@ -2,7 +2,7 @@ import { columnLetter, type MappingPlan, type SheetGrid } from "../convert/plan"
 import { KOJI_KEIREKI, type KojiFieldId } from "../spec/koji-keireki"
 
 /** AI に渡す案件の文脈: 元データの見出しと数行、今の列の対応。全行は送らない（AI はコードで元のファイルを読む） */
-export function caseContext(sheets: readonly SheetGrid[], grid: SheetGrid, plan: MappingPlan<KojiFieldId>, previous?: { fiscalYear: number; lines: readonly string[] }) {
+export function caseContext(sheets: readonly SheetGrid[], grid: SheetGrid, plan: MappingPlan<KojiFieldId>) {
   /** 空でないセルだけを「列:値」で並べる */
   const row = (r: string[] | undefined) =>
     (r ?? [])
@@ -35,8 +35,6 @@ export function caseContext(sheets: readonly SheetGrid[], grid: SheetGrid, plan:
   // 出さない行の決まり（set_plan の excludeRows で外すときは、これと同じ列・値を書く）
   const ex = [...plan.rowFilter.excludeColumns.map((c) => `${columnLetter(c)}列に値がある行`), ...(plan.rowFilter.excludeValues ?? []).map((f) => `${columnLetter(f.column)}列が「${f.values.join("」「")}」の行`)]
   if (ex.length) lines.push(`出さない行: ${ex.join("、")}`)
-  // 去年の元の Excel と形が変わった年は、去年のルール・コードの列の名前と位置をそのまま使えない
-  if (previous) lines.push(`去年（${previous.fiscalYear}年度）の元の Excel との違い（決まった処理で見出しを比べたもの）:`, ...previous.lines.map((l) => `- ${l}`))
   return lines.join("\n")
 }
 

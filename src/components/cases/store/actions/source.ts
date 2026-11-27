@@ -5,7 +5,6 @@ import type { CaseFile } from "@/lib/cases/types"
 import { discard } from "@/lib/chat/proposals"
 import type { AddressBook } from "@/lib/convert/address"
 import { convertRows } from "@/lib/convert/convert"
-import { compareFormats, describeFormatDiff } from "@/lib/convert/format-diff"
 import { heuristicPlan, planSheets, primarySheet, sheetByNames } from "@/lib/convert/heuristic-plan"
 import { fillAiCache, type AiCache, type AiCaller } from "@/lib/convert/pipeline"
 import { acceptAiPlan, type MappingPlan, type SheetGrid } from "@/lib/convert/plan"
@@ -22,7 +21,7 @@ type Plan = MappingPlan<KojiFieldId>
 /** 列の計画の前に、去年の Excel を読み終えるのを待つ長さ */
 export const PREVIOUS_WAIT_MS = 3_000
 
-/** 去年の比べるシートと見出しの行（去年の計画のもの。計画が無い・シートが無ければ見出しから推定する）。比べるシートが無ければ null */
+/** 去年の元の Excel の工事のシートと見出しの行（去年の計画のもの。計画が無い・シートが無ければ見出しから推定する）。シートが無ければ null */
 export function previousSideOf(previous: PreviousCase, sheets: SheetGrid[]) {
   const prevGrid = sheetByNames(SPEC, KOJI_PLAN_HINTS, sheets, previous.sheet)
   if (!prevGrid) return null
@@ -120,22 +119,18 @@ export function loadPreviousSheets(env: CaseEnv): Promise<SheetGrid[] | null> {
 }
 
 /**
- * 列の計画の AI に渡す去年の文脈: 去年の列の対応と、去年の Excel との違い。計画の前なので、今年のどのシートと比べるかは
- * 職員が指定したシート → 去年と同じ名前のシート → 見出しから選んだシート（sheetByNames）、見出しの行は見出しからの推定。
- * 比べたシートは違いの文に出る。去年の計画が無い・去年の Excel を読めなければ無し
+ * 列の計画の AI に渡す去年の文脈: 去年の列の対応（列は去年の Excel の見出しの名前で書く）。
+ * 去年の計画が無い・去年の Excel を読めない・去年の計画のシートが無ければ無し
  */
-async function previousPlanFor(env: CaseEnv, src: Source, requiredSheet: string | undefined) {
+async function previousPlanFor(env: CaseEnv) {
   const { previous } = env.config
   const prevPlan = previous?.plan
   if (!previous || !prevPlan) return undefined
   // 去年の Excel は開いたときから読んでいる。計画をそれ以上待たせない（読み終わらなければ去年の文脈なしで計画する）
   const sheets = await Promise.race([loadPreviousSheets(env), new Promise<null>((resolve) => setTimeout(() => resolve(null), PREVIOUS_WAIT_MS))])
-  const side = sheets && previousSideOf(previous, sheets)
-  const prevGrid = side && sheets.find((s) => s.name === prevPlan.sheets[0])
-  const g = sheetByNames(SPEC, KOJI_PLAN_HINTS, src.sheets, requiredSheet, prevPlan.sheets[0])
-  if (!side || !prevGrid || !g) return undefined
-  const diff = describeFormatDiff(compareFormats(side, { sheets: src.sheets, sheet: g.name, headerRow: heuristicPlan(SPEC, KOJI_PLAN_HINTS, g).headerRow }))
-  return previousPlanContext(SPEC, { fiscalYear: previous.fiscalYear, grid: prevGrid, plan: prevPlan, diff })
+  const prevGrid = sheets?.find((s) => s.name === prevPlan.sheets[0])
+  if (!prevGrid) return undefined
+  return previousPlanContext(SPEC, { fiscalYear: previous.fiscalYear, grid: prevGrid, plan: prevPlan })
 }
 
 /**
@@ -157,7 +152,7 @@ export async function startPlanning(env: CaseEnv, src: Source, requiredSheet?: s
   const current = () => store.getState().runtime.gen.case === id
   let next: SavedPlan
   try {
-    const previousContext = await previousPlanFor(env, src, requiredSheet)
+    const previousContext = await previousPlanFor(env)
     if (!current()) return
     const targets = planSheets(SPEC, KOJI_PLAN_HINTS, src.sheets, requiredSheet)
     const excerpt = planExcerpt(src.sheets.length, targets.sheets, targets.required)

@@ -6,7 +6,7 @@ import type { ReportPhase } from "@/lib/cases/phase"
 
 /**
  * 変換の報告（チャットの最初の返事）。ファイルを読む → 列の対応を考える → 変換する の進み具合と、変換のあとの知らせ（答えは要らない。
- * 計画の AI のメモ・見出しから推定した理由・まとめた行・去年との違い）、聞き返しの数の1行（押すと「答える」の段。答えるのはそこだけ）、
+ * 計画の AI のメモ・見出しから推定した理由・まとめた行）、聞き返しの数の1行（押すと「答える」の段。答えるのはそこだけ）、
  * 費用のかかる工事場所の調査を出す。直す行の件数・ダウンロード・問い合わせは作業の画面の段の並びにあるので出さない。
  * 案件の作業から作るので保存しない（変われば書き直る）
  */
@@ -29,8 +29,6 @@ export type ReportProps = {
   counts: ReportCounts | null
   /** 答えていない報告の聞き返しの数と、「答える」の段を開く（答えるのは「答える」の段だけ。報告には中身を並べず1行だけ。0 なら出さない） */
   answer: { count: number; go: () => void }
-  /** 去年の案件との違い（無ければ null） */
-  previous: { fiscalYear: number; lines: string[] | null; error: string | null; changed: boolean } | null
   /** 工事場所の調査（調べられる現場があるときだけ。費用がかかるので職員が押して始める） */
   location: { open: () => void; sites: number } | null
   onRetry: (() => void) | null
@@ -143,20 +141,6 @@ function Body(p: ReportProps) {
               </li>
             ))}
           </ul>
-        </div>
-      )}
-      {p.previous && (
-        <div className={cn("rounded-md border px-2.5 py-1.5 text-[13px]", p.previous.changed ? "border-amber-200 bg-amber-50 text-amber-900" : "bg-muted/30")} data-testid="format-diff">
-          <div className="font-medium">去年（{p.previous.fiscalYear}年度）の元の Excel との違い</div>
-          {p.previous.lines ? (
-            <ul className="mt-0.5 list-disc pl-4">
-              {p.previous.lines.map((l, i) => (
-                <li key={i}>{l}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-0.5">{p.previous.error}</p>
-          )}
         </div>
       )}
       {p.location && (

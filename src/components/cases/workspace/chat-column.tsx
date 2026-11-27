@@ -76,7 +76,7 @@ function ChatReport() {
   )
 }
 
-/** 変換の報告。進み具合・知らせ・聞き返しの数（答えるのは「答える」の段）・去年との違い・工事場所の調査をストアから作る */
+/** 変換の報告。進み具合・知らせ・聞き返しの数（答えるのは「答える」の段）・工事場所の調査をストアから作る */
 function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void }) {
   const { config, actions } = useCaseSession()
   const location = useLocationTool()
@@ -98,7 +98,6 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
       convertError: s.runtime.convertError,
       files: s.runtime.files,
       notes: s.runtime.notes,
-      previousSheets: s.runtime.previous,
       previousUnsaved: s.runtime.previousUnsaved,
       closedMissing: s.runtime.closedMissing,
       unreadable: s.runtime.unreadable,
@@ -107,8 +106,7 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
   const { reconverting, hasTable, sources, unmarked, shown, output } = useTable(
     useShallow((t) => ({ reconverting: t.reconverting, hasTable: t.hasTable, sources: t.sources, unmarked: t.unmarked, shown: t.shown, output: t.output })),
   )
-  const { noSheetSource, formatDiff, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, formatDiff: v.formatDiff, asks: reportAsks(v.todo) })))
-  const { previous } = config
+  const { noSheetSource, asks } = useCaseView(useShallow((v) => ({ noSheetSource: v.noSheetSource, asks: reportAsks(v.todo) })))
 
   const sourceFile = rt.files.find((f) => f.id === work.sourceFileId)
   const phase = reportPhase({
@@ -146,7 +144,6 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
     ...(unmarked > 0 ? [{ text: `業種の記号（○）が無い ${unmarked} 行は出しません。`, testId: "unmarked-notice" }] : []),
     ...(work.aiNotice ? [{ text: `AI で変換できなかった値があります（${work.aiNotice}）。黄色のセルを確かめてください。`, tone: "warning" as const, testId: "ai-notice" }] : []),
   ]
-  const previousSheets = rt.previousSheets
   return (
     <CaseReport
       phase={phase}
@@ -155,16 +152,6 @@ function ReportBody({ onRetry }: { onRetry: (what: "source" | "convert") => void
       notes={notes}
       counts={shown && output ? { rows: shown.length, csv: output.length } : null}
       answer={{ count: asks, go: () => actions.goStep("answer") }}
-      previous={
-        previous && hasTable && (formatDiff || (previousSheets && "error" in previousSheets) || !previous.source)
-          ? {
-              fiscalYear: previous.fiscalYear,
-              lines: formatDiff?.lines ?? null,
-              error: formatDiff ? null : previous.source ? ((previousSheets as { error: string } | null)?.error ?? null) : "去年の案件に表のファイルが無いので比べられません。",
-              changed: !!formatDiff && !formatDiff.diff.same,
-            }
-          : null
-      }
       location={location.sites > 0 ? { open: () => actions.showTab("location"), sites: location.sites } : null}
       onRetry={() => onRetry(phase.kind === "failed" && phase.retry === "source" ? "source" : "convert")}
       uploads={rt.notes}

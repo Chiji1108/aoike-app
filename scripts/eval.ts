@@ -3,7 +3,7 @@
  *
  *   EVAL_CASES=<案件定義の JSON> EVAL_OUT=<結果を書くフォルダ> pnpm exec tsx scripts/eval.ts <case> <variant>
  *   variant: baseline（チャットなし）| edit（案件定義の指示を順に）| rules（edit で承認した顧客ルールを入れて「顧客ルールどおりに表を直して」の1回）
- *            | nextyear（翌年分: rules に加えて、edit の会話で書いたコードを去年のコードとして添え、去年の Excel との違いを文脈に入れる。画面の「去年のやり方で直す」と同じ）
+ *            | nextyear（翌年分: rules に加えて、edit の会話で書いたコードを去年のコードとして添える。画面の「去年のやり方で直す」と同じ）
  *            | plan（列の対応を直す指示: 案件定義の planInstructions を順に。set_plan の変更案は画面と同じく今の計画に重ねて変換し直し、ほかの変更案はその上に重ねる）
  *            | answers（顧客の回答: 案件定義の answerSheet があれば記入用Excelを作って「備考」の列に答えを書き、画面と同じく決まった欄を先に読んでから
  *              「AI で読む」と同じ指示を送る。answerInstructions があればメールの本文として順に送る。聞いていたセルの答えを answerTruth と比べる）
@@ -33,7 +33,6 @@ import { applyChanges, type ChatChange } from "../src/lib/chat/proposals"
 import { QUIET_TOOLS, REVIEW_PROMPT, type ReviewTurn } from "../src/lib/chat/review"
 import { describeSettings } from "../src/lib/chat/describe"
 import { carryoverPrompt, cleanCarryoverCodes, codesFromModel, knownWords, namesForCarryover } from "../src/lib/chat/carryover"
-import { compareFormats, describeFormatDiff, similarity } from "../src/lib/convert/format-diff"
 import { DEFAULT_GLOBAL_RULE_ITEMS, rulesText, ruleTextSchema } from "../src/lib/chat/rules"
 import { checkReport, newTurnState, startTurn, systemPrompt, type InquiryDeps, type ReviewDeps, type TurnState } from "../src/lib/chat/turn"
 import { memoryFeedback } from "../src/lib/feedback/memory"
@@ -128,7 +127,7 @@ type Baseline = { rows: RowResult<KojiFieldId>[]; plan: MappingPlan<KojiFieldId>
 async function baseline(): Promise<Baseline> {
   const t0 = Date.now()
   const fallbackFor = (g: (typeof sheets)[number]) => heuristicPlan(KOJI_KEIREKI, KOJI_PLAN_HINTS, g)
-  // 翌年分の案件（editFrom）は、画面と同じく去年の列の対応と去年の Excel との違いを計画の AI に添える
+  // 翌年分の案件（editFrom）は、画面と同じく去年の列の対応を計画の AI に添える
   const targets = planSheets(KOJI_KEIREKI, KOJI_PLAN_HINTS, sheets, def!.sheet)
   const excerpt = planExcerpt(sheets.length, targets.sheets, targets.required)
   const res = await planWithClaude(anthropic, { ...excerpt, ...(def!.editFrom ? { previous: previousPlanOf() } : {}) })
@@ -176,21 +175,10 @@ function lastYear() {
   return lastYearCache
 }
 
-/** 去年の Excel との違い（今年は sheet の見出しの行 headerRow と比べる） */
-function previousDiff(sheet: string, headerRow: number) {
-  const { fiscalYear, last, prevSheets } = lastYear()
-  return { fiscalYear, last, prevSheets, lines: describeFormatDiff(compareFormats({ sheets: prevSheets, sheet: last.plan.sheets[0]!, headerRow: last.plan.headerRow }, { sheets, sheet, headerRow })) }
-}
-
-/**
- * 計画の AI に添える去年の文脈。画面と同じく、計画の前なので今年は 職員の指定したシート → 去年と同じ名前のシート → 見出しから選んだシート と比べ、
- * 見出しの行は見出しからの推定
- */
+/** 計画の AI に添える去年の文脈（画面と同じく、去年の列の対応を去年の見出しの名前で） */
 function previousPlanOf() {
-  const lastSheet = lastYear().last.plan.sheets[0]!
-  const g = sheetByNames(KOJI_KEIREKI, KOJI_PLAN_HINTS, sheets, def!.sheet, lastSheet)!
-  const { fiscalYear, last, prevSheets, lines } = previousDiff(g.name, heuristicPlan(KOJI_KEIREKI, KOJI_PLAN_HINTS, g).headerRow)
-  return previousPlanContext(KOJI_KEIREKI, { fiscalYear, grid: prevSheets.find((s) => s.name === last.plan.sheets[0])!, plan: last.plan, diff: lines })
+  const { fiscalYear, last, prevSheets } = lastYear()
+  return previousPlanContext(KOJI_KEIREKI, { fiscalYear, grid: prevSheets.find((s) => s.name === last.plan.sheets[0])!, plan: last.plan })
 }
 
 /** 画面と同じく、計画が税込・税抜を決めていれば案件の税の設定に入れる */
@@ -199,7 +187,20 @@ const tableOf = ({ rows, plan }: Pick<Baseline, "rows" | "plan">): CaseTable => 
   return { rows, added: w.added, edits: w.edits, replacements: w.replacements, manual: w.manual, tax: w.tax, basis: w.basis, rule7Tax: w.rule7Tax, selection: w.selection, rounding: w.rounding, dismissed: w.dismissed, inquiryText: w.inquiryText }
 }
 
-/** 文字の2つ組の重なり（行の対応づけに使う。法人格と空白は除いて比べ、2文字に満たなければ 0） */
+/** 文字の2つ組の重なり（Dice 係数） */
+function similarity(a: string, b: string) {
+  const grams = (s: string) => {
+    const cs = [...s]
+    return cs.length < 2 ? new Set([s]) : new Set(cs.slice(0, -1).map((c, i) => c + cs[i + 1]))
+  }
+  const A = grams(a)
+  const B = grams(b)
+  let n = 0
+  for (const x of A) if (B.has(x)) n++
+  return (2 * n) / (A.size + B.size)
+}
+
+/** 行の対応づけに使う文字の近さ（法人格と空白は除いて比べ、2文字に満たなければ 0） */
 const sim = (a: string, b: string) => {
   const strip = (s: string) => s.normalize("NFKC").replace(/\s|株式会社|有限会社|㈱|㈲|\(株\)/g, "")
   const [x, y] = [strip(a), strip(b)]
@@ -280,9 +281,8 @@ try {
   else if (variant !== "baseline") {
     /** 顧客ルールの項目（画面の箇条書き）。案件定義の customerRules は1行1項目 */
     let customerItems = def.customerRules.split("\n").map((t) => t.trim()).filter(Boolean)
-    /** 翌年分: 去年のコードの文（最初の指示の前に添える）と、去年の Excel との違い */
+    /** 翌年分: 去年のコードの文（最初の指示の前に添える） */
     let carryText: string | null = null
-    let previousFormat: { fiscalYear: number; lines: string[] } | undefined
     const lastYearId = def.editFrom ?? caseId
     if (variant === "rules" || variant === "nextyear") {
       const edit = JSON.parse(readFileSync(join(OUT, `${lastYearId}-edit.json`), "utf8")) as { log: { rules: string[] }[]; messages?: ModelMessage[] }
@@ -294,21 +294,20 @@ try {
         const last = JSON.parse(readFileSync(join(OUT, `${lastYearId}-baseline.json`), "utf8")) as Baseline
         // 去年の表の個人名（印の人・配置技術者）をコードから消す（画面は去年の手直しと AI の結果から集める。照合は去年の変換の結果から）
         const names = namesForCarryover({ current: { rows: last.rows, edits: [] } })
-        const diff = previousDiff(base.plan.sheets[0]!, base.plan.headerRow)
+        const { fiscalYear, prevSheets } = lastYear()
         const header = (g: ReturnType<typeof readWorkbook>[number] | undefined, row: number) => g?.rows[row] ?? []
-        const headers = [...header(diff.prevSheets.find((s) => s.name === last.plan.sheets[0]), last.plan.headerRow), ...header(gridOf(base.plan), base.plan.headerRow)]
+        const headers = [...header(prevSheets.find((s) => s.name === last.plan.sheets[0]), last.plan.headerRow), ...header(gridOf(base.plan), base.plan.headerRow)]
         // 知っている語は画面と同じ: 今年の表（ここでは今年の変換の結果）・ルール・去年と今年の見出し
         const words = knownWords({ rows: base.rows, edits: [] }, [GLOBAL_RULES, rulesText(customerItems.map((text) => ({ text })))], headers)
         const codes = cleanCarryoverCodes(codesFromModel(edit.messages), names, words)
-        carryText = carryoverPrompt({ fiscalYear: diff.fiscalYear, codes }).text
-        previousFormat = { fiscalYear: diff.fiscalYear, lines: diff.lines }
-        console.log(`去年のコード ${codes.length} 件（${carryText.length} 字）。去年との違い:\n  ${previousFormat.lines.join("\n  ")}`)
+        carryText = carryoverPrompt({ fiscalYear, codes }).text
+        console.log(`去年のコード ${codes.length} 件（${carryText.length} 字）`)
       }
     }
     const turns = variant === "rules" || variant === "nextyear" ? [RULES_TURN] : variant === "plan" ? (def.planInstructions ?? []) : def.instructions
     if (!turns.length) throw new Error(`${variant} の指示が案件定義に無い`)
     const t00 = Date.now()
-    const run = await chatPhase({ turns, table: tableOf(base), plan: base.plan, customerItems, carryText, previousFormat })
+    const run = await chatPhase({ turns, table: tableOf(base), plan: base.plan, customerItems, carryText })
     const final = compare(csvRows(run.table))
     writeFileSync(join(OUT, `${caseId}-${variant}.json`), JSON.stringify({ status: run.status, reason: run.reason, total: run.total, ms: Date.now() - t00, turns: run.log.length, log: run.log, final: csvRows(run.table), score: final, messages: run.messages }, null, 1))
     writeSummary(variant, { status: run.status, ...(run.reason ? { reason: run.reason } : {}), score: final, turns: run.log.length, ms: Date.now() - t00, conversionUsd: base.usd, usd: run.total })
@@ -344,7 +343,6 @@ async function chatPhase(p: {
   plan: MappingPlan<KojiFieldId>
   customerItems: string[]
   carryText?: string | null
-  previousFormat?: { fiscalYear: number; lines: string[] }
   review?: ReviewDeps
   inquiry?: InquiryDeps
 }) {
@@ -374,7 +372,7 @@ async function chatPhase(p: {
     }
     for (const [i, text] of p.turns.entries()) {
       // 画面は指示のたびに今の列の対応で文脈を作る
-      const system = systemPrompt({ global: GLOBAL_RULES, customerName: def!.customerName, customer: rulesText(p.customerItems.map((text) => ({ text }))), rule7Tax: "excluded" }, caseContext(sheets, gridOf(plan), plan, p.previousFormat), uploads)
+      const system = systemPrompt({ global: GLOBAL_RULES, customerName: def!.customerName, customer: rulesText(p.customerItems.map((text) => ({ text }))), rule7Tax: "excluded" }, caseContext(sheets, gridOf(plan), plan), uploads)
       if (total > BUDGET_USD) {
         status = "stopped"
         reason = `費用が $${total.toFixed(2)} で上限 $${BUDGET_USD} を超え、${p.turns.length - i} 回の指示を送っていない`

@@ -128,22 +128,6 @@ export function namesForCarryover(from: {
   return names
 }
 
-/**
- * 「去年のやり方で直す」を押せるか: 去年との違いを文脈に入れられるようになった（決め終えた）か。去年の元の Excel が無い・今年の元の表が無い（PDF だけ）・
- * 去年の Excel を読めなかった・比べるシートが無いときは、違いを作れないので待たない
- */
-export function carryoverReady(s: {
-  previousSource: boolean
-  currentSource: boolean
-  previousSheets: "loading" | "loaded" | "error" | "noSheet"
-  /** true＝違いを作った、"unavailable"＝今年の比べるシートが無く作れない、false＝作っている途中 */
-  formatDiff: boolean | "unavailable"
-}) {
-  if (!s.previousSource || !s.currentSource) return true
-  if (s.previousSheets === "error" || s.previousSheets === "noSheet") return true
-  return s.previousSheets === "loaded" && s.formatDiff !== false
-}
-
 /** 個人名の項目（値そのものが氏名） */
 export const PERSON_FIELDS: ReadonlySet<KojiFieldId> = new Set(["engineer"])
 

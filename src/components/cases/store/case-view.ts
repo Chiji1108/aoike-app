@@ -6,7 +6,6 @@ import { activeView, type WorkView } from "@/lib/cases/steps"
 import { caseTodo, reportQuestionStates } from "@/lib/cases/todo"
 import { onlyNonSheetSources } from "@/lib/cases/types"
 import { editKey, type RowResult } from "@/lib/convert/convert"
-import { compareFormats, describeFormatDiff } from "@/lib/convert/format-diff"
 import { manualIncludedCount, summarizeKoji } from "@/lib/convert/koji-selection"
 import { askKey, type PlanAsk, type PlanAskKind } from "@/lib/convert/plan"
 import { askTargets, sourceKey } from "@/lib/convert/sources"
@@ -28,7 +27,7 @@ export const ASK_KINDS: Record<PlanAskKind, { label: string; options: { value: "
 }
 
 /**
- * 案件の表から作る派生（表の鎖〔table.ts〕のあとの段）: 行の片付けること・問い合わせ・添付・件数（todo）・計画の聞き返し・去年との違い・並べ方。
+ * 案件の表から作る派生（表の鎖〔table.ts〕のあとの段）: 行の片付けること・問い合わせ・添付・件数（todo）・計画の聞き返し・並べ方。
  * ストアごとに作り、各段は入力の参照で1つだけ覚える（前の画面の useMemo と同じ依存）。同じ状態なら同じ結果（同じ参照）を返すので、
  * 部品の selector も action（業種の決定・聞き返しの答えなど）も、その時点の状態から同じものを読む
  */
@@ -134,14 +133,8 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
   )
   /** 7割ルールのまま手で載せた行の数（多ければ表の上で全件を勧める） */
   const manualIncludedOf = memoLast((inclusion: TableDerived["inclusion"]) => manualIncludedCount(inclusion))
-  /** 去年の比べるシートと見出しの行。去年の Excel を読んだときに1回だけ決める */
+  /** 去年の元の Excel の工事のシートと見出しの行（「去年のやり方で直す」で伏せる名前・伏せない見出しを読む）。去年の Excel を読んだときに1回だけ決める */
   const previousSideOfSheets = memoLast((sheets: CaseState["runtime"]["previous"]) => (config.previous && Array.isArray(sheets) ? previousSideOf(config.previous, sheets) : null))
-  /** 去年の元の Excel と今年の元の Excel の形の違い（lib/convert/format-diff.ts）。報告とチャットの文脈に出す。今年のシートか見出しの行が変わったときだけ比べ直す */
-  const formatDiffOf = memoLast((side: ReturnType<typeof previousSideOfSheets>, source: CaseState["runtime"]["source"], sheet: string | null, headerRow: number | null) => {
-    if (!side || !source || sheet === null || headerRow === null) return null
-    const diff = compareFormats(side, { sheets: source.sheets, sheet, headerRow })
-    return { diff, lines: describeFormatDiff(diff) }
-  })
   const layoutOfInput = memoLast((wide: boolean, hasTable: boolean, workReady: boolean, workChoice: boolean | null, chatCollapsed: boolean) =>
     layoutOf({ wide, hasTable, workReady, workChoice, chatCollapsed }),
   )
@@ -184,7 +177,6 @@ export function createCaseView(table: (s: CaseState) => TableDerived, config: Ca
       todo: todoOf(t.shown, t.output, t.inclusion, rowFixes, w.proposals, s.contents, questionStates, inquiries, w.dismissed, w.answers !== null, inquirySent),
       manualIncluded: manualIncludedOf(t.inclusion),
       previousSide,
-      formatDiff: formatDiffOf(previousSide, rt.source, t.grid?.name ?? null, t.plan?.headerRow ?? null),
       noSheetSource,
       // チャットに送れるか（変換した、または変換の元の表が無い）
       chatReady: !!t.rows && !t.reconverting && (noSheetSource || (w.converted && !!rt.source && !!t.grid && !!t.plan)),
@@ -223,7 +215,6 @@ export type CaseView = {
   todo: ReturnType<typeof caseTodo>
   manualIncluded: number
   previousSide: ReturnType<typeof previousSideOf>
-  formatDiff: { diff: ReturnType<typeof compareFormats>; lines: ReturnType<typeof describeFormatDiff> } | null
   noSheetSource: boolean
   chatReady: boolean
   /** チャットに指示を送れるか（chatReady と ui.chatTurn から作る） */

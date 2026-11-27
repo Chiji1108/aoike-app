@@ -6,7 +6,7 @@ import { fileBytes, attachAndConvert, callsServerFn, csvCount, deleteCustomer, o
 const FIXTURE = new URL("../fixtures/sample-messy.xlsx", import.meta.url).pathname
 
 /**
- * 翌年の形の Excel（合成）: 見出しの名前を変え（発注者 → 注文者）、2つの列を入れ替え（工期 ⇄ 完成日）、列を足し（担当部署）、シートを足す（技術者）
+ * 翌年の形の Excel（合成）: 見出しの名前を変え（発注者 → 注文者）、2つの列を入れ替え（工期 ⇄ 完成日）、列を足す（担当部署）
  */
 async function nextYearWorkbook() {
   const wb = new ExcelJS.Workbook()
@@ -22,7 +22,6 @@ async function nextYearWorkbook() {
     ws.getCell(r, end).value = a
     if (ws.getCell(r, 1).value !== null) ws.getCell(r, 12).value = r === 3 ? "担当部署" : "工務部"
   }
-  wb.addWorksheet("技術者").addRows([["氏名", "資格"], ["青池　一郎", "1級建築施工管理技士"]])
   return { name: "令和6年度_工事経歴.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) }
 }
 
@@ -39,22 +38,21 @@ test.afterEach(async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
-test("同じ顧客の2年度目は去年の Excel との違いを出し、「去年のやり方で直す」は去年のコードを添える印と違いの文脈を送る。全件の切り替えで載る件数が変わる", async ({ page }) => {
+test("同じ顧客の2年度目は列の計画の AI に去年の列の対応を添え、「去年のやり方で直す」は去年のコードを添える印を送る。全件の切り替えで載る件数が変わる", async ({ page }) => {
   const { customer } = await openNewCase(page, "2025")
   created.push(customer)
   await attachAndConvert(page, FIXTURE, { table: false })
-  await expect(page.getByTestId("format-diff")).toHaveCount(0)
   // 2025年度は載せる工事を聞かれ、7割ルールと答える（翌年はこの選び方をおすすめに出す）
   await page.locator('[data-testid="answer-section"] [data-question="selection"] [data-value="rule7"]').click()
   await expect(page.locator('[data-testid="answer-section"] [data-question="selection"]')).toHaveAttribute("data-answered", "7割ルール")
   await expect(page.getByTestId("save-status")).toHaveAttribute("data-status", "saved", { timeout: 30_000 })
 
-  await test.step("2026年度の案件で、形を変えた Excel を付けると去年との違いが出る", async () => {
+  await test.step("2026年度の案件で、形を変えた Excel を付けると列の計画の AI に去年の列の対応を添える", async () => {
     await page.getByRole("link", { name: customer }).click()
     await page.getByLabel("年度").fill("2026")
     await page.getByTestId("create-case").click()
     await expect(page.getByRole("heading", { name: `${customer} 2026年度` })).toBeVisible()
-    // 列の計画の AI には、去年の列の対応と去年との違いを参考として添える
+    // 列の計画の AI には、去年の列の対応を参考として添える
     const planBodies: string[] = []
     page.on("request", (r) => {
       if (callsServerFn(r.url(), ["planWithAi"])) planBodies.push(r.postData() ?? "")
@@ -62,13 +60,6 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await attachAndConvert(page, await nextYearWorkbook())
     expect(planBodies).toHaveLength(1)
     expect(planBodies[0]).toContain("去年（2025年度）の列の対応")
-    expect(planBodies[0]).toContain("増えたシート")
-    const diff = page.getByTestId("format-diff")
-    await expect(diff).toContainText("去年（2025年度）の元の Excel との違い")
-    await expect(diff).toContainText("増えたシート: 「技術者」")
-    await expect(diff).toContainText("名前が変わった列: 去年 D列「発注者」 → 今年 D列「注文者」")
-    await expect(diff).toContainText("並びが変わった列:")
-    await expect(diff).toContainText("足された列: L列「担当部署」")
   })
 
   await test.step("載せる工事は去年から引き継がず今年も聞く。去年（2025年度）の選び方はおすすめと理由に出す", async () => {
@@ -93,7 +84,7 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     await expect.poll(() => csvCount(page)).toBe(rule7)
   })
 
-  await test.step("チャットの「去年のやり方で直す」は carryover の印と去年との違いを送る（返事は決まったもの）", async () => {
+  await test.step("チャットの「去年のやり方で直す」は carryover の印を送る（返事は決まったもの）", async () => {
     let body: { text: string; context: string; carryover?: boolean; carryoverNames?: string[]; carryoverHeaders?: string[] } | null = null
     let n = 0
     await page.route("**/api/csv/cases/*/chat", async (route) => {
@@ -136,16 +127,14 @@ test("同じ顧客の2年度目は去年の Excel との違いを出し、「去
     expect(body!.carryoverHeaders).toEqual(expect.arrayContaining(["発注者", "注文者", "担当部署"]))
     // 1つの会話で添えるのは1回だけ（会話を終えるまで出さない）
     await expect(page.getByTestId("chat-carryover")).toHaveCount(0)
-    expect(body!.context).toContain("去年（2025年度）の元の Excel との違い")
-    expect(body!.context).toContain("足された列: L列「担当部署」")
   })
 
-  await test.step("去年の案件には違いも「去年のやり方で直す」も出ない", async () => {
+  await test.step("去年の案件には「去年のやり方で直す」が出ない", async () => {
     await open(page, "/csv")
     await page.locator(`[data-customer="${customer}"]`).getByRole("link").first().click()
     await page.getByRole("link", { name: /2025年度/ }).click()
     await expect(page.getByTestId("next-steps")).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByTestId("format-diff")).toHaveCount(0)
+    await expect(page.getByTestId("chat-carryover")).toHaveCount(0)
   })
 })
 

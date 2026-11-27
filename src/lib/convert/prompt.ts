@@ -127,7 +127,7 @@ export type PlanExcerpt = {
   sheets: SheetExcerpt[]
   /** 職員が計画の元に指定したシートの番号（無ければ AI が選ぶ。指定があれば、そのシートと見出しが同じシートだけを送る） */
   requiredSheet?: number
-  /** 同じ顧客の去年の列の対応と、去年の Excel との違い（previousPlanContext。参考） */
+  /** 同じ顧客の去年の列の対応（previousPlanContext。参考） */
   previous?: string
 }
 
@@ -161,10 +161,10 @@ ${excerpt.sheets.map(sheetSection).join("\n\n")}${excerpt.previous ? `\n\n${exce
 export const MAX_PREVIOUS_CONTEXT = 8_000
 
 /**
- * 列の計画の AI に渡す、同じ顧客の去年の列の対応（列は去年の見出しの名前で書く。列の位置は年で変わる）と、去年の Excel との違い
- * （format-diff の文）。そのまま当てはめさせず、今年の見出しと値で決めさせる
+ * 列の計画の AI に渡す、同じ顧客の去年の列の対応（列は去年の見出しの名前で書く。列の位置は年で変わる）。
+ * そのまま当てはめさせず、今年の見出しと値で決めさせる
  */
-export function previousPlanContext<F extends string>(spec: CsvSpec<F>, p: { fiscalYear: number; grid: SheetGrid; plan: MappingPlan<F>; diff: readonly string[] }) {
+export function previousPlanContext<F extends string>(spec: CsvSpec<F>, p: { fiscalYear: number; grid: SheetGrid; plan: MappingPlan<F> }) {
   const header = (c: number) => `「${(p.grid.rows[p.plan.headerRow]?.[c] ?? "").trim() || `${columnLetter(c)}列（見出しなし）`}」`
   const lines = spec.fields.map((f) => {
     const fp = p.plan.fields[f.id]
@@ -182,11 +182,9 @@ export function previousPlanContext<F extends string>(spec: CsvSpec<F>, p: { fis
   })
   const text = [
     `## 参考: 同じ顧客の去年（${p.fiscalYear}年度）の列の対応`,
-    "去年の Excel をこう読んだ（職員が確かめた計画）。今年もこの読み方が当てはまるかは、今年の見出しと値で確かめて決める。去年の列の名前・位置・意味が今年と違うことがある（下の違いを見る）。",
+    "去年の Excel をこう読んだ（職員が確かめた計画）。今年もこの読み方が当てはまるかは、今年の見出しと値で確かめて決める。去年の列の名前・位置・意味が今年と違うことがある。",
     `去年のシート「${p.plan.sheets.join("、")}」、見出し ${p.plan.headerRow + 1}行目、金額の単位: ${p.plan.amountUnit === "yen" ? "円" : "千円"}`,
     ...lines,
-    "去年の Excel との違い（決まった処理で見出しを比べたもの）:",
-    ...p.diff.map((l) => `- ${l}`),
   ].join("\n")
   return text.length > MAX_PREVIOUS_CONTEXT ? `${text.slice(0, MAX_PREVIOUS_CONTEXT)}\n（長いので省いた）` : text
 }

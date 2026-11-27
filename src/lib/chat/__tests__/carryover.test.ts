@@ -3,7 +3,7 @@ import type { ModelMessage } from "ai"
 import { aiKey } from "../../convert/convert"
 import { personToken } from "../../convert/persons"
 import { kojiRow } from "../../convert/__tests__/helpers"
-import { approvedChatProposals, carryoverPrompt, carryoverReady, knownWords, MASKED, maskUnknownText, namesForCarryover, codesFromModel, codesFromUi, MAX_CARRYOVER_CHARS, namesOfCase, nameScrubber } from "../carryover"
+import { approvedChatProposals, carryoverPrompt, knownWords, MASKED, maskUnknownText, namesForCarryover, codesFromModel, codesFromUi, MAX_CARRYOVER_CHARS, namesOfCase, nameScrubber } from "../carryover"
 import type { ChatMessage } from "../messages"
 import type { Proposal } from "../proposals"
 
@@ -148,20 +148,6 @@ describe("去年のコード", () => {
       current: { rows: [kojiRow({ engineer: "佐藤　花子", client: `${personToken("鈴木一郎")}` }, 1)], edits: [["s!1:engineer", { value: "高橋　健", by: "staff" }]] },
     })
     expect([...names].sort()).toEqual(["佐藤　花子", "青池　一郎", "高橋　健", "鈴木一郎"].sort())
-  })
-
-  test("「去年のやり方で直す」を押せるのは去年との違いを決め終えたとき（去年の Excel が無い・今年が PDF だけ・読めない・比べるシートが無いときは待たない）", () => {
-    const base = { previousSource: true, currentSource: true, previousSheets: "loading" as const, formatDiff: false }
-    expect(carryoverReady(base)).toBe(false)
-    expect(carryoverReady({ ...base, formatDiff: true, previousSheets: "loaded" })).toBe(true)
-    // 読めたが今年のシートが無く比べられない（違いは作れない）ときは待たない
-    expect(carryoverReady({ ...base, formatDiff: "unavailable", previousSheets: "loaded" })).toBe(true)
-    expect(carryoverReady({ ...base, previousSource: false })).toBe(true)
-    expect(carryoverReady({ ...base, currentSource: false })).toBe(true)
-    expect(carryoverReady({ ...base, previousSheets: "error" })).toBe(true)
-    expect(carryoverReady({ ...base, previousSheets: "noSheet" })).toBe(true)
-    // 読めたが今年の計画がまだ（違いを作れない）間は待つ
-    expect(carryoverReady({ ...base, previousSheets: "loaded" })).toBe(false)
   })
 
   test("添える文: コードは上限の文字数まで。無ければルールだけで直すと伝える", () => {
