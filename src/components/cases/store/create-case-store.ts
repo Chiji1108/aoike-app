@@ -120,9 +120,9 @@ export type CaseState = {
     filter: TableFilter | null
     /**
      * ダイアログ: export はダウンロードの前の確認（returnTo は閉じたあとにフォーカスを合わせるチャットの欄の移り先。開くたびに外す）、
-     * delete は案件の削除、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
+     * delete は案件の削除、downloads はダウンロードの履歴、pendingSources は「変換の元にしますか」を聞くファイルの列（一度に複数付けたら先頭から1つずつ聞く）、askConfirm は聞き返しの答えの確かめ（ダウンロードの前の確認に重ねて開くこともある）
      */
-    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
+    dialogs: { export: { open: boolean; returnTo: ChatTarget | null }; delete: boolean; downloads: boolean; pendingSources: CaseFile[]; askConfirm: AskConfirm | null }
     /** ファイルをドラッグしている */
     dragging: boolean
     /** DOM への頼み（新しい頼みは新しいオブジェクト。同じ移り先でももう一度動かす） */
@@ -220,7 +220,7 @@ export function initialCaseState(page: {
       tab: "table",
       workChoice: null,
       filter: null,
-      dialogs: { export: { open: false, returnTo: null }, delete: false, pendingSources: [], askConfirm: null },
+      dialogs: { export: { open: false, returnTo: null }, delete: false, downloads: false, pendingSources: [], askConfirm: null },
       dragging: false,
       focus: null,
       chatCanSend: false,

@@ -112,6 +112,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps, channel: ()
     closeExport: () => ui.closeExport(env),
     exportToChat: (to: ChatTarget) => ui.exportToChat(env, to),
     setDeleteOpen: (open: boolean) => ui.setDeleteOpen(env, open),
+    setDownloadsOpen: (open: boolean) => ui.setDownloadsOpen(env, open),
     setDragging: (dragging: boolean) => ui.setDragging(env, dragging),
     setChatCanSend: (canSend: boolean) => ui.setChatCanSend(env, canSend),
     suggestionSent: (id: string) => ui.suggestionSent(env, id),

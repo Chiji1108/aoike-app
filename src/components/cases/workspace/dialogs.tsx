@@ -17,6 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { OpenProposal, Proposal, ProposalOrigin } from "@/lib/chat/proposals"
+import { DownloadsDialog } from "./downloads-dialog"
 import { chatTarget } from "./focus-effects"
 import { useReportQuestions } from "./hooks"
 
@@ -26,7 +27,7 @@ const EXPORT_PROPOSAL = "proposal:"
 const PROPOSAL_ORIGIN: Record<ProposalOrigin["kind"], string> = { chat: "チャットの変更案", excel: "Excel で直した分", answer: "顧客の回答", location: "工事場所", fix: "業種の AI の案" }
 const ANSWER_LABELS = { yes: "はい", no: "いいえ" } as const
 
-/** 案件の画面のダイアログ（削除・ダウンロードの前の確認・聞き返しの答えの確かめ・変換の元の確かめ）。開くかは ui.dialogs */
+/** 案件の画面のダイアログ（削除・ダウンロードの履歴・ダウンロードの前の確認・聞き返しの答えの確かめ・変換の元の確かめ）。開くかは ui.dialogs */
 export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; name: string }; fiscalYear: number }) {
   const router = useRouter()
   const { config, actions } = useCaseSession()
@@ -47,6 +48,7 @@ export function CaseDialogs({ customer, fiscalYear }: { customer: { id: string; 
       {/* ダウンロードの前の確認を開いている間は、確かめをその中に置いて上に重ねる（Escape・外の押下は上の確かめだけが受ける） */}
       {!(hasOutput && exportOpen) && <AskConfirmDialog />}
       <SourceConfirmDialog />
+      <DownloadsDialog />
     </>
   )
 }
