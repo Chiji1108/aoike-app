@@ -262,8 +262,8 @@ function ProceduresPage() {
           {data.length}件
         </span>
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="hidden sm:inline-flex" aria-label="表示する列" title="表示する列" />}>
-            <Columns3 />
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="hidden sm:inline-flex" aria-label="表示する列" title="表示する列" data-testid="columns-menu" />}>
+            <Columns3 />列
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuGroup>

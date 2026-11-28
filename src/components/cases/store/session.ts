@@ -113,6 +113,7 @@ export function createCaseSession(page: SessionPage, deps: CaseDeps) {
     setTableQuery: (query: string) => ui.setTableQuery(env, query),
     setTableSorting: (sorting: TableGrid["sorting"]) => ui.setTableSorting(env, sorting),
     setColumnVisibility: (v: TableGrid["columnVisibility"]) => ui.setColumnVisibility(env, v),
+    setColumnSizing: (v: TableGrid["columnSizing"]) => ui.setColumnSizing(env, v),
     setColumnFilter: (id: string, value: ColumnFilterValue | null) => ui.setColumnFilter(env, id, value),
     clearColumnFilters: () => ui.clearColumnFilters(env),
     goChat: (to: ChatTarget) => ui.goChat(env, to),

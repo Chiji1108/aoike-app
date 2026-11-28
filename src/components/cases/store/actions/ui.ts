@@ -68,6 +68,11 @@ export function setColumnVisibility(env: CaseEnv, columnVisibility: TableGrid["c
   setUi(env.store, (u) => ({ grid: withColumnVisibility(u.grid, columnVisibility) }))
 }
 
+/** 列の幅を変える（見出しの境目のドラッグ・矢印キー。ダブルクリックで戻した列は消える） */
+export function setColumnSizing(env: CaseEnv, columnSizing: TableGrid["columnSizing"]) {
+  setUi(env.store, (u) => ({ grid: { ...u.grid, columnSizing } }))
+}
+
 /** 列のフィルターを決める（null はその列を外す） */
 export function setColumnFilter(env: CaseEnv, id: string, value: ColumnFilterValue | null) {
   setUi(env.store, (u) => ({ grid: { ...u.grid, columnFilters: withColumnFilter(u.grid.columnFilters, id, value) } }))

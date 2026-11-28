@@ -2,6 +2,8 @@ import { useMemo, useRef, useState, useSyncExternalStore } from "react"
 import {
   columnFacetingFeature,
   columnFilteringFeature,
+  columnResizingFeature,
+  columnSizingFeature,
   columnVisibilityFeature,
   createColumnHelper,
   createFacetedRowModel,
@@ -10,9 +12,11 @@ import {
   createSortedRowModel,
   rowSortingFeature,
   sortFn_alphanumeric,
+  Subscribe,
   tableFeatures,
   useTable,
   type Column,
+  type Header,
   type Updater,
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -72,6 +76,8 @@ const features = tableFeatures({
   columnVisibilityFeature,
   columnFilteringFeature,
   columnFacetingFeature,
+  columnSizingFeature,
+  columnResizingFeature,
   rowSortingFeature,
   filteredRowModel: createFilteredRowModel(),
   facetedRowModel: createFacetedRowModel(),
@@ -108,6 +114,18 @@ const WIDTH: Record<KojiFieldId | "include" | "reasons" | "origin", number> = {
   supervisingEngineer: 104,
 }
 
+/** 職員が変えられる列の幅の下限と上限（px）。下限は見出しの名前と ▼ がまだ読める幅、上限は横に2画面ぶんにならない幅 */
+const MIN_WIDTH = 48
+const MAX_WIDTH = 640
+/** 列の幅のつまみで矢印キーを1回押したときに変える幅（px。Shift を押しながらは大きく） */
+const KEY_STEP = 16
+const KEY_STEP_LARGE = 64
+/**
+ * 列の幅の定義: 既定は WIDTH、職員が境目で変えられる（「載せる」の列は sticky で左に貼り付けるので変えない）。
+ * 既定が下限より狭い列（JV）は、既定の幅を下限にする（何もしないうちに幅が変わらない）
+ */
+const sized = (id: keyof typeof WIDTH) => ({ size: WIDTH[id], minSize: Math.min(MIN_WIDTH, WIDTH[id]), maxSize: MAX_WIDTH })
+
 /** 手直し中のセル。下書きは行の外に持つ（仮想スクロールで行が消えても残る） */
 type Editing = { row: string; field: KojiFieldId; session: EditSession; draft: string }
 
@@ -143,7 +161,8 @@ const filterKey = (f: TableFilter) => `${f.kind}|${f.reason ?? ""}|${f.ask ?? ""
 
 /**
  * 表の見え方の鍵（絞り込み・検索・並べ替え・列のフィルター・列の表示。変わったら止めた並びと Shift＋クリックの起点を捨てる。
- * 列の表示も入れるのは、検索が見えている列だけを探すので、列を出し入れすると検索に合う行が変わるため）
+ * 列の表示も入れるのは、検索が見えている列だけを探すので、列を出し入れすると検索に合う行が変わるため。
+ * 列の幅は入れない（幅を変えても合う行も並びも変わらないので、手直しのあと止めた並びのままにする）
  */
 const viewKey = (f: TableFilter, needle: string, grid: TableGrid) =>
   `${filterKey(f)}|${needle}|${JSON.stringify(grid.sorting)}|${JSON.stringify(grid.columnFilters)}|${JSON.stringify(grid.columnVisibility)}`
@@ -188,6 +207,7 @@ export function PreviewTable({
   onQuery,
   onSorting,
   onColumnVisibility,
+  onColumnSizing,
   onColumnFilter,
   onClearColumnFilters,
 }: {
@@ -232,12 +252,14 @@ export function PreviewTable({
   onSorting: (sorting: TableGrid["sorting"]) => void
   /** 隠した列の絞り込みは、受け取った側で外す */
   onColumnVisibility: (v: TableGrid["columnVisibility"]) => void
+  /** 列の幅（見出しの境目のドラッグ・矢印キー・ダブルクリックで戻す） */
+  onColumnSizing: (v: TableGrid["columnSizing"]) => void
   onColumnFilter: (id: string, value: ColumnFilterValue | null) => void
   onClearColumnFilters: () => void
 }) {
   const [editing, setEditing] = useState<Editing | null>(null)
   const setFilter = onFilterChange
-  const { query, sorting, columnVisibility, columnFilters } = grid
+  const { query, sorting, columnVisibility, columnFilters, columnSizing } = grid
   const needle = query.trim().toLowerCase()
   /**
    * 手直しを始めたときの表示の行（キーの並び）。手直しで行が絞り込み・列のフィルターから外れたり並べ替えで動いたりしても、
@@ -258,11 +280,12 @@ export function PreviewTable({
   const columns = useMemo(
     () =>
       columnHelper.columns([
-        columnHelper.display({ id: "include", header: "載せる", enableHiding: false }),
-        ...(reasonsColumn ? [columnHelper.display({ id: "reasons", header: "直す理由と直し方", enableHiding: false })] : []),
+        columnHelper.display({ id: "include", header: "載せる", enableHiding: false, enableResizing: false, size: WIDTH.include, minSize: WIDTH.include, maxSize: WIDTH.include }),
+        ...(reasonsColumn ? [columnHelper.display({ id: "reasons", header: "直す理由と直し方", enableHiding: false, ...sized("reasons") })] : []),
         columnHelper.accessor(originText, {
           id: "origin",
           header: "元の行",
+          ...sized("origin"),
           sortFn: "alphanumeric",
           filterFn: (row, _id, fv: ColumnFilterValue) => matchesColumnFilter(originText(row.original), undefined, fv),
         }),
@@ -271,6 +294,7 @@ export function PreviewTable({
           columnHelper.accessor((r) => r.cells[f.id].value, {
             id: f.id,
             header: f.label,
+            ...sized(f.id),
             sortFn: "alphanumeric",
             filterFn: (row, _id, fv: ColumnFilterValue) => matchesColumnFilter(row.original.cells[f.id].value, row.original.cells[f.id], fv),
           }),
@@ -294,19 +318,37 @@ export function PreviewTable({
   }, [rows, fixes, inclusion, filter, asks, needle, columnVisibility, spec])
   const activeAsk = asks.find((a) => a.id === filter.ask)
 
-  const table = useTable({
-    features,
-    data,
-    columns,
-    getRowId: (r) => r.key,
-    onSortingChange: (u) => onSorting(resolve(u, sorting)),
-    onColumnVisibilityChange: (u) => onColumnVisibility(resolve(u, columnVisibility)),
-    onColumnFiltersChange: (u) => {
-      const next = resolve(u, columnFilters)
-      for (const id of new Set([...columnFilters, ...next].map((f) => f.id))) onColumnFilter(id, (next.find((f) => f.id === id)?.value as ColumnFilterValue | undefined) ?? null)
+  const table = useTable(
+    {
+      features,
+      data,
+      columns,
+      getRowId: (r) => r.key,
+      onSortingChange: (u) => onSorting(resolve(u, sorting)),
+      onColumnVisibilityChange: (u) => onColumnVisibility(resolve(u, columnVisibility)),
+      onColumnFiltersChange: (u) => {
+        const next = resolve(u, columnFilters)
+        for (const id of new Set([...columnFilters, ...next].map((f) => f.id))) onColumnFilter(id, (next.find((f) => f.id === id)?.value as ColumnFilterValue | undefined) ?? null)
+      },
+      /**
+       * 列の幅は離したときに決める（onEnd。Excel と同じく、ドラッグの間は境目の線だけが動く）。ドラッグの間に幅を変え続けると、
+       * 行が多いときに表全体を毎フレーム描き直して重い。ドラッグの途中（columnResizing）は TanStack Table の中に持ち、境目のつまみだけが読む
+       */
+      enableColumnResizing: true,
+      columnResizeMode: "onEnd",
+      onColumnSizingChange: (u) => {
+        // 幅は整数の px で持つ（タッチの引きで小数になる）
+        const next = Object.fromEntries(Object.entries(resolve(u, columnSizing)).map(([id, w]) => [id, Math.round(w)]))
+        // 動かさずに離した（どの列の幅も今と同じ）ときは書かない
+        const width = (sizing: TableGrid["columnSizing"], id: string) => sizing[id] ?? WIDTH[id as keyof typeof WIDTH]
+        const ids = new Set([...Object.keys(columnSizing), ...Object.keys(next)])
+        if ([...ids].some((id) => width(next, id) !== width(columnSizing, id) || (id in next) !== (id in columnSizing))) onColumnSizing(next)
+      },
+      state: { sorting, columnVisibility, columnFilters, columnSizing },
     },
-    state: { sorting, columnVisibility, columnFilters },
-  })
+    // 表を描き直すのは決まった状態が変わったときだけ（ドラッグの途中の columnResizing では描き直さない）
+    (s) => ({ sorting: s.sorting, columnVisibility: s.columnVisibility, columnFilters: s.columnFilters, columnSizing: s.columnSizing }),
+  )
   const filtered = table.getFilteredRowModel().rows
   const live = table.getRowModel().rows.map((r) => r.original)
   /** まとめて頼める直し方: 今の絞り込み（理由・検索・列の絞り込み）で見えている行だけ（件数もその行で） */
@@ -491,7 +533,7 @@ export function PreviewTable({
   /** 載せない行の数（全件のときは手で外した行と除外の行。見出しに添える） */
   const offCount = useMemo(() => [...inclusion.values()].filter((i) => !i.included).length, [inclusion])
 
-  const tableWidth = visibleColumns.reduce((s, c) => s + WIDTH[c.id as keyof typeof WIDTH], 0)
+  const tableWidth = table.getTotalSize()
 
   // 置かれた欄の高さに合わせ、表の中だけをスクロールする（作業の画面の「表」のタブ）
   return (
@@ -563,8 +605,8 @@ export function PreviewTable({
           </span>
         )}
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="ml-auto" aria-label="表示する列" title="表示する列" />}>
-            <Columns3 />
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="ml-auto" aria-label="表示する列" title="表示する列" data-testid="columns-menu" />}>
+            <Columns3 />列
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuGroup>
@@ -617,12 +659,13 @@ export function PreviewTable({
         <table
           data-slot="table"
           data-testid="preview-table"
-          className="w-full table-fixed border-separate border-spacing-0 text-xs"
-          style={{ minWidth: tableWidth }}
+          // 幅は列の幅の合計に決める（Excel と同じ。欄より狭いときに余りを列に割り振ると、境目で決めた幅と見た目の幅が食い違う。余りは表の右の空白）
+          className="table-fixed border-separate border-spacing-0 text-xs"
+          style={{ width: tableWidth }}
         >
           <colgroup>
             {visibleColumns.map((c) => (
-              <col key={c.id} style={{ width: WIDTH[c.id as keyof typeof WIDTH] }} />
+              <col key={c.id} style={{ width: c.getSize() }} />
             ))}
           </colgroup>
           <TableHeader className="sticky top-0 z-20 bg-muted">
@@ -637,7 +680,8 @@ export function PreviewTable({
                       aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}
                       className={cn(
                         "h-auto border-b bg-muted px-2 py-2 align-bottom text-xs whitespace-normal text-muted-foreground",
-                        h.column.id === "include" && "sticky left-0 z-30 px-0",
+                        // 境目のつまみ（見出しの右端）の幅だけ右の余白を取り、つまみが ▼ に重ならない（タッチでは つまみが太いので余白も広い）
+                        h.column.id === "include" ? "sticky left-0 z-30 px-0" : h.column.getCanResize() ? "relative pr-2.5 pointer-coarse:pr-5" : "relative",
                       )}
                     >
                       {h.column.id === "include" ? (
@@ -656,6 +700,7 @@ export function PreviewTable({
                       ) : (
                         <table.FlexRender header={h} />
                       )}
+                      {h.column.getCanResize() && <ResizeHandle header={h} label={columnLabel(spec, h.column.id)} scrollRef={scrollRef} />}
                     </TableHead>
                   )
                 })}
@@ -693,6 +738,73 @@ export function PreviewTable({
         </table>
       </div>
     </div>
+  )
+}
+
+/**
+ * 見出しの右端の境目（列の幅のつまみ。Excel と同じ）。ドラッグで幅を変え、ダブルクリック・Home で元の幅（WIDTH）に戻す。
+ * フォーカスして ←→ でも変えられる（Shift を押しながらは大きく）。タッチでも引ける（指で押しやすいように幅を広げ、引く間は表をスクロールさせない）。
+ * ドラッグの間は TanStack Table の columnResizing だけを読み、このつまみだけを描き直して、表の高さの線を動かす（幅は離したときに決める）
+ */
+function ResizeHandle({ header, label, scrollRef }: { header: Header<typeof features, Row, unknown>; label: string; scrollRef: React.RefObject<HTMLDivElement | null> }) {
+  const column = header.column
+  const size = column.getSize()
+  const min = column.columnDef.minSize ?? MIN_WIDTH
+  const clamp = (w: number) => Math.min(MAX_WIDTH, Math.max(min, w))
+  const resize = header.getResizeHandler()
+  /** ドラッグの間に線を動かす量（離したときの幅と同じく下限・上限で止める） */
+  const shift = (delta: number) => clamp(size + delta) - size
+  const setSize = (next: number) => column.table.setColumnSizing((old) => ({ ...old, [column.id]: clamp(next) }))
+  return (
+    <Subscribe source={column.table.atoms.columnResizing} selector={(r) => (r.isResizingColumn === column.id ? (r.deltaOffset ?? 0) : null)}>
+      {(delta) => (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={`${label}の列の幅`}
+          aria-valuenow={size}
+          aria-valuemin={min}
+          aria-valuemax={MAX_WIDTH}
+          tabIndex={0}
+          title="ドラッグで列の幅を変える（ダブルクリックで元の幅）"
+          data-testid="column-resizer"
+          data-column={column.id}
+          data-resizing={delta !== null ? "1" : undefined}
+          className="group/resize absolute inset-y-0 right-0 z-10 flex w-2.5 cursor-col-resize touch-none justify-end outline-none select-none pointer-coarse:w-5"
+          // 左ボタンだけで引く。押した直後に文字を選び始めない（ドラッグの間にセルの文字が選ばれない）。
+          // 選び始めを止めるとフォーカスも移らないので、自分で移す（押したあと ←→ で続けて変えられる）
+          onMouseDown={(e) => {
+            if (e.button !== 0) return
+            e.preventDefault()
+            e.currentTarget.focus({ preventScroll: true })
+            resize(e)
+          }}
+          onTouchStart={resize}
+          onDoubleClick={() => column.resetSize()}
+          onKeyDown={(e) => {
+            // Alt・Cmd・Ctrl と一緒の矢印はブラウザの操作（戻る・行頭など）に渡す
+            if (e.altKey || e.metaKey || e.ctrlKey) return
+            const step = e.shiftKey ? KEY_STEP_LARGE : KEY_STEP
+            if (e.key === "ArrowLeft") setSize(size - step)
+            else if (e.key === "ArrowRight") setSize(size + step)
+            else if (e.key === "Home") column.resetSize()
+            else return
+            e.preventDefault()
+          }}
+          style={delta !== null ? { transform: `translateX(${shift(delta)}px)` } : undefined}
+        >
+          {/* 見える線: ふだんは細い灰色、マウスを乗せる・フォーカス・ドラッグの間は色を付け、ドラッグの間は表の見えている高さまで伸ばす */}
+          <span
+            aria-hidden
+            className={cn(
+              "w-px bg-border group-hover/resize:w-0.5 group-hover/resize:bg-primary group-focus-visible/resize:w-0.5 group-focus-visible/resize:bg-primary",
+              delta !== null ? "w-0.5 bg-primary" : "h-full",
+            )}
+            style={delta !== null ? { height: scrollRef.current?.clientHeight } : undefined}
+          />
+        </div>
+      )}
+    </Subscribe>
   )
 }
 
