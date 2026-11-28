@@ -12,6 +12,15 @@ const layout = (page: Page) =>
   page.getByTestId("preview-table").evaluate((table) => {
     // 欄の枠線の内側から
     const box = table.parentElement!.getBoundingClientRect().left + table.parentElement!.clientLeft
+    // 背景色を 1px の canvas に塗って読み、アルファが 255 か（oklch(… / 0.5)・color-mix の半透明も見る）
+    const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!
+    const opaque = (color: string) => {
+      ctx.clearRect(0, 0, 1, 1)
+      ctx.fillStyle = "rgba(0, 0, 0, 0)"
+      ctx.fillStyle = color
+      ctx.fillRect(0, 0, 1, 1)
+      return ctx.getImageData(0, 0, 1, 1).data[3] === 255
+    }
     const cols = (tr: Element) =>
       [...tr.children].map((el) => {
         const r = el.getBoundingClientRect()
@@ -20,7 +29,7 @@ const layout = (page: Page) =>
           left: Math.round(r.left - box),
           right: Math.round(r.right - box),
           pinned: (el as HTMLElement).dataset.pinned ?? null,
-          opaque: !/rgba\(.*,\s*0(\.\d+)?\)$/.test(bg) && bg !== "transparent",
+          opaque: opaque(bg),
         }
       })
     return { head: cols(table.querySelector("thead tr")!), row: cols(table.querySelector("tbody tr[data-row-key]")!) }
@@ -58,6 +67,51 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
     expect(shadow).not.toBe("none")
     await scrollX(page, 0)
     await expect(scroller).not.toHaveAttribute("data-scrolled-x")
+  })
+
+  await test.step("横にスクロールして固定しない列の境目が固定の見出しの下に来ても、その上を押すと固定の列の ▼ が開き、隠れた列の幅は変わらない", async () => {
+    // 注文者（業種のすぐ右）の境目を、業種の見出しの真ん中の下へ動かす
+    const client = page.locator('[data-testid="column-resizer"][data-column="client"]')
+    const gyoshu = page.locator('[data-testid="column-menu"][data-column="gyoshu"]')
+    const g = (await gyoshu.boundingBox())!
+    const c = (await client.boundingBox())!
+    const target = g.x + g.width / 2
+    await scrollX(page, Math.round(c.x + c.width / 2 - target))
+    const r = (await client.boundingBox())!
+    const x = r.x + r.width / 2
+    const y = g.y + g.height / 2
+    expect(Math.abs(x - target)).toBeLessThan(2)
+    // その点のいちばん上は業種の見出し（注文者の境目ではない）
+    const top = await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y)!
+      return { resizer: !!el.closest('[data-testid="column-resizer"]'), column: el.closest('[data-testid="column-menu"]')?.getAttribute("data-column") ?? null }
+    }, [x, y] as const)
+    expect(top).toEqual({ resizer: false, column: "gyoshu" })
+    // ドラッグしても注文者の幅は変わらない
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x + 60, y, { steps: 4 })
+    await expect(client).not.toHaveAttribute("data-resizing")
+    await page.mouse.up()
+    await expect(client).toHaveAttribute("aria-valuenow", "170")
+    await page.keyboard.press("Escape")
+    await expect(page.locator('[data-testid="column-panel"][data-open]')).toHaveCount(0)
+    // 押すと業種の ▼ が開く
+    await page.mouse.click(x, y)
+    await expect(page.locator('[data-testid="column-panel"][data-open]')).toContainText("業種")
+    await page.keyboard.press("Escape")
+    await expect(page.locator('[data-testid="column-panel"][data-open]')).toHaveCount(0)
+    await scrollX(page, 0)
+  })
+
+  await test.step("行にマウスを乗せると、固定の列の色の無いセルも行と同じ色になり、透けない", async () => {
+    const row = page.locator('[data-testid="preview-table"] tbody tr[data-row-key][data-included="1"]').first()
+    const origin = row.getByTestId("origin-cell")
+    const before = await origin.evaluate((td) => getComputedStyle(td).backgroundColor)
+    await origin.hover()
+    await expect.poll(() => origin.evaluate((td) => getComputedStyle(td).backgroundColor)).not.toBe(before)
+    expect((await layout(page)).row.filter((c) => c.pinned).every((c) => c.opaque)).toBe(true)
+    await page.mouse.move(0, 0)
   })
 
   await test.step("固定の列（元の行）の幅を変えると、右の固定の列（業種）の位置が追従し、重ならない（スクロールしていても）", async () => {
@@ -99,7 +153,7 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
   await deleteCustomer(page, customer)
 })
 
-test("狭い画面では載せるの列だけを固定し、横にスクロールしても見えたまま", async ({ page }) => {
+test("表の欄が狭い（スマートフォン）ときは載せるの列だけを固定し、横にスクロールしても見えたまま", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const { customer } = await convertFixture(page, FIXTURE)
   await showAllRows(page)

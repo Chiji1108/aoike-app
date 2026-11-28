@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import {
   columnFacetingFeature,
   columnFilteringFeature,
@@ -132,21 +132,17 @@ const sized = (id: keyof typeof WIDTH) => ({ size: WIDTH[id], minSize: Math.min(
  * 左に固定する列（Excel のウィンドウ枠の固定。横にスクロールしても見えたまま）。右の列を直すときに、どの行か（元の行）・どの業種の工事かが分かるように。
  * 工事名は固定しない（幅が広く、固定すると右の列を見る幅が狭くなる。固定は CSV の列の並びのまま左から続く列だけにする）。
  * 直すの段の「直す理由と直し方」は固定しない（幅が広い）ので、固定の列のすぐ右に出る。
- * 狭い画面（スマートフォン）では「載せる」だけ（3列で 300px を超え、画面の大半を占めるため）
+ * 表の欄が狭いとき（スマートフォン）は「載せる」だけ（3列で 300px を超え、欄の大半を占めるため）。広さは画面ではなく表の欄の幅で見る
  */
 const PINNED = { wide: ["include", "origin", "gyoshu"], narrow: ["include"] } as const
-const PIN_WIDE_QUERY = "(min-width: 640px)"
-function usePinWide() {
-  return useSyncExternalStore(
-    (on) => {
-      const m = window.matchMedia(PIN_WIDE_QUERY)
-      m.addEventListener("change", on)
-      return () => m.removeEventListener("change", on)
-    },
-    () => window.matchMedia(PIN_WIDE_QUERY).matches,
-    () => true,
-  )
-}
+/** 3列を固定する表の欄の幅（px。固定の列が欄の半分ほどまで） */
+const PIN_WIDE_MIN = 600
+/**
+ * 固定の列の背景: 下の列が透けないよう不透明にし、行にマウスを乗せた・行の中の選ぶ欄を開いたときは行と同じ色（TableRow の bg-muted/50 を表の背景に重ねた色）にする。
+ * 状態の色のセルには付けない（固定しない列と同じく、状態の色のまま）
+ */
+const PINNED_BG =
+  "bg-card group-hover/row:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))]"
 
 /** 手直し中のセル。下書きは行の外に持つ（仮想スクロールで行が消えても残る） */
 type Editing = { row: string; field: KojiFieldId; session: EditSession; draft: string }
@@ -299,7 +295,8 @@ export function PreviewTable({
 
   /** 直す理由と直し方の列は、直す行の絞り込み（直すの段）だけに出す（表では出さない） */
   const reasonsColumn = filter.kind === "fix"
-  const pinWide = usePinWide()
+  /** 表の欄が3列を固定できる広さか（欄の幅を ResizeObserver で見る。下の scrollRef の effect が入れる） */
+  const [pinWide, setPinWide] = useState(true)
   const columnPinning = useMemo(() => ({ start: [...PINNED[pinWide ? "wide" : "narrow"]], end: [] }), [pinWide])
   const columns = useMemo(
     () =>
@@ -463,6 +460,16 @@ export function PreviewTable({
   )
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const observer = new ResizeObserver(() => {
+      // 隠れている間（幅 0）は前のまま
+      if (el.clientWidth > 0) setPinWide(el.clientWidth >= PIN_WIDE_MIN)
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const virtualizer = useVirtualizer({
     count: shown.length,
     getScrollElement: () => scrollRef.current,
@@ -488,7 +495,7 @@ export function PreviewTable({
         .filter(Boolean)
         .join("\n")
       return (
-        <TableCell key={columnId} {...pinned} className={cn("z-10 border-b bg-card px-0 py-1.5 text-center", pinned?.className)}>
+        <TableCell key={columnId} {...pinned} className={cn("z-10 border-b px-0 py-1.5 text-center", PINNED_BG, pinned?.className)}>
           <label className="flex flex-col items-center gap-0.5" title={tip} data-reason={inc?.reason}>
             <Checkbox aria-label="CSVに載せる" checked={inc?.included ?? false} onCheckedChange={(checked, details) => toggleRow(r.key, checked, details.event)} />
             {mark && (
@@ -518,7 +525,7 @@ export function PreviewTable({
         <TableCell
           key={columnId}
           {...pinned}
-          className={cn("num border-b px-2 py-1.5 text-muted-foreground", pinned && "z-10 bg-card", pinned?.className)}
+          className={cn("num border-b px-2 py-1.5 text-muted-foreground", pinned && cn("z-10", PINNED_BG), pinned?.className)}
           title={originText(r)}
           data-testid="origin-cell"
         >
@@ -539,8 +546,8 @@ export function PreviewTable({
       <TableCell
         key={columnId}
         {...pinned}
-        // 固定の列は下の列が透けないように、色の無いセルにも表と同じ背景を敷く（状態の色はそのまま上書き）
-        className={cn("border-b border-l p-0 align-top whitespace-normal", pinned && "z-10 bg-card", pinned?.className, cellClass(cell))}
+        // 固定の列は下の列が透けないように、色の無いセルにも背景を敷く（状態の色のセルはその色）
+        className={cn("border-b border-l p-0 align-top whitespace-normal", pinned && cn("z-10", cellClass(cell) || PINNED_BG), pinned?.className, cellClass(cell))}
         data-field={field}
         data-status={cell.status}
         data-tone={cellTone(cell)}
@@ -742,8 +749,9 @@ export function PreviewTable({
                       aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}
                       className={cn(
                         "h-auto border-b bg-muted px-2 py-2 align-bottom text-xs whitespace-normal text-muted-foreground",
-                        // 固定の列の見出しは上にも左にも固定（角）。ほかの見出しの上に重ねる
-                        pinned ? cn("z-10", pinned.className) : "relative",
+                        // 固定の列の見出しは上にも左にも固定（角）。ほかの見出しの上に重ねる。固定しない見出しは重なりをその中に閉じ（isolate）、
+                        // 横にスクロールして固定の見出しの下に来た境目のつまみ（z-10）が、固定の見出しの上に出て押せないようにする
+                        pinned ? cn("z-10", pinned.className) : "relative isolate",
                         // 境目のつまみ（見出しの右端）の幅だけ右の余白を取り、つまみが ▼ に重ならない（タッチでは つまみが太いので余白も広い）
                         h.column.id === "include" ? "px-0" : h.column.getCanResize() && "pr-2.5 pointer-coarse:pr-5",
                       )}
@@ -783,7 +791,7 @@ export function PreviewTable({
                   data-index={vi.index}
                   data-row-key={r.key}
                   data-included={included ? "1" : "0"}
-                  className={cn("border-0", !included && "opacity-45")}
+                  className={cn("group/row border-0", !included && "opacity-45")}
                 >
                   {visibleColumns.map((c) => renderCell(r, c))}
                 </TableRow>
