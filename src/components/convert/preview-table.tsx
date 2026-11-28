@@ -649,8 +649,9 @@ export function PreviewTable({
         <table
           data-slot="table"
           data-testid="preview-table"
-          className="w-full table-fixed border-separate border-spacing-0 text-xs"
-          style={{ minWidth: tableWidth }}
+          // 幅は列の幅の合計に決める（Excel と同じ。欄より狭いときに余りを列に割り振ると、境目で決めた幅と見た目の幅が食い違う。余りは表の右の空白）
+          className="table-fixed border-separate border-spacing-0 text-xs"
+          style={{ width: tableWidth }}
         >
           <colgroup>
             {visibleColumns.map((c) => (
@@ -669,7 +670,8 @@ export function PreviewTable({
                       aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}
                       className={cn(
                         "h-auto border-b bg-muted px-2 py-2 align-bottom text-xs whitespace-normal text-muted-foreground",
-                        h.column.id === "include" ? "sticky left-0 z-30 px-0" : "relative",
+                        // 境目のつまみ（見出しの右端）の幅だけ右の余白を取り、つまみが ▼ に重ならない（タッチでは つまみが太いので余白も広い）
+                        h.column.id === "include" ? "sticky left-0 z-30 px-0" : h.column.getCanResize() ? "relative pr-2.5 pointer-coarse:pr-5" : "relative",
                       )}
                     >
                       {h.column.id === "include" ? (
@@ -738,6 +740,8 @@ function ResizeHandle({ header, label, scrollRef }: { header: Header<typeof feat
   const column = header.column
   const size = column.getSize()
   const resize = header.getResizeHandler()
+  /** ドラッグの間に線を動かす量（離したときの幅と同じく下限・上限で止める） */
+  const shift = (delta: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, size + delta)) - size
   const setSize = (next: number) => column.table.setColumnSizing((old) => ({ ...old, [column.id]: Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)) }))
   return (
     <Subscribe source={column.table.atoms.columnResizing} selector={(r) => (r.isResizingColumn === column.id ? (r.deltaOffset ?? 0) : null)}>
@@ -770,7 +774,7 @@ function ResizeHandle({ header, label, scrollRef }: { header: Header<typeof feat
             else return
             e.preventDefault()
           }}
-          style={delta !== null ? { transform: `translateX(${delta}px)` } : undefined}
+          style={delta !== null ? { transform: `translateX(${shift(delta)}px)` } : undefined}
         >
           {/* 見える線: ふだんは細い灰色、マウスを乗せる・フォーカス・ドラッグの間は色を付け、ドラッグの間は表の見えている高さまで伸ばす */}
           <span
