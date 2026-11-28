@@ -604,8 +604,7 @@ export function PreviewTable({
   // 置かれた欄の高さに合わせ、表の中だけをスクロールする（作業の画面の「表」のタブ）
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      {/* 表の上の行（検索・「列」・まとめて直す・色の凡例）も、上に重なる窓（案件の画面のチャット）が隠す分（--chat-cover-r）だけ右を空け、窓の下に隠さない */}
-      <div className="flex flex-wrap items-center gap-2 pr-[var(--chat-cover-r,0px)]">
+      <div className="flex flex-wrap items-center gap-2">
         {activeAsk ? (
           <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 py-0.5 pr-1 pl-2.5 text-xs text-amber-900" data-testid="ask-filter" data-ask={activeAsk.id}>
             {activeAsk.label}（{activeAsk.keys.size}行）
@@ -648,6 +647,25 @@ export function PreviewTable({
             onChange={(e) => onQuery(e.target.value)}
           />
         </div>
+        {/* 「列」は検索のすぐ右（右端に置くと、右下のチャットの窓に隠れることがある） */}
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label="表示する列" title="表示する列" data-testid="columns-menu" />}>
+            <Columns3 />列
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-60">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>表示する列</DropdownMenuLabel>
+              {table
+                .getAllLeafColumns()
+                .filter((c) => c.getCanHide())
+                .map((c) => (
+                  <DropdownMenuCheckboxItem key={c.id} checked={c.getIsVisible()} onCheckedChange={(v) => c.toggleVisibility(v)}>
+                    {columnLabel(spec, c.id)}
+                  </DropdownMenuCheckboxItem>
+                ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         {sorting.length > 0 && <span className="text-xs text-muted-foreground">並べ替えは表示だけ</span>}
         {columnFilters.length > 0 && (
           <span className="flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 py-0.5 pr-1 pl-2.5 text-xs text-sky-900" data-testid="column-filters">
@@ -671,28 +689,10 @@ export function PreviewTable({
             </Button>
           </span>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="ml-auto" aria-label="表示する列" title="表示する列" data-testid="columns-menu" />}>
-            <Columns3 />列
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>表示する列</DropdownMenuLabel>
-              {table
-                .getAllLeafColumns()
-                .filter((c) => c.getCanHide())
-                .map((c) => (
-                  <DropdownMenuCheckboxItem key={c.id} checked={c.getIsVisible()} onCheckedChange={(v) => c.toggleVisibility(v)}>
-                    {columnLabel(spec, c.id)}
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {filter.kind === "fix" && !activeAsk && (fixGroups.length > 0 || confirmUndo) && (
-        <div className="flex flex-wrap items-center gap-1.5 pr-[var(--chat-cover-r,0px)]" role="group" aria-label="まとめて直す" data-testid="fix-actions">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="まとめて直す" data-testid="fix-actions">
           {fixGroups.map((g) => (
             <Button
               key={`${g.action}:${g.field}`}
@@ -716,7 +716,7 @@ export function PreviewTable({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pr-[var(--chat-cover-r,0px)]">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <CellNote spec={spec} store={store.current!} byKey={byKey} />
         <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} unmatched={shown.some((r) => !liveKeys.has(r.key))} />
       </div>
