@@ -237,12 +237,31 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
     expect(await cell.evaluate((td) => { const r = td.getBoundingClientRect(); return td.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) })).toBe(true)
   })
 
-  await test.step("窓を開いているとき、表の上の「列」のボタンは窓に隠れず押せる（1440×900 の画面でも）", async () => {
+  await test.step("窓が表の上の行に重なるときだけ、その右を空けて「列」のボタンを押せるようにし、背の高い画面・たたんだときは空けない", async () => {
     const size = page.viewportSize()!
+    // 表の上の行（検索・「列」・まとめて直す・色の凡例）のかたまりごと空ける
+    const toolbar = page.getByTestId("table-controls")
+    const pad = () => toolbar.evaluate((el) => parseFloat(getComputedStyle(el).paddingRight))
+    const clickable = () => page.getByTestId("columns-menu").evaluate((el) => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) })
     await page.setViewportSize({ width: 1440, height: 900 })
     try {
-      const button = page.getByTestId("columns-menu")
-      expect(await button.evaluate((el) => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) })).toBe(true)
+      // 1440×900 では窓の上の端が表の上の行より上にある（重なる）ので、右を空ける
+      const win = await box(page, "chat-column")
+      const row = (await toolbar.boundingBox())!
+      expect(win.y).toBeLessThan(row.y + row.height)
+      await expect.poll(pad).toBeGreaterThan(0)
+      await expect.poll(clickable).toBe(true)
+      // 背の高い画面では窓が表の上の行まで届かないので空けない
+      await page.setViewportSize({ width: 1500, height: 1400 })
+      await expect.poll(pad).toBe(0)
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await expect.poll(pad).toBeGreaterThan(0)
+      // たたむと重ならないので空けない（「列」は右端に戻る）
+      await launcher(page).click()
+      await expect.poll(pad).toBe(0)
+      await expect.poll(clickable).toBe(true)
+      await launcher(page).click()
+      await expectOpen(page)
     } finally {
       await page.setViewportSize(size)
     }

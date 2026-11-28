@@ -22,6 +22,7 @@ import {
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ArrowDown, ArrowDownWideNarrow, ArrowRight, ArrowUp, ArrowUpNarrowWide, Check, ChevronDown, Columns3, Funnel, ListChecks, MapPin, MessageCircleQuestion, RefreshCw, Search, Undo2, X } from "lucide-react"
+import { useRoomForOverlay } from "./use-room-for-overlay"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -598,127 +599,131 @@ export function PreviewTable({
   const offCount = useMemo(() => [...inclusion.values()].filter((i) => !i.included).length, [inclusion])
 
   const tableWidth = table.getTotalSize()
+  /** 表の上の行のかたまり（検索・「列」・まとめて直す・色の凡例）は、案件の画面のチャットの窓が本当に重なっているときだけ右を空け、窓の下に隠さない */
+  const roomForChat = useRoomForOverlay("chat-window", '[data-place="window"]:not([data-collapsed])')
   /** 横にスクロールしているか（固定の列の境目の影。変わったときだけ描き直す） */
   const [scrolledX, setScrolledX] = useState(false)
 
   // 置かれた欄の高さに合わせ、表の中だけをスクロールする（作業の画面の「表」のタブ）
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        {activeAsk ? (
-          <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 py-0.5 pr-1 pl-2.5 text-xs text-amber-900" data-testid="ask-filter" data-ask={activeAsk.id}>
-            {activeAsk.label}（{activeAsk.keys.size}行）
-            <Button size="icon-xs" variant="ghost" className="size-5" aria-label="聞き返しの絞り込みを外す" onClick={() => setFilter({ kind: "all" })}>
-              <X />
-            </Button>
-          </span>
-        ) : (
-          filter.kind === "fix" &&
-          counts.rows > 0 && (
-            <div className="flex flex-wrap items-center gap-1" role="group" aria-label="直す理由" data-testid="fix-reasons">
-              {FIX_KINDS.filter((k) => counts.byKind[k] > 0).map((k) => (
-                <Button
-                  key={k}
-                  size="xs"
-                  variant={filter.reason === k ? "default" : "outline"}
-                  aria-pressed={filter.reason === k}
-                  onClick={() => setFilter(filter.reason === k ? { kind: "fix" } : { kind: "fix", reason: k })}
-                  data-testid={`fix-reason-${k}`}
-                >
-                  {FIX_LABELS[k]} <span className="num">{counts.byKind[k]}</span>
-                </Button>
-              ))}
-            </div>
-          )
-        )}
-        {filter.kind === "all" && !activeAsk && onGoFix && counts.rows > 0 && (
-          <Button size="xs" variant="outline" onClick={onGoFix} title="直す行だけを、理由と直し方の列つきで出します" data-testid="table-go-fix">
-            直す <span className="num">{counts.rows}</span>行の理由と直し方 <ArrowRight />
-          </Button>
-        )}
-        <div className="relative w-44 sm:w-56">
-          <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            aria-label="表の中を検索"
-            placeholder="表の中を検索"
-            className="pl-7"
-            value={query}
-            onChange={(e) => onQuery(e.target.value)}
-          />
-        </div>
-        {/* 「列」は検索のすぐ右（右端に置くと、右下のチャットの窓に隠れることがある） */}
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" aria-label="表示する列" title="表示する列" data-testid="columns-menu" />}>
-            <Columns3 />列
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-60">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel>表示する列</DropdownMenuLabel>
-              {table
-                .getAllLeafColumns()
-                .filter((c) => c.getCanHide())
-                .map((c) => (
-                  <DropdownMenuCheckboxItem key={c.id} checked={c.getIsVisible()} onCheckedChange={(v) => c.toggleVisibility(v)}>
-                    {columnLabel(spec, c.id)}
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {sorting.length > 0 && <span className="text-xs text-muted-foreground">並べ替えは表示だけ</span>}
-        {columnFilters.length > 0 && (
-          <span className="flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 py-0.5 pr-1 pl-2.5 text-xs text-sky-900" data-testid="column-filters">
-            <Funnel className="size-3" aria-hidden />
-            絞り込み中: {columnFilters.map((f) => columnLabel(spec, f.id)).join("・")}
-            {/* 段の並び・直す理由の数は列の絞り込みの前の数なので、見えている行の数と食い違わないように両方を出す（全部は直す理由・検索の後の行） */}
-            <span className="num text-sky-800/80" data-testid="column-filters-count">
-              （{data.length}行のうち {filtered.length}行を表示）
+      {/* 表の上の行（検索・「列」・まとめて直す・色の凡例）。チャットの窓が重なるときだけ、まとめて右を空ける */}
+      <div ref={roomForChat} className="flex flex-col gap-2" data-testid="table-controls">
+        <div className="flex flex-wrap items-center gap-2">
+          {activeAsk ? (
+            <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 py-0.5 pr-1 pl-2.5 text-xs text-amber-900" data-testid="ask-filter" data-ask={activeAsk.id}>
+              {activeAsk.label}（{activeAsk.keys.size}行）
+              <Button size="icon-xs" variant="ghost" className="size-5" aria-label="聞き返しの絞り込みを外す" onClick={() => setFilter({ kind: "all" })}>
+                <X />
+              </Button>
             </span>
-            <Button size="xs" variant="ghost" className="h-5 px-1.5" onClick={onClearColumnFilters} data-testid="column-filters-clear">
-              すべて解除
-            </Button>
-          </span>
-        )}
-        {outdated && (
-          <span className="flex items-center gap-1.5 text-xs text-amber-700" data-testid="outdated">
-            手直しのあと止めています
-            <Button size="sm" variant="outline" onClick={unpin}>
-              <RefreshCw />
-              更新
-            </Button>
-          </span>
-        )}
-      </div>
-
-      {filter.kind === "fix" && !activeAsk && (fixGroups.length > 0 || confirmUndo) && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="まとめて直す" data-testid="fix-actions">
-          {fixGroups.map((g) => (
-            <Button
-              key={`${g.action}:${g.field}`}
-              size="xs"
-              variant="outline"
-              className="bg-background"
-              title={FIX_ACTIONS[g.action].title}
-              onClick={() => onFixAction(g.action, g.keys)}
-              data-testid="fix-action"
-              data-action={g.action}
-            >
-              {ACTION_ICONS[g.action]}
-              {fixActionText(g)}
-            </Button>
-          ))}
-          {confirmUndo && (
-            <Button size="xs" variant="ghost" onClick={confirmUndo} data-testid="confirm-undo">
-              <Undo2 />「{CONFIRM_LABEL}」を取り消す
+          ) : (
+            filter.kind === "fix" &&
+            counts.rows > 0 && (
+              <div className="flex flex-wrap items-center gap-1" role="group" aria-label="直す理由" data-testid="fix-reasons">
+                {FIX_KINDS.filter((k) => counts.byKind[k] > 0).map((k) => (
+                  <Button
+                    key={k}
+                    size="xs"
+                    variant={filter.reason === k ? "default" : "outline"}
+                    aria-pressed={filter.reason === k}
+                    onClick={() => setFilter(filter.reason === k ? { kind: "fix" } : { kind: "fix", reason: k })}
+                    data-testid={`fix-reason-${k}`}
+                  >
+                    {FIX_LABELS[k]} <span className="num">{counts.byKind[k]}</span>
+                  </Button>
+                ))}
+              </div>
+            )
+          )}
+          {filter.kind === "all" && !activeAsk && onGoFix && counts.rows > 0 && (
+            <Button size="xs" variant="outline" onClick={onGoFix} title="直す行だけを、理由と直し方の列つきで出します" data-testid="table-go-fix">
+              直す <span className="num">{counts.rows}</span>行の理由と直し方 <ArrowRight />
             </Button>
           )}
+          <div className="relative w-44 sm:w-56">
+            <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              aria-label="表の中を検索"
+              placeholder="表の中を検索"
+              className="pl-7"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+            />
+          </div>
+          {sorting.length > 0 && <span className="text-xs text-muted-foreground">並べ替えは表示だけ</span>}
+          {columnFilters.length > 0 && (
+            <span className="flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 py-0.5 pr-1 pl-2.5 text-xs text-sky-900" data-testid="column-filters">
+              <Funnel className="size-3" aria-hidden />
+              絞り込み中: {columnFilters.map((f) => columnLabel(spec, f.id)).join("・")}
+              {/* 段の並び・直す理由の数は列の絞り込みの前の数なので、見えている行の数と食い違わないように両方を出す（全部は直す理由・検索の後の行） */}
+              <span className="num text-sky-800/80" data-testid="column-filters-count">
+                （{data.length}行のうち {filtered.length}行を表示）
+              </span>
+              <Button size="xs" variant="ghost" className="h-5 px-1.5" onClick={onClearColumnFilters} data-testid="column-filters-clear">
+                すべて解除
+              </Button>
+            </span>
+          )}
+          {outdated && (
+            <span className="flex items-center gap-1.5 text-xs text-amber-700" data-testid="outdated">
+              手直しのあと止めています
+              <Button size="sm" variant="outline" onClick={unpin}>
+                <RefreshCw />
+                更新
+              </Button>
+            </span>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="ml-auto" aria-label="表示する列" title="表示する列" data-testid="columns-menu" />}>
+              <Columns3 />列
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>表示する列</DropdownMenuLabel>
+                {table
+                  .getAllLeafColumns()
+                  .filter((c) => c.getCanHide())
+                  .map((c) => (
+                    <DropdownMenuCheckboxItem key={c.id} checked={c.getIsVisible()} onCheckedChange={(v) => c.toggleVisibility(v)}>
+                      {columnLabel(spec, c.id)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-      )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <CellNote spec={spec} store={store.current!} byKey={byKey} />
-        <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} unmatched={shown.some((r) => !liveKeys.has(r.key))} />
+        {filter.kind === "fix" && !activeAsk && (fixGroups.length > 0 || confirmUndo) && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="まとめて直す" data-testid="fix-actions">
+            {fixGroups.map((g) => (
+              <Button
+                key={`${g.action}:${g.field}`}
+                size="xs"
+                variant="outline"
+                className="bg-background"
+                title={FIX_ACTIONS[g.action].title}
+                onClick={() => onFixAction(g.action, g.keys)}
+                data-testid="fix-action"
+                data-action={g.action}
+              >
+                {ACTION_ICONS[g.action]}
+                {fixActionText(g)}
+              </Button>
+            ))}
+            {confirmUndo && (
+              <Button size="xs" variant="ghost" onClick={confirmUndo} data-testid="confirm-undo">
+                <Undo2 />「{CONFIRM_LABEL}」を取り消す
+              </Button>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <CellNote spec={spec} store={store.current!} byKey={byKey} />
+          <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} unmatched={shown.some((r) => !liveKeys.has(r.key))} />
+        </div>
       </div>
 
       {/* 上に重なる窓（案件の画面のチャット）が隠す分（--chat-cover-table-b・--chat-cover-r）だけ、最後の行の下と右端の列の右にスクロールできる余白を足す */}
