@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState, useSyncExternalStore } from "react"
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import {
   columnFacetingFeature,
   columnFilteringFeature,
+  columnPinningFeature,
   columnResizingFeature,
   columnSizingFeature,
   columnVisibilityFeature,
@@ -76,6 +77,7 @@ const features = tableFeatures({
   columnVisibilityFeature,
   columnFilteringFeature,
   columnFacetingFeature,
+  columnPinningFeature,
   columnSizingFeature,
   columnResizingFeature,
   rowSortingFeature,
@@ -125,6 +127,22 @@ const KEY_STEP_LARGE = 64
  * 既定が下限より狭い列（JV）は、既定の幅を下限にする（何もしないうちに幅が変わらない）
  */
 const sized = (id: keyof typeof WIDTH) => ({ size: WIDTH[id], minSize: Math.min(MIN_WIDTH, WIDTH[id]), maxSize: MAX_WIDTH })
+
+/**
+ * 左に固定する列（Excel のウィンドウ枠の固定。横にスクロールしても見えたまま）。右の列を直すときに、どの行か（元の行）・どの業種の工事かが分かるように。
+ * 工事名は固定しない（幅が広く、固定すると右の列を見る幅が狭くなる。固定は CSV の列の並びのまま左から続く列だけにする）。
+ * 直すの段の「直す理由と直し方」は固定しない（幅が広い）ので、固定の列のすぐ右に出る。
+ * 表の欄が狭いとき（スマートフォン）は「載せる」だけ（3列で 300px を超え、欄の大半を占めるため）。広さは画面ではなく表の欄の幅で見る
+ */
+const PINNED = { wide: ["include", "origin", "gyoshu"], narrow: ["include"] } as const
+/** 3列を固定する表の欄の幅（px。固定の列が欄の半分ほどまで） */
+const PIN_WIDE_MIN = 600
+/**
+ * 固定の列の背景: 下の列が透けないよう不透明にし、行にマウスを乗せた・行の中の選ぶ欄を開いたときは行と同じ色（TableRow の bg-muted/50 を表の背景に重ねた色）にする。
+ * 状態の色のセルには付けない（固定しない列と同じく、状態の色のまま）
+ */
+const PINNED_BG =
+  "bg-card group-hover/row:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--color-muted)_50%,var(--color-card))]"
 
 /** 手直し中のセル。下書きは行の外に持つ（仮想スクロールで行が消えても残る） */
 type Editing = { row: string; field: KojiFieldId; session: EditSession; draft: string }
@@ -277,6 +295,9 @@ export function PreviewTable({
 
   /** 直す理由と直し方の列は、直す行の絞り込み（直すの段）だけに出す（表では出さない） */
   const reasonsColumn = filter.kind === "fix"
+  /** 表の欄が3列を固定できる広さか（欄の幅を ResizeObserver で見る。下の scrollRef の effect が入れる） */
+  const [pinWide, setPinWide] = useState(true)
+  const columnPinning = useMemo(() => ({ start: [...PINNED[pinWide ? "wide" : "narrow"]], end: [] }), [pinWide])
   const columns = useMemo(
     () =>
       columnHelper.columns([
@@ -344,10 +365,12 @@ export function PreviewTable({
         const ids = new Set([...Object.keys(columnSizing), ...Object.keys(next)])
         if ([...ids].some((id) => width(next, id) !== width(columnSizing, id) || (id in next) !== (id in columnSizing))) onColumnSizing(next)
       },
-      state: { sorting, columnVisibility, columnFilters, columnSizing },
+      // 固定する列は決まっている（職員は変えない。画面の幅で決める）
+      enableColumnPinning: false,
+      state: { sorting, columnVisibility, columnFilters, columnSizing, columnPinning },
     },
     // 表を描き直すのは決まった状態が変わったときだけ（ドラッグの途中の columnResizing では描き直さない）
-    (s) => ({ sorting: s.sorting, columnVisibility: s.columnVisibility, columnFilters: s.columnFilters, columnSizing: s.columnSizing }),
+    (s) => ({ sorting: s.sorting, columnVisibility: s.columnVisibility, columnFilters: s.columnFilters, columnSizing: s.columnSizing, columnPinning: s.columnPinning }),
   )
   const filtered = table.getFilteredRowModel().rows
   const live = table.getRowModel().rows.map((r) => r.original)
@@ -360,7 +383,22 @@ export function PreviewTable({
   const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows])
   const shown = pinned ? pinned.flatMap((k) => byKey.get(k) ?? []) : live
   const outdated = pinned !== null && (shown.length !== live.length || shown.some((r, i) => r.key !== live[i]!.key))
-  const visibleColumns = table.getVisibleLeafColumns()
+  /** 見えている列（固定の列が先。見出し〔getHeaderGroups〕と同じ並び） */
+  const pinnedColumns = table.getStartVisibleLeafColumns()
+  const visibleColumns = [...pinnedColumns, ...table.getCenterVisibleLeafColumns()]
+  const lastPinned = pinnedColumns.at(-1)?.id
+  /**
+   * 固定の列のセル・見出し: 左からの位置は前の固定の列の幅の合計（列の幅を変えた・列を隠したときもずれない）。
+   * 背景は透けない色にし（状態の色のセルはその色）、いちばん右の固定の列には横にスクロールしている間だけ境目の影を付ける
+   */
+  const pin = (c: Column<typeof features, Row, unknown>) =>
+    c.getIsPinned() === "start"
+      ? {
+          className: cn("sticky", c.id === lastPinned && "group-data-[scrolled-x]/scroll:shadow-[6px_0_6px_-6px_rgb(0_0_0/0.25)]"),
+          style: { left: c.getStart("start") },
+          "data-pinned": c.id === lastPinned ? "last" : "1",
+        }
+      : null
 
   function startEdit(r: Row, field: KojiFieldId) {
     if (editing) finishEdit(true)
@@ -422,6 +460,21 @@ export function PreviewTable({
   )
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    /** 見えている中身の幅（右の余白〔チャットの窓が隠す分〕を除く）。隠れている間（幅 0）は前のまま */
+    const measure = () => {
+      const style = getComputedStyle(el)
+      const width = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      if (el.clientWidth > 0) setPinWide(width >= PIN_WIDE_MIN)
+    }
+    // 描く前に1回読む（狭い欄で3列の固定が一瞬出ない）
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const virtualizer = useVirtualizer({
     count: shown.length,
     getScrollElement: () => scrollRef.current,
@@ -436,7 +489,9 @@ export function PreviewTable({
   const padTop = items[0]?.start ?? 0
   const padBottom = virtualizer.getTotalSize() - (items.at(-1)?.end ?? 0)
 
-  function renderCell(r: Row, columnId: string) {
+  function renderCell(r: Row, c: Column<typeof features, Row, unknown>) {
+    const columnId = c.id
+    const pinned = pin(c)
     if (columnId === "include") {
       const inc = inclusion.get(r.key)
       // 印は手で入れ外しした行と除外の行だけ（7割ルール・全件の別はツールチップ）
@@ -445,7 +500,7 @@ export function PreviewTable({
         .filter(Boolean)
         .join("\n")
       return (
-        <TableCell key={columnId} className="sticky left-0 z-10 border-b bg-card px-0 py-1.5 text-center">
+        <TableCell key={columnId} {...pinned} className={cn("z-10 border-b px-0 py-1.5 text-center", PINNED_BG, pinned?.className)}>
           <label className="flex flex-col items-center gap-0.5" title={tip} data-reason={inc?.reason}>
             <Checkbox aria-label="CSVに載せる" checked={inc?.included ?? false} onCheckedChange={(checked, details) => toggleRow(r.key, checked, details.event)} />
             {mark && (
@@ -472,7 +527,13 @@ export function PreviewTable({
     }
     if (columnId === "origin") {
       return (
-        <TableCell key={columnId} className="num border-b px-2 py-1.5 text-muted-foreground" title={originText(r)} data-testid="origin-cell">
+        <TableCell
+          key={columnId}
+          {...pinned}
+          className={cn("num border-b px-2 py-1.5 text-muted-foreground", pinned && cn("z-10", PINNED_BG), pinned?.className)}
+          title={originText(r)}
+          data-testid="origin-cell"
+        >
           {/* 列からはみ出さない。行番号は必ず見せ、長いシート名の側を「…」で縮める（全部はマウスを乗せると出る） */}
           <span className="flex min-w-0">
             <span className="truncate">{r.sheet}</span>
@@ -486,10 +547,13 @@ export function PreviewTable({
     const isEditing = editing?.row === r.key && editing.field === field
     const { spec: spec_, choices } = fieldInfo.get(field)!
     const named = choiceLabel(spec_, cell.value)
+    const tone = cellClass(cell)
     return (
       <TableCell
         key={columnId}
-        className={cn("border-b border-l p-0 align-top whitespace-normal", cellClass(cell))}
+        {...pinned}
+        // 固定の列は下の列が透けないように、色の無いセルにも背景を敷く（状態の色のセルはその色）
+        className={cn("border-b border-l p-0 align-top whitespace-normal", pinned ? cn("z-10", tone || PINNED_BG, pinned.className) : tone)}
         data-field={field}
         data-status={cell.status}
         data-tone={cellTone(cell)}
@@ -534,6 +598,8 @@ export function PreviewTable({
   const offCount = useMemo(() => [...inclusion.values()].filter((i) => !i.included).length, [inclusion])
 
   const tableWidth = table.getTotalSize()
+  /** 横にスクロールしているか（固定の列の境目の影。変わったときだけ描き直す） */
+  const [scrolledX, setScrolledX] = useState(false)
 
   // 置かれた欄の高さに合わせ、表の中だけをスクロールする（作業の画面の「表」のタブ）
   return (
@@ -655,7 +721,14 @@ export function PreviewTable({
       </div>
 
       {/* 上に重なる窓（案件の画面のチャット）が隠す分（--chat-cover-table-b・--chat-cover-r）だけ、最後の行の下と右端の列の右にスクロールできる余白を足す */}
-      <div ref={scrollRef} className="min-h-0 overflow-auto rounded-xl border bg-card pr-[var(--chat-cover-r,0px)] pb-[var(--chat-cover-table-b,0px)]">
+      {/* 横にスクロールしている間は data-scrolled-x（固定の列の境目の影）。scroll-padding-left は固定の列の幅で、キーボードで右の列に動いたときにセルが固定の列の下に隠れない */}
+      <div
+        ref={scrollRef}
+        className="group/scroll min-h-0 overflow-auto rounded-xl border bg-card pr-[var(--chat-cover-r,0px)] pb-[var(--chat-cover-table-b,0px)]"
+        style={{ scrollPaddingLeft: table.getStartTotalSize() }}
+        data-scrolled-x={scrolledX ? "" : undefined}
+        onScroll={(e) => setScrolledX(e.currentTarget.scrollLeft > 0)}
+      >
         <table
           data-slot="table"
           data-testid="preview-table"
@@ -674,14 +747,19 @@ export function PreviewTable({
                 {hg.headers.map((h) => {
                   const sorted = h.column.getIsSorted()
                   const colFilter = h.column.getFilterValue() as ColumnFilterValue | undefined
+                  const pinned = pin(h.column)
                   return (
                     <TableHead
                       key={h.id}
+                      {...pinned}
                       aria-sort={sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : undefined}
                       className={cn(
                         "h-auto border-b bg-muted px-2 py-2 align-bottom text-xs whitespace-normal text-muted-foreground",
+                        // 固定の列の見出しは上にも左にも固定（角）。ほかの見出しの上に重ねる。固定しない見出しは重なりをその中に閉じ（isolate）、
+                        // 横にスクロールして固定の見出しの下に来た境目のつまみ（z-10）が、固定の見出しの上に出て押せないようにする
+                        pinned ? cn("z-10", pinned.className) : "relative isolate",
                         // 境目のつまみ（見出しの右端）の幅だけ右の余白を取り、つまみが ▼ に重ならない（タッチでは つまみが太いので余白も広い）
-                        h.column.id === "include" ? "sticky left-0 z-30 px-0" : h.column.getCanResize() ? "relative pr-2.5 pointer-coarse:pr-5" : "relative",
+                        h.column.id === "include" ? "px-0" : h.column.getCanResize() && "pr-2.5 pointer-coarse:pr-5",
                       )}
                     >
                       {h.column.id === "include" ? (
@@ -719,9 +797,9 @@ export function PreviewTable({
                   data-index={vi.index}
                   data-row-key={r.key}
                   data-included={included ? "1" : "0"}
-                  className={cn("border-0", !included && "opacity-45")}
+                  className={cn("group/row border-0", !included && "opacity-45")}
                 >
-                  {visibleColumns.map((c) => renderCell(r, c.id))}
+                  {visibleColumns.map((c) => renderCell(r, c))}
                 </TableRow>
               )
             })}
