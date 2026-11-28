@@ -77,3 +77,75 @@ test("シート名が長くても、元の行と業種のセルは隣の列に�
   await expect(gyoshu).toHaveAttribute("title", /^\d+ \S/)
   await deleteCustomer(page, customer)
 })
+
+test("見出しの境目をドラッグすると列が広がって省略が消え、ダブルクリックで元の幅に戻る（キーボード・タッチでも変えられ、直すの段と同じ幅）", async ({ page }) => {
+  const sheet = "2025年（令和7年）記入用フォーム"
+  const { customer } = await openNewCase(page)
+  await attachAndConvert(page, longSheetFixture(sheet))
+  await showAllRows(page)
+  const table = page.getByTestId("preview-table")
+  const head = table.locator("thead th").filter({ has: page.locator('[data-testid="column-resizer"][data-column="origin"]') })
+  const resizer = page.locator('[data-testid="column-resizer"][data-column="origin"]')
+  const width = async () => Math.round((await head.boundingBox())!.width)
+  /** 見えている元の行のセルで、シート名が「…」で切れている数 */
+  const truncated = () =>
+    table.locator('td[data-testid="origin-cell"] .truncate').evaluateAll((els) => els.filter((el) => el.scrollWidth > el.clientWidth).length)
+
+  await test.step("「表示する列」のボタンには「列」と文字が出る", async () => {
+    await expect(page.getByRole("button", { name: "表示する列" })).toHaveText("列")
+  })
+
+  const initial = await width()
+  expect(initial).toBe(84)
+  expect(await truncated()).toBeGreaterThan(0)
+
+  await test.step("境目をドラッグすると、離したときに列が広がり、シート名が全部見える。境目と見出しの ▼ はぶつからない", async () => {
+    const box = (await resizer.boundingBox())!
+    const y = box.y + box.height / 2
+    await page.mouse.move(box.x + box.width / 2, y)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 120, y, { steps: 6 })
+    // ドラッグの間は境目の線だけが動き、幅は離したときに決める
+    await expect(resizer).toHaveAttribute("data-resizing", "1")
+    expect(await width()).toBe(initial)
+    await page.mouse.move(box.x + box.width / 2 + 200, y, { steps: 4 })
+    await page.mouse.up()
+    await expect(resizer).not.toHaveAttribute("data-resizing")
+    await expect.poll(width).toBe(initial + 200)
+    expect(await truncated()).toBe(0)
+    await expect(resizer).toHaveAttribute("aria-valuenow", String(initial + 200))
+    await expect(page.locator('[data-testid="column-panel"][data-open]')).toHaveCount(0)
+  })
+
+  await test.step("直すの段でも同じ幅", async () => {
+    await openTab(page, "fix")
+    await expect.poll(width).toBe(initial + 200)
+    await openTab(page, "table")
+  })
+
+  await test.step("境目にフォーカスして ←→ で変えられる（Shift で大きく）", async () => {
+    await resizer.focus()
+    await page.keyboard.press("ArrowLeft")
+    await expect.poll(width).toBe(initial + 200 - 16)
+    await page.keyboard.press("Shift+ArrowRight")
+    await expect.poll(width).toBe(initial + 200 - 16 + 64)
+  })
+
+  await test.step("境目をダブルクリックで元の幅に戻り、シート名はまた「…」で切れる", async () => {
+    await resizer.dblclick()
+    await expect.poll(width).toBe(initial)
+    expect(await truncated()).toBeGreaterThan(0)
+  })
+
+  await test.step("タッチで引いても広がる", async () => {
+    const box = (await resizer.boundingBox())!
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] })
+    for (const dx of [40, 80, 120]) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + dx, y }] })
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+    await expect.poll(width).toBe(initial + 120)
+  })
+  await deleteCustomer(page, customer)
+})

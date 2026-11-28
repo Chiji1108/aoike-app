@@ -72,6 +72,7 @@ export function TableTab() {
         onQuery={actions.setTableQuery}
         onSorting={actions.setTableSorting}
         onColumnVisibility={actions.setColumnVisibility}
+        onColumnSizing={actions.setColumnSizing}
         onColumnFilter={actions.setColumnFilter}
         onClearColumnFilters={actions.clearColumnFilters}
       />

@@ -11,15 +11,17 @@ export type ColumnFilterValue = { exclude: readonly string[] } | { tone: CellSta
 /** 列のフィルターの一覧（TanStack Table の columnFilters と同じ形。保存しない） */
 export type ColumnFilters = { id: string; value: ColumnFilterValue }[]
 
-/** 表の見え方（検索・並べ替え・列の表示・列のフィルター）。案件の画面の ui.grid（保存しない。開き直すと外れる。Excel と同じ） */
+/** 表の見え方（検索・並べ替え・列の表示・列のフィルター・列の幅）。案件の画面の ui.grid（保存しない。開き直すと外れる。Excel と同じ） */
 export type TableGrid = {
   query: string
   sorting: { id: string; desc: boolean }[]
   columnVisibility: Record<string, boolean>
   columnFilters: ColumnFilters
+  /** 職員が変えた列の幅（px。TanStack Table の columnSizing と同じ形。無い列は既定の幅） */
+  columnSizing: Record<string, number>
 }
 
-export const EMPTY_GRID: TableGrid = { query: "", sorting: [], columnVisibility: {}, columnFilters: [] }
+export const EMPTY_GRID: TableGrid = { query: "", sorting: [], columnVisibility: {}, columnFilters: [], columnSizing: {} }
 
 /** 色で絞れる色（凡例と同じ: ルールで変換・AI・要確認・エラー。色の無い「そのまま」は出さない） */
 export const FILTER_TONES = LEGEND_TONES

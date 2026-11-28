@@ -494,9 +494,10 @@ describe("道具と段の並び", () => {
     expect(s.store.getState().ui.filter).toEqual({ kind: "all", ask: "plan-ask-0" })
   })
 
-  test("列のフィルターは直すの段と表で同じまま。聞き返しの「表で見る」と列を隠すと外れ、検索・並べ替えは残す", async () => {
+  test("列のフィルターは直すの段と表で同じまま。聞き返しの「表で見る」と列を隠すと外れ、検索・並べ替え・列の幅は残す", async () => {
     const s = await converted(true)
     s.actions.setTableQuery("サンプル")
+    s.actions.setColumnSizing({ origin: 200 })
     s.actions.setTableSorting([{ id: "amount", desc: true }])
     s.actions.setColumnFilter("gyoshu", { exclude: ["08"] })
     s.actions.setColumnFilter("place", { tone: "warning" })
@@ -506,7 +507,7 @@ describe("道具と段の並び", () => {
     s.actions.setColumnVisibility({ place: false })
     expect(s.store.getState().ui.grid.columnFilters.map((f) => f.id)).toEqual(["gyoshu"])
     s.actions.viewAsk("plan-ask-0")
-    expect(s.store.getState().ui.grid).toEqual({ query: "サンプル", sorting: [{ id: "amount", desc: true }], columnVisibility: { place: false }, columnFilters: [] })
+    expect(s.store.getState().ui.grid).toEqual({ query: "サンプル", sorting: [{ id: "amount", desc: true }], columnVisibility: { place: false }, columnFilters: [], columnSizing: { origin: 200 } })
     s.actions.setColumnFilter("gyoshu", { exclude: [] })
     s.actions.clearColumnFilters()
     expect(s.store.getState().ui.grid.columnFilters).toEqual([])
