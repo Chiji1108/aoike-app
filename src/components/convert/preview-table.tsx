@@ -604,7 +604,8 @@ export function PreviewTable({
   // 置かれた欄の高さに合わせ、表の中だけをスクロールする（作業の画面の「表」のタブ）
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 表の上の行（検索・「列」・まとめて直す・色の凡例）も、上に重なる窓（案件の画面のチャット）が隠す分（--chat-cover-r）だけ右を空け、窓の下に隠さない */}
+      <div className="flex flex-wrap items-center gap-2 pr-[var(--chat-cover-r,0px)]">
         {activeAsk ? (
           <span className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 py-0.5 pr-1 pl-2.5 text-xs text-amber-900" data-testid="ask-filter" data-ask={activeAsk.id}>
             {activeAsk.label}（{activeAsk.keys.size}行）
@@ -691,7 +692,7 @@ export function PreviewTable({
       </div>
 
       {filter.kind === "fix" && !activeAsk && (fixGroups.length > 0 || confirmUndo) && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="まとめて直す" data-testid="fix-actions">
+        <div className="flex flex-wrap items-center gap-1.5 pr-[var(--chat-cover-r,0px)]" role="group" aria-label="まとめて直す" data-testid="fix-actions">
           {fixGroups.map((g) => (
             <Button
               key={`${g.action}:${g.field}`}
@@ -715,7 +716,7 @@ export function PreviewTable({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pr-[var(--chat-cover-r,0px)]">
         <CellNote spec={spec} store={store.current!} byKey={byKey} />
         <ColorLegend rows={rows} fields={visibleColumns.map((c) => c.id)} unmatched={shown.some((r) => !liveKeys.has(r.key))} />
       </div>

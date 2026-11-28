@@ -237,6 +237,16 @@ test("表ができるとチャットは右下の窓になり表は横幅いっ�
     expect(await cell.evaluate((td) => { const r = td.getBoundingClientRect(); return td.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) })).toBe(true)
   })
 
+  await test.step("窓を開いているとき、表の上の「列」のボタンは窓に隠れず押せる（1440×900 の画面でも）", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    const button = page.getByTestId("columns-menu")
+    const win = await box(page, "chat-column")
+    const b = (await button.boundingBox())!
+    expect(b.x + b.width <= win.x || b.y + b.height <= win.y).toBe(true)
+    expect(await button.evaluate((el) => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)) })).toBe(true)
+    await page.setViewportSize({ width: 1500, height: 1000 })
+  })
+
   await test.step("左上の角を引くと窓が大きくなり、ダブルクリックで元の大きさに戻る", async () => {
     const before = await box(page, "chat-column")
     const handle = await box(page, "chat-resize")
