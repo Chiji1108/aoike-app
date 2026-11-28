@@ -463,10 +463,15 @@ export function PreviewTable({
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const observer = new ResizeObserver(() => {
-      // 隠れている間（幅 0）は前のまま
-      if (el.clientWidth > 0) setPinWide(el.clientWidth >= PIN_WIDE_MIN)
-    })
+    /** 見えている中身の幅（右の余白〔チャットの窓が隠す分〕を除く）。隠れている間（幅 0）は前のまま */
+    const measure = () => {
+      const style = getComputedStyle(el)
+      const width = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      if (el.clientWidth > 0) setPinWide(width >= PIN_WIDE_MIN)
+    }
+    // 描く前に1回読む（狭い欄で3列の固定が一瞬出ない）
+    measure()
+    const observer = new ResizeObserver(measure)
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
@@ -542,12 +547,13 @@ export function PreviewTable({
     const isEditing = editing?.row === r.key && editing.field === field
     const { spec: spec_, choices } = fieldInfo.get(field)!
     const named = choiceLabel(spec_, cell.value)
+    const tone = cellClass(cell)
     return (
       <TableCell
         key={columnId}
         {...pinned}
         // 固定の列は下の列が透けないように、色の無いセルにも背景を敷く（状態の色のセルはその色）
-        className={cn("border-b border-l p-0 align-top whitespace-normal", pinned && cn("z-10", cellClass(cell) || PINNED_BG), pinned?.className, cellClass(cell))}
+        className={cn("border-b border-l p-0 align-top whitespace-normal", pinned ? cn("z-10", tone || PINNED_BG, pinned.className) : tone)}
         data-field={field}
         data-status={cell.status}
         data-tone={cellTone(cell)}

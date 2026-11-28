@@ -28,6 +28,7 @@ const layout = (page: Page) =>
         return {
           left: Math.round(r.left - box),
           right: Math.round(r.right - box),
+          width: Math.round(r.width),
           pinned: (el as HTMLElement).dataset.pinned ?? null,
           opaque: opaque(bg),
         }
@@ -38,12 +39,19 @@ const scrollX = (page: Page, x: number) =>
   page.getByTestId("preview-table").evaluate((table, x) => {
     table.parentElement!.scrollLeft = x
   }, x)
+/** 固定の列の左端は、その前の固定の列の幅の足し算（0 から） */
+const stacked = (cols: { width: number }[]) => cols.map((_, i) => cols.slice(0, i).reduce((sum, c) => sum + c.width, 0))
+const resizer = (page: Page, column: string) => page.locator(`[data-testid="column-resizer"][data-column="${column}"]`)
+const widthOf = async (page: Page, column: string) => Number(await resizer(page, column).getAttribute("aria-valuenow"))
 const pinnedIds = (page: Page) => page.locator('[data-testid="preview-table"] thead th[data-pinned]').evaluateAll((ths) => ths.map((th) => th.querySelector("[data-column]")?.getAttribute("data-column") ?? "include"))
 
 test("載せる・元の行・業種の列は左に固定し、横にスクロールしても同じ位置に見え、幅を変えても隠しても重ならない", async ({ page }) => {
   const { customer } = await convertFixture(page, FIXTURE)
   await showAllRows(page)
   expect(await pinnedIds(page)).toEqual(["include", "origin", "gyoshu"])
+  // 既定の幅（WIDTH）は最初に読んで、あとで比べる
+  const originWidth = await widthOf(page, "origin")
+  const clientWidth = await widthOf(page, "client")
 
   await test.step("横にスクロールしても固定の列は同じ位置（見出しも行も）。ほかの列は動き、境目の影が付く", async () => {
     const before = await layout(page)
@@ -56,7 +64,7 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
       const pinned = before[part].map((c, i) => [c, after[part][i]!] as const).filter(([c]) => c.pinned)
       expect(pinned).toHaveLength(3)
       for (const [b, a] of pinned) expect(a.left).toBe(b.left)
-      expect(pinned.map(([b]) => b.left)).toEqual([0, 40, 124])
+      expect(pinned.map(([b]) => b.left)).toEqual(stacked(pinned.map(([b]) => b)))
       // 固定の列の背景は透けない（状態の色のセルも、色の無いセルも）
       expect(after[part].filter((c) => c.pinned).every((c) => c.opaque)).toBe(true)
       // 固定していない列は左へ動いた
@@ -71,7 +79,7 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
 
   await test.step("横にスクロールして固定しない列の境目が固定の見出しの下に来ても、その上を押すと固定の列の ▼ が開き、隠れた列の幅は変わらない", async () => {
     // 注文者（業種のすぐ右）の境目を、業種の見出しの真ん中の下へ動かす
-    const client = page.locator('[data-testid="column-resizer"][data-column="client"]')
+    const client = resizer(page, "client")
     const gyoshu = page.locator('[data-testid="column-menu"][data-column="gyoshu"]')
     const g = (await gyoshu.boundingBox())!
     const c = (await client.boundingBox())!
@@ -93,7 +101,7 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
     await page.mouse.move(x + 60, y, { steps: 4 })
     await expect(client).not.toHaveAttribute("data-resizing")
     await page.mouse.up()
-    await expect(client).toHaveAttribute("aria-valuenow", "170")
+    await expect(client).toHaveAttribute("aria-valuenow", String(clientWidth))
     await page.keyboard.press("Escape")
     await expect(page.locator('[data-testid="column-panel"][data-open]')).toHaveCount(0)
     // 押すと業種の ▼ が開く
@@ -115,21 +123,22 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
   })
 
   await test.step("固定の列（元の行）の幅を変えると、右の固定の列（業種）の位置が追従し、重ならない（スクロールしていても）", async () => {
-    const resizer = page.locator('[data-testid="column-resizer"][data-column="origin"]')
-    await resizer.click()
+    const origin = resizer(page, "origin")
+    await origin.click()
     await page.keyboard.press("Shift+ArrowRight")
     await page.keyboard.press("Shift+ArrowRight")
-    await expect(resizer).toHaveAttribute("aria-valuenow", String(84 + 128))
+    await expect(origin).toHaveAttribute("aria-valuenow", String(originWidth + 128))
     await scrollX(page, 300)
     const { head, row } = await layout(page)
     for (const cols of [head, row]) {
       const pinned = cols.filter((c) => c.pinned)
-      expect(pinned.map((c) => c.left)).toEqual([0, 40, 40 + 84 + 128])
+      expect(pinned[1]!.width).toBe(originWidth + 128)
+      expect(pinned.map((c) => c.left)).toEqual(stacked(pinned))
       for (let i = 1; i < pinned.length; i++) expect(pinned[i]!.left).toBeGreaterThanOrEqual(pinned[i - 1]!.right)
     }
     await scrollX(page, 0)
-    await resizer.dblclick()
-    await expect(resizer).toHaveAttribute("aria-valuenow", "84")
+    await origin.dblclick()
+    await expect(origin).toHaveAttribute("aria-valuenow", String(originWidth))
   })
 
   await test.step("元の行の列を隠すと、業種が載せるのすぐ右に固定される", async () => {
@@ -138,7 +147,8 @@ test("載せる・元の行・業種の列は左に固定し、横にスクロ�
     await page.keyboard.press("Escape")
     expect(await pinnedIds(page)).toEqual(["include", "gyoshu"])
     const { head } = await layout(page)
-    expect(head.filter((c) => c.pinned).map((c) => c.left)).toEqual([0, 40])
+    const pinned = head.filter((c) => c.pinned)
+    expect(pinned.map((c) => c.left)).toEqual(stacked(pinned))
     await page.getByRole("button", { name: "表示する列" }).click()
     await page.getByRole("menuitemcheckbox", { name: "元の行", exact: true }).click()
     await page.keyboard.press("Escape")
