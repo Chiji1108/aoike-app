@@ -120,8 +120,11 @@ const MAX_WIDTH = 640
 /** 列の幅のつまみで矢印キーを1回押したときに変える幅（px。Shift を押しながらは大きく） */
 const KEY_STEP = 16
 const KEY_STEP_LARGE = 64
-/** 列の幅の定義: 既定は WIDTH、職員が境目で変えられる（「載せる」の列は sticky で左に貼り付けるので変えない） */
-const sized = (id: keyof typeof WIDTH) => ({ size: WIDTH[id], minSize: MIN_WIDTH, maxSize: MAX_WIDTH })
+/**
+ * 列の幅の定義: 既定は WIDTH、職員が境目で変えられる（「載せる」の列は sticky で左に貼り付けるので変えない）。
+ * 既定が下限より狭い列（JV）は、既定の幅を下限にする（何もしないうちに幅が変わらない）
+ */
+const sized = (id: keyof typeof WIDTH) => ({ size: WIDTH[id], minSize: Math.min(MIN_WIDTH, WIDTH[id]), maxSize: MAX_WIDTH })
 
 /** 手直し中のセル。下書きは行の外に持つ（仮想スクロールで行が消えても残る） */
 type Editing = { row: string; field: KojiFieldId; session: EditSession; draft: string }
@@ -333,7 +336,14 @@ export function PreviewTable({
        */
       enableColumnResizing: true,
       columnResizeMode: "onEnd",
-      onColumnSizingChange: (u) => onColumnSizing(resolve(u, columnSizing)),
+      onColumnSizingChange: (u) => {
+        // 幅は整数の px で持つ（タッチの引きで小数になる）
+        const next = Object.fromEntries(Object.entries(resolve(u, columnSizing)).map(([id, w]) => [id, Math.round(w)]))
+        // 動かさずに離した（どの列の幅も今と同じ）ときは書かない
+        const width = (sizing: TableGrid["columnSizing"], id: string) => sizing[id] ?? WIDTH[id as keyof typeof WIDTH]
+        const ids = new Set([...Object.keys(columnSizing), ...Object.keys(next)])
+        if ([...ids].some((id) => width(next, id) !== width(columnSizing, id) || (id in next) !== (id in columnSizing))) onColumnSizing(next)
+      },
       state: { sorting, columnVisibility, columnFilters, columnSizing },
     },
     // 表を描き直すのは決まった状態が変わったときだけ（ドラッグの途中の columnResizing では描き直さない）
@@ -739,10 +749,12 @@ export function PreviewTable({
 function ResizeHandle({ header, label, scrollRef }: { header: Header<typeof features, Row, unknown>; label: string; scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const column = header.column
   const size = column.getSize()
+  const min = column.columnDef.minSize ?? MIN_WIDTH
+  const clamp = (w: number) => Math.min(MAX_WIDTH, Math.max(min, w))
   const resize = header.getResizeHandler()
   /** ドラッグの間に線を動かす量（離したときの幅と同じく下限・上限で止める） */
-  const shift = (delta: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, size + delta)) - size
-  const setSize = (next: number) => column.table.setColumnSizing((old) => ({ ...old, [column.id]: Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)) }))
+  const shift = (delta: number) => clamp(size + delta) - size
+  const setSize = (next: number) => column.table.setColumnSizing((old) => ({ ...old, [column.id]: clamp(next) }))
   return (
     <Subscribe source={column.table.atoms.columnResizing} selector={(r) => (r.isResizingColumn === column.id ? (r.deltaOffset ?? 0) : null)}>
       {(delta) => (
@@ -751,7 +763,7 @@ function ResizeHandle({ header, label, scrollRef }: { header: Header<typeof feat
           aria-orientation="vertical"
           aria-label={`${label}の列の幅`}
           aria-valuenow={size}
-          aria-valuemin={MIN_WIDTH}
+          aria-valuemin={min}
           aria-valuemax={MAX_WIDTH}
           tabIndex={0}
           title="ドラッグで列の幅を変える（ダブルクリックで元の幅）"
@@ -759,14 +771,19 @@ function ResizeHandle({ header, label, scrollRef }: { header: Header<typeof feat
           data-column={column.id}
           data-resizing={delta !== null ? "1" : undefined}
           className="group/resize absolute inset-y-0 right-0 z-10 flex w-2.5 cursor-col-resize touch-none justify-end outline-none select-none pointer-coarse:w-5"
-          // 押した直後に文字を選び始めない（ドラッグの間にセルの文字が選ばれない）
+          // 左ボタンだけで引く。押した直後に文字を選び始めない（ドラッグの間にセルの文字が選ばれない）。
+          // 選び始めを止めるとフォーカスも移らないので、自分で移す（押したあと ←→ で続けて変えられる）
           onMouseDown={(e) => {
+            if (e.button !== 0) return
             e.preventDefault()
+            e.currentTarget.focus({ preventScroll: true })
             resize(e)
           }}
           onTouchStart={resize}
           onDoubleClick={() => column.resetSize()}
           onKeyDown={(e) => {
+            // Alt・Cmd・Ctrl と一緒の矢印はブラウザの操作（戻る・行頭など）に渡す
+            if (e.altKey || e.metaKey || e.ctrlKey) return
             const step = e.shiftKey ? KEY_STEP_LARGE : KEY_STEP
             if (e.key === "ArrowLeft") setSize(size - step)
             else if (e.key === "ArrowRight") setSize(size + step)

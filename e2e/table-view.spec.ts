@@ -123,8 +123,19 @@ test("見出しの境目をドラッグすると列が広がって省略が消�
     await openTab(page, "table")
   })
 
-  await test.step("境目にフォーカスして ←→ で変えられる（Shift で大きく）", async () => {
-    await resizer.focus()
+  await test.step("境目にフォーカスして ←→ で変えられる（Shift で大きく）。右ボタンでは引かず、押しただけでは幅は変わらずフォーカスが移る", async () => {
+    const box = (await resizer.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down({ button: "right" })
+    await expect(resizer).not.toHaveAttribute("data-resizing")
+    await page.mouse.up({ button: "right" })
+    await page.keyboard.press("Escape")
+    await resizer.click()
+    await expect(resizer).toBeFocused()
+    expect(await width()).toBe(initial + 200)
+    // Ctrl と一緒の矢印はブラウザに渡す
+    await page.keyboard.press("Control+ArrowLeft")
+    expect(await width()).toBe(initial + 200)
     await page.keyboard.press("ArrowLeft")
     await expect.poll(width).toBe(initial + 200 - 16)
     await page.keyboard.press("Shift+ArrowRight")
@@ -143,9 +154,11 @@ test("見出しの境目をドラッグすると列が広がって省略が消�
     const y = box.y + box.height / 2
     const cdp = await page.context().newCDPSession(page)
     await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] })
-    for (const dx of [40, 80, 120]) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + dx, y }] })
+    for (const dx of [40, 80, 120.33]) await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + dx, y }] })
     await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
     await expect.poll(width).toBe(initial + 120)
+    // 幅は整数の px
+    await expect(resizer).toHaveAttribute("aria-valuenow", /^\d+$/)
   })
 
   await test.step("下限より狭く引いても、ドラッグの間の線と離したあとの幅は下限で止まる", async () => {
